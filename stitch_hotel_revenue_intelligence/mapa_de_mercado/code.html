@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Revenue Pro | Market Map</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+        
+        .map-pin-pulse {
+            animation: pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.7); opacity: 0.8; }
+            50% { transform: scale(1); opacity: 0.4; }
+            100% { transform: scale(0.7); opacity: 0.8; }
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-container-lowest": "#ffffff",
+                      "primary-fixed-dim": "#bec6e0",
+                      "inverse-on-surface": "#eff1f3",
+                      "tertiary-container": "#0b1c30",
+                      "tertiary-fixed": "#d3e4fe",
+                      "background": "#f7f9fb",
+                      "secondary": "#0058be",
+                      "primary": "#000000",
+                      "tertiary": "#000000",
+                      "on-tertiary-fixed-variant": "#38485d",
+                      "on-secondary": "#ffffff",
+                      "secondary-fixed": "#d8e2ff",
+                      "on-secondary-fixed-variant": "#004395",
+                      "inverse-primary": "#bec6e0",
+                      "surface-variant": "#e0e3e5",
+                      "error": "#ba1a1a",
+                      "surface-container": "#eceef0",
+                      "on-error": "#ffffff",
+                      "outline": "#76777d",
+                      "tertiary-fixed-dim": "#b7c8e1",
+                      "on-primary-fixed": "#131b2e",
+                      "surface-container-high": "#e6e8ea",
+                      "on-primary-container": "#7c839b",
+                      "surface-dim": "#d8dadc",
+                      "surface-container-low": "#f2f4f6",
+                      "outline-variant": "#c6c6cd",
+                      "on-tertiary-fixed": "#0b1c30",
+                      "primary-container": "#131b2e",
+                      "on-secondary-fixed": "#001a42",
+                      "on-surface-variant": "#45464d",
+                      "on-background": "#191c1e",
+                      "surface-container-highest": "#e0e3e5",
+                      "secondary-fixed-dim": "#adc6ff",
+                      "on-surface": "#191c1e",
+                      "on-secondary-container": "#fefcff",
+                      "on-primary": "#ffffff",
+                      "primary-fixed": "#dae2fd",
+                      "on-primary-fixed-variant": "#3f465c",
+                      "surface-bright": "#f7f9fb",
+                      "surface-tint": "#565e74",
+                      "surface": "#f7f9fb",
+                      "secondary-container": "#2170e4",
+                      "inverse-surface": "#2d3133",
+                      "on-tertiary-container": "#75859d",
+                      "error-container": "#ffdad6",
+                      "on-error-container": "#93000a",
+                      "on-tertiary": "#ffffff"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "sm": "8px",
+                      "container-margin": "24px",
+                      "lg": "24px",
+                      "unit": "4px",
+                      "md": "16px",
+                      "xl": "32px",
+                      "xs": "4px",
+                      "gutter": "16px"
+              },
+              "fontFamily": {
+                      "headline-md": ["Inter"],
+                      "display-lg": ["Inter"],
+                      "data-mono": ["Inter"],
+                      "body-lg": ["Inter"],
+                      "body-sm": ["Inter"],
+                      "label-caps": ["Inter"],
+                      "body-md": ["Inter"],
+                      "headline-sm": ["Inter"]
+              },
+              "fontSize": {
+                      "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                      "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "data-mono": ["14px", {"lineHeight": "20px", "fontWeight": "600"}],
+                      "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "body-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                      "label-caps": ["11px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                      "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}]
+              }
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-background font-body-md text-on-surface antialiased overflow-hidden">
+<!-- SideNavBar (Shared) -->
+<aside class="w-64 h-screen fixed left-0 top-0 bg-surface border-r border-outline-variant flex flex-col py-lg px-md h-full z-50">
+<div class="mb-xl px-sm">
+<h1 class="text-headline-md font-headline-md font-bold text-primary">Revenue Pro</h1>
+<p class="font-label-caps text-label-caps text-on-surface-variant">Enterprise Suite</p>
+</div>
+<nav class="flex-grow space-y-sm">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-body-md text-body-md">Analytics</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="query_stats">query_stats</span>
+<span class="font-body-md text-body-md">Scraping</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="table_chart">table_chart</span>
+<span class="font-body-md text-body-md">Explorer</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-secondary font-bold border-r-4 border-secondary bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="map">map</span>
+<span class="font-body-md text-body-md">Market Map</span>
+</a>
+</nav>
+<div class="mt-auto pt-lg border-t border-outline-variant space-y-sm">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-body-md text-body-md">Settings</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="font-body-md text-body-md">Support</span>
+</a>
+<div class="flex items-center gap-md px-sm mt-md">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold overflow-hidden">
+<img alt="Corporate User Avatar" data-alt="A professional corporate headshot of a revenue manager for a high-end hospitality firm. The portrait features a person with a confident, neutral expression, set against a soft, blurred office background with cool blue and grey tones. The lighting is crisp and professional, emphasizing a modern enterprise environment." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDxP4XAoPmUwlEOcpfboGuqRAqF5Y2fqc0pzvie3ZoZb6ag-JLkTEAuY6WEKYPTHrnnK36aT8eX8vMBTrsOl3AQXX0FkMmgF7lHIyukf5ElV1VzmiYsCrf9ku88KlXS5RiCnmdkNSiOvBelkVnLPjDC7W9knC-VL9d2Y8C6q54qyz78fF6H26hsTsqNpNw3ue1Y6pca08vIcbj8l-cx5q0-nxxGMDPJXbUj18KtE7ubPt0LRcRDNYLrOZa5RSjL3va7NfDa3x7ge1oJ"/>
+</div>
+<div class="flex flex-col">
+<span class="text-label-caps font-label-caps">Alex Chen</span>
+<span class="text-[10px] text-on-surface-variant">Senior Analyst</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 h-screen flex flex-col relative overflow-hidden">
+<!-- TopAppBar (Shared) -->
+<header class="h-16 w-full sticky top-0 z-40 flex justify-between items-center px-lg bg-surface-container-lowest border-b border-outline-variant">
+<div class="flex items-center gap-xl">
+<span class="font-headline-sm text-headline-sm font-black text-on-surface">Revenue Manager</span>
+<div class="relative w-80">
+<span class="material-symbols-outlined absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant" data-icon="search">search</span>
+<input class="w-full bg-surface-container-low border-none rounded-full pl-xl pr-md py-xs text-body-md focus:ring-2 focus:ring-secondary transition-all" placeholder="Search market area..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<nav class="hidden md:flex gap-lg h-full">
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-secondary py-sm transition-all" href="#">Properties</a>
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-secondary py-sm transition-all" href="#">Calendar</a>
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-secondary py-sm transition-all" href="#">Reports</a>
+</nav>
+<div class="flex gap-md border-l border-outline-variant pl-lg items-center">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors" data-icon="notifications">notifications</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors" data-icon="apps">apps</button>
+</div>
+</div>
+</header>
+<!-- Map Canvas (Interactive Background) -->
+<div class="flex-grow relative overflow-hidden">
+<!-- Simulated Map -->
+<div class="absolute inset-0 bg-[#e2e8f0]">
+<img alt="Market Map" class="w-full h-full object-cover opacity-80 mix-blend-multiply" data-alt="A clean, high-resolution satellite-style map of a dense urban center, specifically a upscale European city neighborhood. The map is treated with a professional, slightly desaturated color grade with a subtle blue tint to maintain a high-tech financial aesthetic. Major roads and water bodies are clearly visible but recessed to allow data pins to stand out." data-location="London" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBg_iGtTr90K1KitEtEbX_FwFodxWSBRgb7NH4w799DlrFwRMSsb3keRlWn-fgrptUSxd4bcuxxbcAA5U5leIB7ciXWjQLuS4-iXi1iOiUyiqNrKsqSE_5ZTXfg-6h9dIkm2tzC8ws_mVlhllyiTcScvljSMoigVETbu0CRtWDm0Cib2MrnOYeda9TUalNiJITewResFEJ4PANqOhagr67Qec_QtTlxrvbr58tr5TPE2Vkjzhr7_UtIix-SovMibMmQqkG62THrD1Ib"/>
+</div>
+<!-- Floating Controls (Left) -->
+<div class="absolute left-lg top-lg flex flex-col gap-md z-30">
+<div class="glass-panel p-md rounded-xl border border-outline-variant shadow-lg flex flex-col gap-sm">
+<h3 class="font-label-caps text-label-caps text-on-surface-variant mb-xs">QUICK FILTERS</h3>
+<div class="flex flex-col gap-xs">
+<label class="flex items-center gap-sm cursor-pointer group">
+<input checked="" class="w-4 h-4 rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-sm text-body-sm group-hover:text-secondary transition-colors">4+ Star Ratings</span>
+</label>
+<label class="flex items-center gap-sm cursor-pointer group">
+<input checked="" class="w-4 h-4 rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+<span class="font-body-sm text-body-sm group-hover:text-secondary transition-colors">Under 5km Distance</span>
+</label>
+</div>
+</div>
+<div class="glass-panel p-sm rounded-xl border border-outline-variant shadow-lg flex flex-col gap-xs">
+<button class="p-xs hover:bg-surface-container-high rounded transition-colors material-symbols-outlined" data-icon="add">add</button>
+<div class="h-px bg-outline-variant mx-xs"></div>
+<button class="p-xs hover:bg-surface-container-high rounded transition-colors material-symbols-outlined" data-icon="remove">remove</button>
+</div>
+</div>
+<!-- Map Pins (Strategic Overlay) -->
+<div class="absolute inset-0 pointer-events-none">
+<!-- Our Hotel (Blue) -->
+<button class="pointer-events-auto absolute left-[45%] top-[55%] -translate-x-1/2 -translate-y-1/2 group" onclick="toggleSidebar('Grand Plaza')">
+<div class="relative flex flex-col items-center">
+<div class="bg-secondary text-white font-data-mono text-data-mono px-sm py-xs rounded-full shadow-lg border-2 border-white mb-xs group-hover:scale-110 transition-transform">
+                            $284
+                        </div>
+<div class="w-4 h-4 bg-secondary rounded-full border-2 border-white relative z-10">
+<div class="absolute inset-0 bg-secondary rounded-full map-pin-pulse opacity-60"></div>
+</div>
+<div class="mt-xs bg-secondary px-xs py-[2px] rounded text-[10px] text-white font-bold">US</div>
+</div>
+</button>
+<!-- Competitor Lower (Green) -->
+<button class="pointer-events-auto absolute left-[38%] top-[42%] -translate-x-1/2 -translate-y-1/2 group" onclick="toggleSidebar('Riverside Inn')">
+<div class="relative flex flex-col items-center">
+<div class="bg-emerald-600 text-white font-data-mono text-data-mono px-sm py-xs rounded-full shadow-lg border-2 border-white mb-xs group-hover:scale-110 transition-transform">
+                            $210
+                        </div>
+<div class="w-3 h-3 bg-emerald-600 rounded-full border-2 border-white"></div>
+</div>
+</button>
+<!-- Competitor Higher (Red) -->
+<button class="pointer-events-auto absolute left-[58%] top-[48%] -translate-x-1/2 -translate-y-1/2 group" onclick="toggleSidebar('Royal Boutique')">
+<div class="relative flex flex-col items-center">
+<div class="bg-error text-white font-data-mono text-data-mono px-sm py-xs rounded-full shadow-lg border-2 border-white mb-xs group-hover:scale-110 transition-transform">
+                            $345
+                        </div>
+<div class="w-3 h-3 bg-error rounded-full border-2 border-white"></div>
+</div>
+</button>
+<!-- Competitor Higher (Red) -->
+<button class="pointer-events-auto absolute left-[52%] top-[30%] -translate-x-1/2 -translate-y-1/2 group" onclick="toggleSidebar('The Continental')">
+<div class="relative flex flex-col items-center">
+<div class="bg-error text-white font-data-mono text-data-mono px-sm py-xs rounded-full shadow-lg border-2 border-white mb-xs group-hover:scale-110 transition-transform">
+                            $412
+                        </div>
+<div class="w-3 h-3 bg-error rounded-full border-2 border-white"></div>
+</div>
+</button>
+</div>
+<!-- Legend (Bottom) -->
+<div class="absolute bottom-lg left-lg glass-panel px-md py-sm rounded-full border border-outline-variant shadow-lg flex items-center gap-lg">
+<div class="flex items-center gap-xs">
+<div class="w-3 h-3 rounded-full bg-secondary"></div>
+<span class="text-label-caps font-label-caps">Your Property</span>
+</div>
+<div class="flex items-center gap-xs">
+<div class="w-3 h-3 rounded-full bg-emerald-600"></div>
+<span class="text-label-caps font-label-caps">Lower Rate</span>
+</div>
+<div class="flex items-center gap-xs">
+<div class="w-3 h-3 rounded-full bg-error"></div>
+<span class="text-label-caps font-label-caps">Higher Rate</span>
+</div>
+</div>
+<!-- Property Sidebar (Contextual Details) -->
+<aside class="absolute right-0 top-0 h-full w-96 bg-surface-container-lowest border-l border-outline-variant shadow-2xl transition-transform duration-300 translate-x-full z-40 overflow-y-auto" id="property-sidebar">
+<div class="p-lg">
+<div class="flex justify-between items-start mb-lg">
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface" id="hotel-name">Grand Plaza</h2>
+<div class="flex items-center gap-xs text-secondary mt-xs">
+<span class="material-symbols-outlined !text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined !text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined !text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined !text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined !text-[16px]" style="font-variation-settings: 'FILL' 0;">star</span>
+<span class="text-body-sm font-medium ml-xs">4.2 (840 reviews)</span>
+</div>
+</div>
+<button class="p-xs hover:bg-surface-container-low rounded-full transition-colors material-symbols-outlined" data-icon="close" onclick="closeSidebar()">close</button>
+</div>
+<img alt="Hotel Exterior" class="w-full h-48 object-cover rounded-xl mb-lg" data-alt="A luxurious modern hotel exterior featuring glass architecture and elegant lighting. The scene is shot at twilight, casting a warm golden glow from the windows against a cool dusk sky. The style is crisp, minimalist, and upscale, perfectly fitting a high-end financial dashboard visual context." id="hotel-image" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDkU9i83vKY99xYnTl-E1jrt6k9LMUcykUnt_XkHNjgTbqcjmaTWK4y3VbGOXiutKd30pHfBSXKLxjR9bjmj_UybrelN6WsF58P22h54wfjWDAaF0NrJezpjjDfQUS9rjuRKso5oM9LDnsQ1nptO3dhe3CSDQRFDR_aT0FzmqUPkyQmLBjDuQX4SHg5BrpZ5gEDliadVxONO1dT1s3J0AvfMxgdLt2GRljKrJhPovhZShnqkIFlSg4cy2aKCYi5tFVfiyTo22UWa0Ti"/>
+<div class="grid grid-cols-2 gap-md mb-xl">
+<div class="bg-surface-container-low p-md rounded-lg">
+<span class="font-label-caps text-label-caps text-on-surface-variant block mb-xs">CURRENT RATE</span>
+<span class="font-display-lg text-display-lg text-secondary" id="hotel-price">$284</span>
+</div>
+<div class="bg-surface-container-low p-md rounded-lg">
+<span class="font-label-caps text-label-caps text-on-surface-variant block mb-xs">ADR VARIANCE</span>
+<span class="font-display-lg text-display-lg text-emerald-600" id="hotel-variance">+12%</span>
+</div>
+</div>
+<div class="space-y-lg">
+<section>
+<h3 class="font-label-caps text-label-caps text-on-surface-variant mb-md border-b border-outline-variant pb-xs">MARKET TREND</h3>
+<div class="h-32 w-full bg-surface-container-low rounded-lg relative flex items-end px-sm pb-xs gap-xs">
+<!-- Mock Sparkline -->
+<div class="w-1/6 bg-secondary opacity-20 h-[40%] rounded-t-sm"></div>
+<div class="w-1/6 bg-secondary opacity-30 h-[60%] rounded-t-sm"></div>
+<div class="w-1/6 bg-secondary opacity-50 h-[85%] rounded-t-sm"></div>
+<div class="w-1/6 bg-secondary opacity-80 h-[70%] rounded-t-sm"></div>
+<div class="w-1/6 bg-secondary h-[95%] rounded-t-sm"></div>
+<div class="w-1/6 bg-secondary opacity-60 h-[80%] rounded-t-sm"></div>
+<div class="absolute inset-0 flex items-center justify-center">
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">7-Day Occupancy Index</span>
+</div>
+</div>
+</section>
+<section>
+<h3 class="font-label-caps text-label-caps text-on-surface-variant mb-md border-b border-outline-variant pb-xs">DETAILS</h3>
+<ul class="space-y-sm">
+<li class="flex justify-between text-body-md">
+<span class="text-on-surface-variant">Distance from Center</span>
+<span class="font-bold">1.2 km</span>
+</li>
+<li class="flex justify-between text-body-md">
+<span class="text-on-surface-variant">Room Count</span>
+<span class="font-bold">245</span>
+</li>
+<li class="flex justify-between text-body-md">
+<span class="text-on-surface-variant">Avg Occupancy</span>
+<span class="font-bold">88.4%</span>
+</li>
+</ul>
+</section>
+<button class="w-full bg-secondary text-white py-md rounded-lg font-headline-sm text-headline-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-md">
+                            Analyze Full Compset
+                            <span class="material-symbols-outlined" data-icon="trending_up">trending_up</span>
+</button>
+</div>
+</div>
+</aside>
+</div>
+</main>
+<script>
+        const hotels = {
+            'Grand Plaza': {
+                price: '$284',
+                variance: '+12%',
+                varianceColor: 'text-emerald-600',
+                image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=800'
+            },
+            'Riverside Inn': {
+                price: '$210',
+                variance: '-15%',
+                varianceColor: 'text-error',
+                image: 'https://images.unsplash.com/photo-1551882547-ff43c63efe8c?auto=format&fit=crop&q=80&w=800'
+            },
+            'Royal Boutique': {
+                price: '$345',
+                variance: '+22%',
+                varianceColor: 'text-emerald-600',
+                image: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=800'
+            },
+            'The Continental': {
+                price: '$412',
+                variance: '+38%',
+                varianceColor: 'text-emerald-600',
+                image: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&q=80&w=800'
+            }
+        };
+
+        function toggleSidebar(hotelName) {
+            const sidebar = document.getElementById('property-sidebar');
+            const hotel = hotels[hotelName];
+            
+            document.getElementById('hotel-name').innerText = hotelName;
+            document.getElementById('hotel-price').innerText = hotel.price;
+            document.getElementById('hotel-variance').innerText = hotel.variance;
+            document.getElementById('hotel-variance').className = `font-display-lg text-display-lg ${hotel.varianceColor}`;
+            document.getElementById('hotel-image').src = hotel.image;
+            
+            sidebar.classList.remove('translate-x-full');
+        }
+
+        function closeSidebar() {
+            const sidebar = document.getElementById('property-sidebar');
+            sidebar.classList.add('translate-x-full');
+        }
+
+        // Close sidebar when clicking on map background
+        document.querySelector('main > div').addEventListener('click', (e) => {
+            if (e.target.tagName !== 'BUTTON' && !e.target.closest('button') && !e.target.closest('aside')) {
+                closeSidebar();
+            }
+        });
+
+        // Map pan micro-interaction simulation
+        let isDragging = false;
+        let startX, startY, scrollLeft, scrollTop;
+        const mapContainer = document.querySelector('main > div');
+
+        // Simple indicator for the prototype
+        console.log("Market Map Loaded - Prototype Interaction Active");
+    </script>
+</body></html>

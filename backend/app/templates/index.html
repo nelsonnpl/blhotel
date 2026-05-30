@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RIU Revenue Terminal</title>
+    <meta name="description" content="Consola Bloomberg Terminal para análisis de revenue hotelero y benchmarking competitivo de RIU Hotels." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=bbg4" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand__mark">RIU</div>
+          <div>
+            <strong>Revenue Terminal</strong>
+            <span>Market Intelligence</span>
+          </div>
+        </div>
+
+        <div class="nav-group-label">General</div>
+        <nav class="nav" aria-label="Navegación principal">
+          <button class="nav__item is-active" data-view="dashboard" data-shortcut="F1"><span class="nav__icon">◔</span>Dashboard</button>
+          <button class="nav__item" data-view="workspace" data-shortcut="F2"><span class="nav__icon">◈</span>Área trabajo</button>
+          <button class="nav__item" data-view="scraping" data-shortcut="F3"><span class="nav__icon">↻</span>Capturas</button>
+          <button class="nav__item" data-view="map" data-shortcut="F4"><span class="nav__icon">⌖</span>Mapa</button>
+          <button class="nav__item" data-view="explorer" data-shortcut="F5"><span class="nav__icon">▤</span>Explorador</button>
+          <button class="nav__item" data-view="riu" data-shortcut="F6"><span class="nav__icon">◆</span>Análisis RIU</button>
+        </nav>
+
+        <div class="nav-group-label nav-group-label--support">Zonas de Visualización</div>
+        <div class="sidebar-tools">
+          <label class="sidebar-select" for="zoneSelect">
+            <span>Zonas activas</span>
+            <select id="zoneSelect" multiple size="6"></select>
+          </label>
+        </div>
+
+        <section class="operator">
+          <div class="operator__avatar">RM</div>
+          <div>
+            <span>Analista Senior</span>
+            <strong>Canarias Portfolio</strong>
+            <small id="targetCount">0 mercados configurados</small>
+          </div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="cmd-bar" id="cmdBar" aria-label="Terminal Command Console">
+            <span class="cmd-bar__prompt">RIU></span>
+            <input id="cmdInput" class="cmd-bar__input" placeholder="Comando... /dash, /exp, /map, /run" />
+            <span class="cmd-bar__cursor"></span>
+          </div>
+          <div class="market-ticker" id="marketTicker" aria-label="Ranking competitivo en tiempo real">
+            <div id="tickerTrack" class="market-ticker__track"></div>
+          </div>
+          <div class="topbar__actions">
+            <button id="openSettingsTop" class="icon-button" aria-label="Ajustes">⚙</button>
+            <button id="runScrapeTop" class="button button--primary">Capturar</button>
+          </div>
+        </header>
+
+        <section class="page-header">
+          <h1 id="viewTitle">Dashboard</h1>
+          <p class="page-subtitle">Lectura ejecutiva del mercado hotelero, presión competitiva y evolución de precios.</p>
+        </section>
+
+        <section id="dashboard" class="view is-visible">
+          <div class="kpi-grid" id="kpis"></div>
+          <div class="content-grid">
+            <article class="panel panel--wide">
+              <div class="panel__header"><h2>Mapa de calor de precios</h2><p>Intensidad ADR por zona usando ultimas fotos del mercado.</p></div>
+              <div id="dashboardHeatmap" class="market-heatmap"></div>
+            </article>
+            <article class="panel panel--accent">
+              <div class="panel__header"><h2>Evolucion del mercado</h2><p>Precio medio por noche (habitacion) por foto.</p></div>
+              <div id="trendChart" class="chart"></div>
+            </article>
+            <article class="panel">
+              <div class="panel__header"><h2>Senales accionables</h2><p>Lecturas priorizadas para Revenue.</p></div>
+              <div id="insights" class="stack"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="riu" class="view">
+          <div class="riu-hero">
+            <div>
+              <span class="riu-hero__eyebrow">RIU command layer</span>
+              <h2>Gap, ranking y oportunidades por hotel RIU</h2>
+              <p>Una lectura aislada del portfolio RIU contra la mediana y la presión competitiva del set activo.</p>
+            </div>
+            <div class="riu-hero__actions">
+              <button class="filter-btn" data-riu-action="filter-riu">Ver RIU en explorador</button>
+              <button class="filter-btn" data-riu-action="filter-gaps">Gaps críticos</button>
+              <button class="filter-btn" data-riu-action="open-map">Mapa RIU</button>
+            </div>
+          </div>
+          <div id="riuSummary" class="riu-summary"></div>
+          <div class="content-grid">
+            <article class="panel panel--wide riu-panel">
+              <div class="panel__header"><h2>RIU vs mercado</h2><p>Banda de posicionamiento frente a mínimo, mediana y máximo competitivo.</p></div>
+              <div id="riuComparison" class="riu-comparison"></div>
+            </article>
+            <article class="panel riu-panel">
+              <div class="panel__header"><h2>Alertas revenue</h2><p>Señales automáticas para priorizar revisión.</p></div>
+              <div id="riuAlerts" class="stack"></div>
+            </article>
+          </div>
+          <article class="panel table-panel riu-panel">
+            <div class="panel__header"><h2>Hoteles RIU activos</h2><p>Ranking, gap contra mercado, rating y recomendación de acción.</p></div>
+            <div id="riuCards" class="riu-card-grid"></div>
+          </article>
+        </section>
+
+        <section id="workspace" class="view">
+          <div class="workspace">
+            <aside class="panel widget-menu">
+              <div class="panel__header"><h2>Mi espacio</h2><p>Activa los modulos que quieres ver.</p></div>
+              <div id="widgetToggles"></div>
+              <button id="resetWorkspace" class="button button--secondary">Restaurar layout</button>
+            </aside>
+            <div id="workspaceGrid" class="workspace-grid"></div>
+          </div>
+        </section>
+
+        <section id="scraping" class="view">
+          <article class="panel">
+            <div class="panel__header"><h2>Configurador de capturas</h2><p>Lanza nuevas fotos semanales y audita historico operativo.</p></div>
+            <div class="content-grid content-grid--two">
+              <div id="scrapeSummary" class="run-summary"></div>
+              <div id="targets" class="stack"></div>
+              <div class="console-box" id="scrapeConsole" aria-live="polite" aria-label="Telemetry de capturas Decodo" style="grid-column: span 2; margin-top: 10px;">
+                <div class="console-line console-line--sys">[SYS] Console v2.0 online. Lanza capturas mediante Decodo para ver telemetry.</div>
+              </div>
+            </div>
+          </article>
+          <article class="panel table-panel photo-table-panel">
+            <div class="table-toolbar">
+              <strong>Historico de fotos</strong>
+              <small>Navega por extraccion y carga cualquier foto en el dashboard.</small>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Foto</th><th>Fecha captura</th><th>ADR hab/noche</th><th>ADR pers/noche</th><th>Rango ADR</th><th>Filas</th><th>Accion</th></tr>
+                </thead>
+                <tbody id="photoRows"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section id="map" class="view">
+          <article class="panel map-panel">
+            <div class="map-panel__header">
+              <div class="panel__header"><h2>Mapa de mercado</h2><p>Mapa de calor por ADR + pines de tarifa por hotel.</p></div>
+              <span id="mapPending" class="pill">0 pendientes</span>
+            </div>
+            <div style="position: relative; width: 100%; height: 500px; display: flex;">
+              <div id="marketMap" class="market-map" style="flex: 1; height: 100%;"></div>
+              <div id="mapDrawer" class="map-drawer">
+                <div class="map-drawer__header">
+                  <strong>Detalle del hotel</strong>
+                  <button id="closeMapDrawer" class="map-drawer__close" aria-label="Cerrar panel">✕</button>
+                </div>
+                <div class="map-drawer__body" id="mapDrawerBody">
+                  <div class="empty">Selecciona un hotel en el mapa para ver sus datos detallados.</div>
+                </div>
+              </div>
+            </div>
+            <div class="legend"><span class="dot dot--low"></span>ADR bajo <span class="dot"></span>ADR medio <span class="dot dot--high"></span>ADR alto</div>
+          </article>
+        </section>
+
+        <section id="explorer" class="view">
+          <article class="panel table-panel">
+            <div class="table-toolbar">
+              <div class="filter-group">
+                <input id="search" class="search" placeholder="Buscar hotel, habitacion..." />
+                <label class="filter-label">
+                  <span>Rating Mín:</span>
+                  <select id="filterRating">
+                    <option value="">Cualquiera</option>
+                    <option value="9">9.0+</option>
+                    <option value="8">8.0+</option>
+                    <option value="7">7.0+</option>
+                  </select>
+                </label>
+                <label class="filter-label">
+                  <span>Precio Máx:</span>
+                  <input id="filterMaxPrice" type="number" placeholder="Cualquiera" min="0" step="10" />
+                </label>
+                <button id="btnFilterRiu" class="filter-btn">Solo Hoteles RIU</button>
+                <button id="btnFilterGaps" class="filter-btn">Gaps Críticos</button>
+                <button class="filter-btn" data-rating-filter="9">Rating 9+</button>
+                <button class="filter-btn" data-rating-filter="8">Rating 8+</button>
+                <button class="filter-btn" data-rating-filter="7">Rating 7+</button>
+              </div>
+              <div class="table-actions">
+                <span id="filteredCount" style="margin-right: 12px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--faint);">Filas: 0 / 0</span>
+                <button id="exportCsv" class="button button--secondary">Exportar CSV</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th data-sort="position"># ↕</th>
+                    <th data-sort="hotelName">Hotel ↕</th>
+                    <th data-sort="roomType">Habitacion ↕</th>
+                    <th data-sort="rating">Rating ↕</th>
+                    <th data-sort="price">Precio total ↕</th>
+                    <th data-sort="pricePerNight">Precio hab/noche ↕</th>
+                    <th data-sort="pricePerPersonPerNight">Precio pers/noche ↕</th>
+                    <th data-sort="gap">Gap ↕</th>
+                    <th data-sort="pax">Pax ↕</th>
+                    <th data-sort="nights">Estancia ↕</th>
+                    <th>Mapa</th>
+                  </tr>
+                </thead>
+                <tbody id="hotelRows"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </main>
+
+      <footer id="statusBar">
+        <div class="status-left">
+          <div class="status-item">
+            <span id="connectionStatus" class="indicator online"></span>
+            <span id="connectionText">SYS: ONLINE</span>
+          </div>
+          <div class="status-item">
+            <span>PORTFOLIO:</span>
+            <strong id="activeZoneText" style="color: var(--bb-amber);">Canarias</strong>
+          </div>
+        </div>
+        <div class="status-right">
+          <span id="utcClock">UTC --:--:--</span>
+        </div>
+      </footer>
+    </div>
+
+    <div id="captureModal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="captureModalTitle">
+      <section class="modal-card">
+        <header class="modal-header">
+          <div>
+            <h2 id="captureModalTitle">Configurar captura</h2>
+            <p>Define parámetros antes de lanzar la foto semanal.</p>
+          </div>
+          <button id="closeCaptureModal" class="icon-button" aria-label="Cerrar">✕</button>
+        </header>
+        <div class="modal-grid">
+          <label class="modal-field modal-field--full">
+            <span>Zonas a capturar</span>
+            <select id="modalZones" multiple size="6"></select>
+          </label>
+          <label class="modal-field">
+            <span>Check-in</span>
+            <input id="modalCheckIn" type="date" />
+          </label>
+          <label class="modal-field">
+            <span>Noches</span>
+            <input id="modalNights" type="number" min="1" max="30" />
+          </label>
+          <label class="modal-field">
+            <span>Semanas</span>
+            <input id="modalWeeks" type="number" min="1" max="26" />
+          </label>
+          <label class="modal-field">
+            <span>Hoteles (máx)</span>
+            <input id="modalLimit" type="number" min="1" max="500" />
+          </label>
+        </div>
+        <footer class="modal-footer">
+          <button id="cancelCaptureModal" class="button button--secondary">Cancelar</button>
+          <button id="confirmCaptureModal" class="button button--primary">Lanzar captura</button>
+        </footer>
+      </section>
+    </div>
+
+    <div id="settingsModal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+      <section class="modal-card">
+        <header class="modal-header">
+          <div>
+            <h2 id="settingsModalTitle">Configuración global</h2>
+            <p>Preferencias generales de visualización y captura.</p>
+          </div>
+          <button id="closeSettingsModal" class="icon-button" aria-label="Cerrar">✕</button>
+        </header>
+        <div class="modal-grid">
+          <label class="modal-field" style="display: none;">
+            <span>Tema</span>
+            <select id="settingsTheme">
+              <option value="dark" selected>Oscuro (Bloomberg)</option>
+              <option value="light">Claro</option>
+            </select>
+          </label>
+          <label class="modal-field">
+            <span>Fotos heatmap</span>
+            <select id="settingsHeatmapPhotos">
+              <option value="3">3</option>
+              <option value="6">6</option>
+              <option value="10">10</option>
+              <option value="16">16</option>
+            </select>
+          </label>
+          <label class="modal-field">
+            <span>Noches por defecto</span>
+            <input id="settingsNights" type="number" min="1" max="30" />
+          </label>
+          <label class="modal-field">
+            <span>Semanas por defecto</span>
+            <input id="settingsWeeks" type="number" min="1" max="26" />
+          </label>
+          <label class="modal-field">
+            <span>Hoteles por defecto</span>
+            <input id="settingsLimit" type="number" min="1" max="500" />
+          </label>
+        </div>
+        <footer class="modal-footer">
+          <button id="cancelSettingsModal" class="button button--secondary">Cancelar</button>
+          <button id="confirmSettingsModal" class="button button--primary">Guardar</button>
+        </footer>
+      </section>
+    </div>
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <div id="status" class="status status--info" role="status" aria-live="polite"></div>
+    <script src="{{ url_for('static', filename='app.js') }}?v=bbg4" defer></script>
+  </body>
+</html>

@@ -1,0 +1,23 @@
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local database
+data/booking-prices.sqlite
+data/booking-prices.sqlite-shm
+data/booking-prices.sqlite-wal
+
+# Logs
+*.log
+
+# Legacy/build artifacts
+node_modules/
+dist/
+.next/
+coverage/
+.vite/
