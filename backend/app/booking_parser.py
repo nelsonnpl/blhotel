@@ -13,6 +13,7 @@ def parse_booking_search_results(html: str, source_url: str) -> list[MarketHotel
     soup = BeautifulSoup(html, "html.parser")
     cards = soup.select("[data-testid='property-card']")
     check_in, check_out, nights = _extract_dates(source_url)
+    coord_index = _build_coord_index(html)
 
     rows: list[MarketHotelRow] = []
     for index, card in enumerate(cards, start=1):
@@ -26,10 +27,14 @@ def parse_booking_search_results(html: str, source_url: str) -> list[MarketHotel
         rating_text = _clean(_first_text(card, "[data-testid='review-score']"))
         pax_text = _clean(_first_text(card, "[data-testid='price-for-x-nights']")) or room_type
 
+        card_text = card.get_text(" ", strip=True)
         price = _parse_price(price_text)
         price_per_night = round(price / nights, 2) if price is not None and nights else None
-        pax = _parse_pax(pax_text)
+        pax = _parse_pax(pax_text) or _parse_pax(card_text)
         price_per_person_night = round(price_per_night / pax, 2) if price_per_night is not None and pax else None
+        latitude, longitude = coord_index.get(_slug_from_url(detail_url) or "", (None, None))
+        if latitude is None:
+            latitude, longitude = _card_lat_lng(card)
 
         rows.append(
             MarketHotelRow(
@@ -48,9 +53,87 @@ def parse_booking_search_results(html: str, source_url: str) -> list[MarketHotel
                 pricePerNight=price_per_night,
                 pricePerPersonPerNight=price_per_person_night,
                 position=index,
+                latitude=latitude,
+                longitude=longitude,
+                board=_parse_board(card_text),
+                reviewCount=_parse_review_count(rating_text or card_text),
+                freeCancellation=_parse_free_cancellation(card_text),
             )
         )
     return rows
+
+
+_BOARD_PATTERNS = [
+    (r"todo incluido|all[\s-]?inclusive", "Todo incluido"),
+    (r"pensi[oó]n completa|full board", "Pensión completa"),
+    (r"media pensi[oó]n|half board", "Media pensión"),
+    (r"desayuno incluido|incluye desayuno|breakfast included", "Desayuno incluido"),
+    (r"solo alojamiento|room only|sin comidas", "Solo alojamiento"),
+]
+
+
+def _parse_board(card_text: str | None) -> str | None:
+    if not card_text:
+        return None
+    low = card_text.lower()
+    for pattern, label in _BOARD_PATTERNS:
+        if re.search(pattern, low):
+            return label
+    return None
+
+
+def _parse_review_count(text: str | None) -> int | None:
+    if not text:
+        return None
+    match = re.search(r"([\d.,]+)\s*(?:comentarios|opiniones|valoraciones|reviews|ratings|bewertungen|avis)", text, flags=re.I)
+    if not match:
+        return None
+    digits = re.sub(r"[^\d]", "", match.group(1))
+    return int(digits) if digits else None
+
+
+def _parse_free_cancellation(card_text: str | None) -> bool | None:
+    if not card_text:
+        return None
+    if re.search(r"cancelaci[oó]n gratis|free cancellation|kostenlose stornierung|annulation gratuite", card_text, flags=re.I):
+        return True
+    return None
+
+
+_COORD_INDEX_RE = re.compile(
+    r'"latitude":\s*(-?\d+\.\d+),\s*"longitude":\s*(-?\d+\.\d+)\},\s*"pageName":\s*"([^"]+)"'
+)
+
+
+def _build_coord_index(html: str) -> dict[str, tuple[float, float]]:
+    """Booking embeds each hotel's coordinates in a page-level JSON blob keyed by its
+    `pageName` (the detail-URL slug). Mapping these per card removes the need for a
+    separate detail-page request per hotel (the dominant scraping cost)."""
+    index: dict[str, tuple[float, float]] = {}
+    for match in _COORD_INDEX_RE.finditer(html):
+        index[match.group(3)] = (float(match.group(1)), float(match.group(2)))
+    return index
+
+
+def _slug_from_url(url: str | None) -> str | None:
+    match = re.search(r"/hotel/[a-z]{2}/([^/.?#]+)", url or "")
+    return match.group(1) if match else None
+
+
+def _card_lat_lng(card) -> tuple[float | None, float | None]:
+    """Coordinates embedded in the search card itself (Booking exposes them as
+    `data-atlas-latlng="lat,lng"`). Avoids a separate detail-page request per hotel."""
+    raw = card.get("data-atlas-latlng")
+    if not raw:
+        node = card.select_one("[data-atlas-latlng]")
+        raw = node.get("data-atlas-latlng") if node else None
+    if not raw or "," not in raw:
+        return None, None
+    try:
+        lat_str, lng_str = raw.split(",", 1)
+        return float(lat_str.strip()), float(lng_str.strip())
+    except ValueError:
+        return None, None
 
 
 def parse_booking_location(html: str) -> dict[str, float | str | None]:
@@ -123,10 +206,13 @@ def _parse_decimal(text: str | None) -> float | None:
 def _parse_pax(text: str | None) -> int | None:
     if not text:
         return None
-    adults = re.search(r"(\d+)\s+adultos?", text, flags=re.I)
-    children = re.search(r"(\d+)\s+niñ(?:o|os|a|as)", text, flags=re.I)
+    adults = re.search(r"(\d+)\s+(?:adultos?|adults?)", text, flags=re.I)
+    children = re.search(r"(\d+)\s+(?:niñ(?:o|os|a|as)|child(?:ren)?|kids?)", text, flags=re.I)
     total = (int(adults.group(1)) if adults else 0) + (int(children.group(1)) if children else 0)
-    return total or None
+    if total:
+        return total
+    guests = re.search(r"(\d+)\s+(?:hu[eé]spedes?|guests?|personas?|people)", text, flags=re.I)
+    return int(guests.group(1)) if guests else None
 
 
 def _normalize_booking_url(input_url: str | None, source_url: str) -> str | None:

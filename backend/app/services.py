@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import os
+import uuid
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .booking_parser import parse_booking_location, parse_booking_search_results
@@ -12,6 +15,8 @@ MAX_HOTELS_PER_SCRAPE = 500
 MAX_SEARCH_PAGES = 20
 BOOKING_PAGE_SIZE = 25
 MAX_LOCATION_ENRICHMENT_PER_SCRAPE = 120
+# Max concurrent Decodo detail-page scrapes for geolocation enrichment.
+DECODO_CONCURRENCY = max(1, int(os.getenv("DECODO_CONCURRENCY", "6")))
 
 
 class MarketService:
@@ -23,7 +28,10 @@ class MarketService:
         source_url = str(payload.url)
         target = self._resolve_target(payload)
         limit = max(1, min(payload.limit or MAX_HOTELS_PER_SCRAPE, MAX_HOTELS_PER_SCRAPE))
-        rows, raw_hash = await self._collect_rows_with_pagination(source_url, limit)
+        # Sticky session: reuse the same proxy IP across this capture (pagination + geo) for
+        # consistent pricing and fewer blocks (Decodo keeps the IP for up to 10 minutes).
+        session_id = uuid.uuid4().hex[:16]
+        rows, raw_hash = await self._collect_rows_with_pagination(source_url, limit, session_id)
         selected = rows[:limit]
 
         snapshot = self.db.create_snapshot(
@@ -35,31 +43,59 @@ class MarketService:
             raw_hash=raw_hash,
         )
 
-        for index, row in enumerate(selected):
-            location = self.db.get_location(row.hotelKey)
-            should_enrich_location = index < MAX_LOCATION_ENRICHMENT_PER_SCRAPE
-            if should_enrich_location and (location is None or location["latitude"] is None or location["longitude"] is None):
-                try:
-                    detail_html = await self.decodo.scrape_html(row.detailUrl)
-                    parsed = parse_booking_location(detail_html)
-                    self.db.upsert_location(
-                        row.hotelKey,
-                        row.detailUrl,
-                        parsed["latitude"],
-                        parsed["longitude"],
-                        parsed["address"],
-                    )
-                    location = self.db.get_location(row.hotelKey)
-                except Exception as exc:  # noqa: BLE001 - scraping should continue with partial location
-                    print(f"[market] Ubicacion pendiente para {row.hotelName}: {exc}")
+        await self._enrich_locations(selected, session_id)
 
+        for row in selected:
+            location = self.db.get_location(row.hotelKey)
             ready = location is not None and location["latitude"] is not None and location["longitude"] is not None
             self.db.insert_market_hotel(snapshot.id, row, "ready" if ready else "location_pending")
 
         stored = self.db.snapshot_rows(snapshot.id)
         return ScrapeSearchResponse(target=target, snapshot=snapshot, rows=stored)
 
-    async def _collect_rows_with_pagination(self, source_url: str, limit: int) -> tuple[list[MarketHotelRow], str]:
+    async def _enrich_locations(self, rows: list[MarketHotelRow], session_id: str | None = None) -> None:
+        """Resolve hotel coordinates with the cheapest source first.
+
+        1. Already stored in the DB → reuse.
+        2. Coordinates parsed straight from the search-results card → store, no extra request.
+        3. Otherwise → scrape the detail page, but do it CONCURRENTLY (was one-by-one),
+           capped at MAX_LOCATION_ENRICHMENT_PER_SCRAPE.
+        """
+        pending: list[MarketHotelRow] = []
+        for row in rows:
+            existing = self.db.get_location(row.hotelKey)
+            if existing and existing["latitude"] is not None and existing["longitude"] is not None:
+                continue
+            if row.latitude is not None and row.longitude is not None:
+                self.db.upsert_location(row.hotelKey, row.detailUrl, row.latitude, row.longitude, row.address)
+                continue
+            pending.append(row)
+
+        pending = pending[:MAX_LOCATION_ENRICHMENT_PER_SCRAPE]
+        if not pending:
+            return
+
+        semaphore = asyncio.Semaphore(DECODO_CONCURRENCY)
+
+        async def enrich(row: MarketHotelRow) -> None:
+            async with semaphore:
+                try:
+                    detail_html = await self.decodo.scrape_html(row.detailUrl, session_id=session_id)
+                    parsed = parse_booking_location(detail_html)
+                    if parsed["latitude"] is not None and parsed["longitude"] is not None:
+                        self.db.upsert_location(
+                            row.hotelKey,
+                            row.detailUrl,
+                            parsed["latitude"],
+                            parsed["longitude"],
+                            parsed["address"],
+                        )
+                except Exception as exc:  # noqa: BLE001 - scraping should continue with partial location
+                    print(f"[market] Ubicacion pendiente para {row.hotelName}: {exc}")
+
+        await asyncio.gather(*(enrich(row) for row in pending))
+
+    async def _collect_rows_with_pagination(self, source_url: str, limit: int, session_id: str | None = None) -> tuple[list[MarketHotelRow], str]:
         all_rows: list[MarketHotelRow] = []
         seen_keys: set[str] = set()
         hash_accumulator = hashlib.sha256()
@@ -67,7 +103,7 @@ class MarketService:
 
         for page in range(MAX_SEARCH_PAGES):
             page_url = self._with_offset(source_url, offset) if page else source_url
-            html = await self.decodo.scrape_html(page_url)
+            html = await self.decodo.scrape_html(page_url, session_id=session_id)
             hash_accumulator.update(html.encode())
 
             parsed_rows = parse_booking_search_results(html, source_url)

@@ -1,0 +1,45 @@
+# Auto convert line endings to native for all text files
+* text=auto
+
+# Python
+*.py text eol=lf
+*.pyx text eol=lf
+*.pyi text eol=lf
+*.wsgi text eol=lf
+
+# Shell scripts
+*.bash text eol=lf
+*.sh text eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Documentation
+*.md text
+*.MD text
+*.txt text
+
+# JSON
+*.json text
+
+# YAML
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# SQL
+*.sql text eol=lf
+
+# Binary files
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mov binary
+*.mp4 binary
+*.mp3 binary

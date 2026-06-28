@@ -19,12 +19,16 @@ class DecodoSettings:
     locale: str | None = "es-es"
     geo: str | None = "Spain"
     proxy_pool: str | None = "premium"
+    # When False, try the cheaper non-JS-render request first (Booking search is server-rendered).
+    render_js: bool = True
 
 
 @dataclass(frozen=True)
 class AppSettings:
     decodo: DecodoSettings
     sqlite_path: Path
+    database_provider: str
+    database_url: str | None
 
 
 def _read_token() -> tuple[str, str]:
@@ -41,7 +45,7 @@ def _read_token() -> tuple[str, str]:
 
 
 def load_settings(require_decodo: bool = False) -> AppSettings:
-    load_dotenv(ROOT / ".env", override=True)
+    load_dotenv(ROOT / ".env", override=False)
 
     username = (os.getenv("DECODO_USERNAME") or "").strip()
     password = (os.getenv("DECODO_PASSWORD") or "").strip()
@@ -57,6 +61,12 @@ def load_settings(require_decodo: bool = False) -> AppSettings:
     sqlite_path = Path(sqlite_env)
     if not sqlite_path.is_absolute():
         sqlite_path = ROOT / sqlite_path
+    database_provider = (os.getenv("DATABASE_PROVIDER") or "sqlite").strip().lower()
+    database_url = (os.getenv("DATABASE_URL") or "").strip() or None
+    if database_provider not in {"sqlite", "postgres"}:
+        raise ValueError("DATABASE_PROVIDER debe ser 'sqlite' o 'postgres'")
+    if database_provider == "postgres" and not database_url:
+        raise ValueError("DATABASE_URL es obligatorio cuando DATABASE_PROVIDER=postgres")
 
     return AppSettings(
         decodo=DecodoSettings(
@@ -66,6 +76,9 @@ def load_settings(require_decodo: bool = False) -> AppSettings:
             locale=(os.getenv("DECODO_LOCALE") or "es-es").strip() or None,
             geo=(os.getenv("DECODO_GEO") or "Spain").strip() or None,
             proxy_pool=(os.getenv("DECODO_PROXY_POOL") or "premium").strip() or None,
+            render_js=(os.getenv("DECODO_RENDER", "true").strip().lower() not in {"false", "0", "no", "off"}),
         ),
         sqlite_path=sqlite_path,
+        database_provider=database_provider,
+        database_url=database_url,
     )

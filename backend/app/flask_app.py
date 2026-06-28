@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 import logging
 import os
+import time
 from typing import Any
 
 from flask import Flask, jsonify, render_template, request
@@ -23,6 +24,30 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["JSON_SORT_KEYS"] = False
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+
+
+# ---------------------------------------------------------------------------
+# Lightweight in-process TTL cache for expensive read endpoints.
+# Inputs only change on a manual capture, so a short TTL is safe and we also
+# clear the cache explicitly whenever new data is written.
+# ---------------------------------------------------------------------------
+_CACHE: dict[tuple, tuple[float, Any]] = {}
+_CACHE_TTL = 30.0  # seconds
+
+
+def cached(key: tuple, producer):
+    now = time.monotonic()
+    hit = _CACHE.get(key)
+    if hit and (now - hit[0]) < _CACHE_TTL:
+        return hit[1]
+    value = producer()
+    _CACHE[key] = (now, value)
+    return value
+
+
+def clear_cache() -> None:
+    _CACHE.clear()
 
 
 def market_service(require_decodo: bool = False) -> MarketService:
@@ -108,6 +133,7 @@ def scrape_search():
 
     payload = ScrapeSearchPayload.model_validate(request.get_json(silent=True) or {})
     result = asyncio.run(service.scrape_search(payload))
+    clear_cache()  # new snapshot written — drop stale cached reads
     return ok(result.model_dump(), 201)
 
 
@@ -115,13 +141,6 @@ def scrape_search():
 def latest_snapshot():
     target_id = parse_int_arg("targetId", minimum=1)
     return ok({"latest": market_service().latest(target_id)})
-
-
-@app.get("/api/snapshots/history")
-def snapshot_history():
-    target_id = parse_int_arg("targetId", minimum=1)
-    limit = parse_int_arg("limit", default=20, minimum=1, maximum=100)
-    return ok({"snapshots": db.snapshot_history(target_id, limit)})
 
 
 @app.get("/api/photos/history")
@@ -139,23 +158,154 @@ def photo_detail(snapshot_id: int):
     return ok(detail)
 
 
-@app.get("/api/hotels/map")
-def hotels_map():
-    snapshot_id = parse_int_arg("snapshotId", minimum=1)
-    return ok({"rows": db.snapshot_rows(snapshot_id)})
-
-
 @app.get("/api/hotels/heatmap")
 def hotels_heatmap():
     target_id = parse_int_arg("targetId", minimum=1)
     photos = parse_int_arg("photos", default=6, minimum=1, maximum=24)
-    return ok(db.market_heatmap(target_id, photos))
+    return ok(cached(("heatmap", target_id, photos), lambda: db.market_heatmap(target_id, photos)))
 
 
 @app.get("/api/dashboard/metrics")
 def dashboard_metrics():
     target_id = parse_int_arg("targetId", minimum=1)
-    return ok(db.dashboard_metrics(target_id))
+    return ok(cached(("dashboard", target_id), lambda: db.dashboard_metrics(target_id)))
+
+
+# ---------------------------------------------------------------------------
+# Revenue Management Analytics endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/analytics/pickup")
+def analytics_pickup():
+    target_id = parse_int_arg("targetId", minimum=1)
+    hotel_key = request.args.get("hotelKey")
+    check_in = request.args.get("checkIn")
+    limit = parse_int_arg("limit", default=50, minimum=1, maximum=200)
+    pickup = cached(
+        ("pickup", target_id, hotel_key, check_in, limit),
+        lambda: db.pickup_analysis(target_id, hotel_key=hotel_key, check_in=check_in, limit=limit),
+    )
+    return ok({"pickup": pickup})
+
+
+@app.get("/api/analytics/demand-curve")
+def analytics_demand_curve():
+    target_id = parse_int_arg("targetId", minimum=1)
+    return ok({"demandCurve": cached(("demand", target_id), lambda: db.demand_curve(target_id))})
+
+
+@app.get("/api/analytics/competitive-stability")
+def analytics_competitive_stability():
+    target_id = parse_int_arg("targetId", minimum=1)
+    snapshots = parse_int_arg("snapshots", default=10, minimum=2, maximum=30)
+    stability = cached(
+        ("stability", target_id, snapshots),
+        lambda: db.competitive_stability(target_id, snapshots_count=snapshots),
+    )
+    return ok({"stability": stability})
+
+
+@app.get("/api/analytics/revenue-opportunities")
+def analytics_revenue_opportunities():
+    target_id = parse_int_arg("targetId", minimum=1)
+    air_payload = _get_air_payload()
+    return ok({"opportunities": db.revenue_opportunities(target_id, air_data=air_payload)})
+
+
+def _get_air_payload() -> dict | None:
+    """Try to load air data (mock or live) for analytics endpoints."""
+    try:
+        from .air_data import build_air_payload
+        return build_air_payload()
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Air Data endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/air-data")
+def air_data():
+    from .air_data import build_air_payload, AIR_DATA_MOCK
+    from .serpapi_flights import fetch_serpapi_air_rows, configured_air_routes, should_use_live_air_data
+
+    raw_rows = db.list_air_flights()
+    source = "db" if raw_rows else "mock"
+    warning = ""
+
+    # Si la BD está vacía y SerpApi está configurado, captura automática y persiste
+    if not raw_rows and should_use_live_air_data():
+        try:
+            routes = configured_air_routes()
+            raw_rows = fetch_serpapi_air_rows()
+            run_id = db.create_air_run("serpapi", len(routes))
+            for row in raw_rows:
+                db.insert_air_flight(run_id, row)
+            routes_captured = len({f"{r.get('origin')}_{r.get('destination')}" for r in raw_rows})
+            db.finish_air_run(run_id, routes_captured=routes_captured, flights_captured=len(raw_rows))
+            source = "serpapi"
+        except Exception as exc:
+            logger.warning("Auto air-data fetch failed: %s", exc)
+            raw_rows = []
+            source = "mock"
+            warning = f"SerpApi no disponible: {exc}. Mostrando datos de demostración."
+
+    payload = build_air_payload(raw_rows if raw_rows else None)
+    payload["source"] = source
+    payload["is_live"] = source in ("serpapi", "db")
+    if warning:
+        payload["warning"] = warning
+    return ok(payload)
+
+
+@app.get("/api/air-data/catalog")
+def air_data_catalog():
+    from .air_catalog import air_route_catalog
+    return ok(air_route_catalog())
+
+
+@app.get("/api/air-data/history")
+def air_data_history():
+    route_key = request.args.get("routeKey", "")
+    if not route_key:
+        return ok({"history": []})
+    history = db.air_route_history(route_key)
+    return ok({"history": history})
+
+
+@app.post("/api/air-data/capture")
+def air_data_capture():
+    from .air_data import build_air_payload, AIR_DATA_MOCK
+    from .serpapi_flights import fetch_serpapi_air_rows, configured_air_routes, should_use_live_air_data
+    body = request.get_json(silent=True) or {}
+    force_live = bool(body.get("forceLive", False))
+
+    if should_use_live_air_data(force_live=force_live):
+        source = "serpapi"
+        routes = configured_air_routes()
+        try:
+            raw_rows = fetch_serpapi_air_rows(force_live=force_live)
+        except Exception as exc:
+            return error_response(f"SerpApi error: {exc}", 502)
+    else:
+        source = "mock"
+        routes = []
+        raw_rows = list(AIR_DATA_MOCK)
+
+    run_id = db.create_air_run(source, len(routes))
+    for row in raw_rows:
+        db.insert_air_flight(run_id, row)
+    routes_captured = len({f"{r.get('origin')}_{r.get('destination')}" for r in raw_rows})
+    db.finish_air_run(run_id, routes_captured=routes_captured, flights_captured=len(raw_rows))
+    clear_cache()  # new air run written — drop stale cached analytics
+
+    payload = build_air_payload(raw_rows)
+    payload["source"] = source
+    payload["is_live"] = source == "serpapi"
+    return ok({"run": {"id": run_id, "source": source, "capturedFlights": len(raw_rows)}, "data": payload}, 201)
 
 
 @app.errorhandler(ValidationError)

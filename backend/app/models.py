@@ -46,6 +46,10 @@ class MarketHotelRow(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     address: str | None = None
+    # Comparability signals extracted from the search card.
+    board: str | None = None
+    reviewCount: int | None = None
+    freeCancellation: bool | None = None
 
 
 class ScrapeSearchPayload(BaseModel):
@@ -72,27 +76,61 @@ class RevenueInsight(BaseModel):
     changePct: float | None = None
 
 
-class DashboardMetrics(BaseModel):
-    latestSnapshot: MarketSnapshot | None
-    cards: list[dict]
-    ratingDistribution: list[dict]
-    topPrices: list[dict]
-    bottomPrices: list[dict]
-    trend: list[dict]
-    locationCoverage: dict
-    market: dict
-    movement: dict
-    dataQuality: dict
-    competitiveSet: list[dict]
-    insights: list[RevenueInsight]
-
-
 class ScrapeSearchResponse(BaseModel):
     target: SearchTarget
     snapshot: MarketSnapshot
     rows: list[MarketHotelRow]
 
 
-class HealthResponse(BaseModel):
-    ok: bool = True
-    at: datetime
+# ---------------------------------------------------------------------------
+# Revenue Management Analytics models
+# ---------------------------------------------------------------------------
+
+
+class PickupEntry(BaseModel):
+    hotelKey: str
+    hotelName: str
+    checkIn: str | None = None
+    observedAt: str
+    previousObservedAt: str | None = None
+    currentPrice: float | None = None
+    previousPrice: float | None = None
+    pricePerNight: float | None = None
+    previousPricePerNight: float | None = None
+    pickupAbsolute: float | None = None
+    pickupPct: float | None = None
+
+
+class DemandCurvePoint(BaseModel):
+    daysUntilCheckIn: int
+    avgAdr: float
+    medianAdr: float
+    minAdr: float
+    maxAdr: float
+    observations: int
+
+
+class CompetitiveStabilityEntry(BaseModel):
+    hotelKey: str
+    hotelName: str
+    avgPricePerNight: float
+    stddevPricePerNight: float
+    consistencyScore: float
+    positioningLabel: str
+    avgGapVsMarketPct: float
+    observations: int
+
+
+class RevenueOpportunity(BaseModel):
+    id: str
+    type: str
+    severity: Literal["info", "warning", "critical"]
+    title: str
+    message: str
+    score: float
+    checkIn: str | None = None
+    hotelKey: str | None = None
+    hotelName: str | None = None
+    currentAdr: float | None = None
+    marketAdr: float | None = None
+    flightAvgPrice: float | None = None

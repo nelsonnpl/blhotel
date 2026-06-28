@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=bbg4" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=bbg36" />
   </head>
   <body>
     <div class="shell">
@@ -24,12 +24,65 @@
 
         <div class="nav-group-label">General</div>
         <nav class="nav" aria-label="Navegación principal">
-          <button class="nav__item is-active" data-view="dashboard" data-shortcut="F1"><span class="nav__icon">◔</span>Dashboard</button>
-          <button class="nav__item" data-view="workspace" data-shortcut="F2"><span class="nav__icon">◈</span>Área trabajo</button>
-          <button class="nav__item" data-view="scraping" data-shortcut="F3"><span class="nav__icon">↻</span>Capturas</button>
-          <button class="nav__item" data-view="map" data-shortcut="F4"><span class="nav__icon">⌖</span>Mapa</button>
-          <button class="nav__item" data-view="explorer" data-shortcut="F5"><span class="nav__icon">▤</span>Explorador</button>
-          <button class="nav__item" data-view="riu" data-shortcut="F6"><span class="nav__icon">◆</span>Análisis RIU</button>
+          <button class="nav__item is-active" data-view="dashboard" data-shortcut="F1">
+            <span class="nav__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+            </span>
+            Dashboard
+          </button>
+          <button class="nav__item" data-view="workspace" data-shortcut="F2">
+            <span class="nav__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+            </span>
+            Área trabajo
+          </button>
+          <button class="nav__item" data-view="scraping" data-shortcut="F3">
+            <span class="nav__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+            </span>
+            Capturas
+          </button>
+          <button class="nav__item" data-view="map" data-shortcut="F4">
+            <span class="nav__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+            </span>
+            Mapa
+          </button>
+          <div class="nav__group is-open" data-nav-group="datos">
+            <button type="button" class="nav__item nav__group-toggle" aria-expanded="true" aria-controls="navDatosSubmenu">
+              <span class="nav__icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+              </span>
+              Datos
+              <span class="nav__caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="nav__submenu" id="navDatosSubmenu">
+              <button class="nav__item nav__subitem" data-view="hotelData" data-shortcut="F5">
+                <span class="nav__icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l8-4v18"></path><path d="M19 21V11l-6-4"></path><path d="M9 9h.01M9 12h.01M9 15h.01M9 18h.01"></path></svg>
+                </span>
+                Datos Hoteleros
+              </button>
+              <button class="nav__item nav__subitem" data-view="airData" data-shortcut="F8">
+                <span class="nav__icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19.5 2.5S18 2 16.5 3.5L13 7 4.8 5.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"></path></svg>
+                </span>
+                Datos Aéreos
+              </button>
+            </div>
+          </div>
+          <button class="nav__item" data-view="riu" data-shortcut="F6">
+            <span class="nav__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+            </span>
+            Análisis RIU
+          </button>
+          <button class="nav__item" data-view="revenue" data-shortcut="F7">
+            <span class="nav__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+            </span>
+            Revenue
+          </button>
         </nav>
 
         <div class="nav-group-label nav-group-label--support">Zonas de Visualización</div>
@@ -43,14 +96,18 @@
         <section class="operator">
           <div class="operator__avatar">RM</div>
           <div>
-            <span>Analista Senior</span>
-            <strong>Canarias Portfolio</strong>
+            <span>Revenue</span>
+            <strong>EMEA</strong>
             <small id="targetCount">0 mercados configurados</small>
           </div>
         </section>
       </aside>
 
       <main class="main">
+        <button id="sidebarToggle" class="sidebar-toggle" aria-label="Abrir menú de navegación" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+        <div id="sidebarOverlay" class="sidebar-overlay" aria-hidden="true"></div>
         <header class="topbar">
           <div class="cmd-bar" id="cmdBar" aria-label="Terminal Command Console">
             <span class="cmd-bar__prompt">RIU></span>
@@ -68,25 +125,59 @@
 
         <section class="page-header">
           <h1 id="viewTitle">Dashboard</h1>
-          <p class="page-subtitle">Lectura ejecutiva del mercado hotelero, presión competitiva y evolución de precios.</p>
+          <p class="page-subtitle"></p>
+          <div id="viewActions" class="page-actions"></div>
         </section>
 
         <section id="dashboard" class="view is-visible">
           <div class="kpi-grid" id="kpis"></div>
           <div class="content-grid">
-            <article class="panel panel--wide">
-              <div class="panel__header"><h2>Mapa de calor de precios</h2><p>Intensidad ADR por zona usando ultimas fotos del mercado.</p></div>
+            <article id="dashboardHeatmapPanel" class="panel panel--wide panel--map-focus">
+              <div class="panel__header panel__header--with-action">
+                <div><h2>Mapa de calor de precios</h2><p>Intensidad ADR por zona usando ultimas fotos del mercado.</p></div>
+                <button id="dashboardHeatmapFullscreen" class="panel-action" type="button" aria-label="Ver mapa en pantalla completa">Pantalla completa</button>
+              </div>
               <div id="dashboardHeatmap" class="market-heatmap"></div>
             </article>
             <article class="panel panel--accent">
               <div class="panel__header"><h2>Evolucion del mercado</h2><p>Precio medio por noche (habitacion) por foto.</p></div>
               <div id="trendChart" class="chart"></div>
             </article>
+          </div>
+          <div class="content-grid">
+            <article class="panel panel--wide">
+              <div class="panel__header"><h2>Distribución por tier de precio</h2><p>Segmentación del set competitivo por cuartiles de ADR/noche.</p></div>
+              <div id="dashboardPriceTiers" class="tier-bars"></div>
+            </article>
             <article class="panel">
-              <div class="panel__header"><h2>Senales accionables</h2><p>Lecturas priorizadas para Revenue.</p></div>
-              <div id="insights" class="stack"></div>
+              <div class="panel__header"><h2>ADR por rating</h2><p>Cómo se correlaciona la calidad con la tarifa media.</p></div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Rating</th><th>Hoteles</th><th>ADR medio</th><th>Rango</th></tr></thead>
+                  <tbody id="dashboardRatingPrice"></tbody>
+                </table>
+              </div>
             </article>
           </div>
+          <article class="panel table-panel dashboard-table-panel">
+            <div class="table-toolbar">
+              <strong>Datos relevantes</strong>
+              <small>Ranking operativo de la foto activa con ADR, gap, noches y calidad de dato.</small>
+              <div class="table-toolbar__actions">
+                <button id="dashboardTableExport" class="button button--secondary" type="button">Exportar CSV</button>
+              </div>
+            </div>
+            <div class="table-wrap dashboard-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th><th>Hotel</th><th>ADR hab.</th><th>ADR pers.</th><th>Gap</th><th>Total</th><th>Rating</th><th>Noches</th><th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboardRelevantRows"></tbody>
+              </table>
+            </div>
+          </article>
         </section>
 
         <section id="riu" class="view">
@@ -160,22 +251,29 @@
         <section id="map" class="view">
           <article class="panel map-panel">
             <div class="map-panel__header">
-              <div class="panel__header"><h2>Mapa de mercado</h2><p>Mapa de calor por ADR + pines de tarifa por hotel.</p></div>
-              <span id="mapPending" class="pill">0 pendientes</span>
+              <div class="panel__header"><h2 id="mapPanelTitle">Mapa de mercado</h2><p id="mapPanelSubtitle">Mapa de calor por ADR + pines de tarifa por hotel.</p></div>
+              <div class="map-panel__controls">
+                <div class="map-view-selector" role="group" aria-label="Tipo de datos en mapa">
+                  <button type="button" class="map-view-btn is-active" data-map-view="hotels">Hoteles</button>
+                  <button type="button" class="map-view-btn" data-map-view="flights">Vuelos</button>
+                  <button type="button" class="map-view-btn" data-map-view="both">Ambos</button>
+                </div>
+                <span id="mapPending" class="pill">0 pendientes</span>
+              </div>
             </div>
             <div style="position: relative; width: 100%; height: 500px; display: flex;">
               <div id="marketMap" class="market-map" style="flex: 1; height: 100%;"></div>
               <div id="mapDrawer" class="map-drawer">
                 <div class="map-drawer__header">
-                  <strong>Detalle del hotel</strong>
+                  <strong id="mapDrawerTitle">Detalle del hotel</strong>
                   <button id="closeMapDrawer" class="map-drawer__close" aria-label="Cerrar panel">✕</button>
                 </div>
                 <div class="map-drawer__body" id="mapDrawerBody">
-                  <div class="empty">Selecciona un hotel en el mapa para ver sus datos detallados.</div>
+                  <div class="empty">Selecciona un elemento en el mapa para ver sus datos.</div>
                 </div>
               </div>
             </div>
-            <div class="legend"><span class="dot dot--low"></span>ADR bajo <span class="dot"></span>ADR medio <span class="dot dot--high"></span>ADR alto</div>
+            <div id="mapLegend" class="map-panel-legend legend"><span class="dot dot--low"></span>ADR bajo <span class="dot"></span>ADR medio <span class="dot dot--high"></span>ADR alto</div>
           </article>
         </section>
 
@@ -202,6 +300,7 @@
                 <button class="filter-btn" data-rating-filter="9">Rating 9+</button>
                 <button class="filter-btn" data-rating-filter="8">Rating 8+</button>
                 <button class="filter-btn" data-rating-filter="7">Rating 7+</button>
+                <button id="clearFilters" class="filter-btn" title="Limpiar todos los filtros activos">✕ Limpiar</button>
               </div>
               <div class="table-actions">
                 <span id="filteredCount" style="margin-right: 12px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--faint);">Filas: 0 / 0</span>
@@ -230,6 +329,248 @@
             </div>
           </article>
         </section>
+
+        <section id="airData" class="view">
+          <div id="airKpis" class="kpi-grid"></div>
+
+          <article class="panel air-filters-panel">
+            <div class="panel__header"><h2>Filtros avanzados</h2><p>Mercado emisor, ruta, compañía, conexión, precio, señal y fechas.</p></div>
+            <div class="air-filters">
+              <input id="airSearch" class="search" placeholder="Buscar mercado, ruta o compañía..." />
+              <select id="airMarketFilter"></select>
+              <select id="airOriginFilter"></select>
+              <select id="airDestinationFilter"></select>
+              <select id="airAirlineFilter"></select>
+              <select id="airConnectionFilter">
+                <option value="">Todos</option>
+                <option value="direct">Solo directos</option>
+                <option value="non_direct">Solo no directos</option>
+                <option value="1 escala">1 escala</option>
+                <option value="2 escalas">2 escalas</option>
+                <option value="3+ escalas">3+ escalas</option>
+              </select>
+              <select id="airPriceFilter"></select>
+              <select id="airSignalFilter"></select>
+              <input id="airDateFrom" type="date" />
+              <input id="airDateTo" type="date" />
+            </div>
+          </article>
+
+          <div id="airOverview" class="air-tab is-visible">
+            <div class="content-grid">
+              <article class="panel panel--wide">
+                <div class="panel__header"><h2>Ranking de rutas por oportunidad</h2><p>Prioridad revenue por accesibilidad, directos, calidad horaria y precio.</p></div>
+                <div class="table-wrap"><table><thead><tr><th>Mercado</th><th>Ruta</th><th>Precio min</th><th title="Clasificación del precio mínimo vs rango histórico típico">Nivel precio</th><th title="Desviación precio medio vs midpoint rango típico">vs Típico</th><th>% directos</th><th>Compañías</th><th>Semáforo</th><th>Score</th></tr></thead><tbody id="airRouteRanking"></tbody></table></div>
+              </article>
+              <article class="panel air-airline-panel">
+                <div class="panel__header"><h2>Top compañías</h2><p>Mix aéreo detectado por opciones, directos y precio medio.</p></div>
+                <div id="airAirlineMiniChart" class="airline-table"></div>
+              </article>
+            </div>
+          </div>
+
+          <div id="airTableView" class="air-tab">
+            <article id="airFlightTablePanel" class="panel table-panel panel--table-focus">
+              <div class="table-toolbar">
+                <strong>Tabla de vuelos</strong>
+                <div class="table-toolbar__actions">
+                  <small id="airTableCount">Filas: 0</small>
+                  <button id="airTableFullscreen" class="panel-action" type="button" aria-label="Ver tabla de vuelos en pantalla completa">Pantalla completa</button>
+                </div>
+              </div>
+              <div class="table-wrap"><table><thead><tr><th>Market</th><th>Origin</th><th>Destination</th><th>Outbound</th><th>Departure</th><th>Airline</th><th>Flight</th><th>Aircraft</th><th>Dep. time</th><th>Arrival</th><th>Direct</th><th>Stops</th><th>Price</th><th>Price position</th><th>AAI</th><th>Duration</th></tr></thead><tbody id="airFlightRows"></tbody></table></div>
+              <div class="air-pagination"><button id="airPrevPage" class="filter-btn">Anterior</button><span id="airPageInfo">Página 1</span><button id="airNextPage" class="filter-btn">Siguiente</button></div>
+            </article>
+          </div>
+
+          <div id="airMapView" class="air-tab">
+            <article id="airMapPanel" class="panel map-panel panel--map-focus">
+              <div class="map-panel__header">
+                <div class="panel__header"><h2>Mapa inteligente de rutas aéreas</h2><p>Color por señal revenue y grosor por opciones disponibles.</p></div>
+                <div class="map-panel__controls">
+                  <select id="airMapColorMode"><option value="revenue_signal">Revenue signal</option><option value="price">Precio</option><option value="direct_share">Direct share</option><option value="schedule_quality_score">Schedule quality</option><option value="flight_supply_score">Flight supply</option></select>
+                  <button id="airMapFullscreen" class="panel-action" type="button" aria-label="Ver mapa en pantalla completa">Pantalla completa</button>
+                </div>
+              </div>
+              <div class="air-map-layout">
+                <div class="air-map-stage">
+                  <div id="airRouteMap" class="market-map"></div>
+                  <div id="airMapControls" class="map-controls" aria-label="Filtros del mapa"></div>
+                  <div id="airMapLegend" class="map-floating-legend"></div>
+                </div>
+                <aside id="airRouteDrawer" class="air-route-drawer"></aside>
+              </div>
+            </article>
+          </div>
+
+          <div id="airChartsView" class="air-tab">
+            <div class="content-grid">
+              <article class="panel"><div class="panel__header"><h2>Market Comparison</h2></div><div id="airMarketComparison" class="stack"></div></article>
+              <article class="panel"><div class="panel__header"><h2>Opportunity Radar</h2></div><div id="airOpportunityRadar" class="stack"></div></article>
+              <article class="panel"><div class="panel__header"><h2>Risk Radar</h2></div><div id="airRiskRadar" class="stack"></div></article>
+              <article class="panel"><div class="panel__header"><h2>Schedule Intelligence</h2></div><div id="airScheduleChart" class="air-chart"></div></article>
+              <article class="panel"><div class="panel__header"><h2>Aircraft Mix</h2></div><div id="airAircraftChart" class="air-chart"></div></article>
+              <article class="panel"><div class="panel__header"><h2>Price Intelligence</h2></div><div id="airPriceGapChart" class="air-chart"></div></article>
+            </div>
+          </div>
+
+          <div id="airDetailView" class="air-tab">
+            <article class="panel table-panel">
+              <div class="panel__header"><h2 id="airDetailTitle">Detalle ruta</h2><p id="airDetailSubtitle">Selecciona una ruta en ranking o mapa.</p></div>
+              <div id="airRouteDetail"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="hotelData" class="view">
+          <div id="hotelKpis" class="kpi-grid"></div>
+
+          <article class="panel air-filters-panel" aria-label="Filtros de hoteles">
+            <div class="map-panel__header"><div class="panel__header"><h2>Filtros de hoteles</h2><p>Filtra el set competitivo por nombre, régimen, rating y cancelación.</p></div></div>
+            <div class="air-filters">
+              <input id="hotelSearch" type="search" placeholder="Hotel o habitación..." aria-label="Buscar hotel" />
+              <select id="hotelBoardFilter" aria-label="Régimen"></select>
+              <select id="hotelRatingFilter" aria-label="Rating mínimo"><option value="">Rating: Todos</option><option value="9">Rating 9+</option><option value="8">Rating 8+</option><option value="7">Rating 7+</option></select>
+              <select id="hotelRiuFilter" aria-label="Solo RIU"><option value="">RIU: Todos</option><option value="1">Solo RIU</option></select>
+              <select id="hotelCancelFilter" aria-label="Cancelación"><option value="">Cancelación: Todas</option><option value="1">Cancelación gratis</option></select>
+            </div>
+          </article>
+
+          <div id="hotelTableView" class="air-tab is-visible">
+            <article id="hotelTablePanel" class="panel table-panel panel--table-focus">
+              <div class="table-toolbar">
+                <strong id="hotelTableCount">Hoteles: 0</strong>
+                <small>Set competitivo del mercado activo con ADR, régimen, reseñas, cancelación y gap vs mercado.</small>
+                <div class="table-toolbar__actions">
+                  <button id="hotelTableExport" class="button button--secondary" type="button">Exportar CSV</button>
+                  <button id="hotelTableFullscreen" class="panel-action" type="button" aria-label="Ver tabla en pantalla completa">Pantalla completa</button>
+                </div>
+              </div>
+              <div class="table-wrap dashboard-table-wrap">
+                <table>
+                  <thead><tr>
+                    <th>#</th><th>Hotel</th><th>ADR hab.</th><th>ADR pers.</th><th>Régimen</th><th>Rating</th><th>Reseñas</th><th>Cancelación</th><th>Gap</th><th>Noches</th>
+                  </tr></thead>
+                  <tbody id="hotelDataRows"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+
+          <div id="hotelMapView" class="air-tab">
+            <article id="hotelMapPanel" class="panel map-panel panel--map-focus">
+              <div class="map-panel__header">
+                <div class="panel__header"><h2>Mapa de calor hotelero</h2><p>Intensidad ADR por zona + pines de tarifa por hotel.</p></div>
+                <div class="map-panel__controls">
+                  <button id="hotelMapFullscreen" class="panel-action" type="button" aria-label="Ver mapa en pantalla completa">Pantalla completa</button>
+                </div>
+              </div>
+              <div class="air-map-layout">
+                <div class="air-map-stage">
+                  <div id="hotelDataMap" class="market-map"></div>
+                  <div id="hotelMapControls" class="map-controls" aria-label="Filtros del mapa"></div>
+                  <div id="hotelMapLegend" class="map-floating-legend"></div>
+                </div>
+                <aside id="hotelMapDrawer" class="air-route-drawer"><div class="empty">Selecciona un hotel en el mapa para ver su detalle.</div></aside>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section id="revenue" class="view">
+          <div class="kpi-grid">
+            <div class="metric">
+              <span>Oportunidades activas</span>
+              <strong id="revOppsCount">—</strong>
+              <em id="revOppsHint">Alertas de tarifa detectadas</em>
+            </div>
+            <div class="metric">
+              <span>Pickup (movimientos)</span>
+              <strong id="revPickup">—</strong>
+              <em id="revPickupHint">Subidas / bajadas vs captura anterior</em>
+            </div>
+            <div class="metric">
+              <span>Volatilidad media set</span>
+              <strong id="revVol">—</strong>
+              <em>Desviación típica ADR/noche</em>
+            </div>
+            <div class="metric">
+              <span>Consistencia media</span>
+              <strong id="revCons">—</strong>
+              <em>Índice 0–100 del set competitivo</em>
+            </div>
+          </div>
+          
+          <div class="content-grid">
+            <article class="panel panel--wide">
+              <div class="panel__header">
+                <h2>Oportunidades de Tarifa (Revenue Management Alerts)</h2>
+                <p>Hoteles con alta demanda y gap de precio favorable contra set competitivo.</p>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Hotel</th>
+                      <th>Tipo</th>
+                      <th>Gap vs Mercado</th>
+                      <th>Score</th>
+                      <th>Recomendación</th>
+                    </tr>
+                  </thead>
+                  <tbody id="revenueOpportunitiesRows">
+                    <!-- Dynamic rows -->
+                  </tbody>
+                </table>
+              </div>
+            </article>
+            
+            <article class="panel">
+              <div class="panel__header">
+                <h2>Pickup Analytics</h2>
+                <p>Evolución de reservas por segmento de mercado.</p>
+              </div>
+              <div class="stack" id="pickupAnalysisStack">
+                <!-- Dynamic cards or stats -->
+              </div>
+            </article>
+          </div>
+          
+          <div class="content-grid">
+            <article class="panel">
+              <div class="panel__header">
+                <h2>Curva de Demanda & Posicionamiento</h2>
+                <p>Evolución de precios competitivos históricos.</p>
+              </div>
+              <div id="demandCurveContainer" style="padding: 12px; height: 220px;">
+                <canvas id="demandCurveCanvas" style="width:100%; height:100%;"></canvas>
+              </div>
+            </article>
+            
+            <article class="panel panel--wide">
+              <div class="panel__header">
+                <h2>Estabilidad del Set Competitivo</h2>
+                <p>Porcentaje de variabilidad de precios por competidor y fecha de consulta.</p>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Hotel Competidor</th>
+                      <th>ADR Medio</th>
+                      <th>Desviación</th>
+                      <th>Posicionamiento</th>
+                      <th>Consistencia</th>
+                    </tr>
+                  </thead>
+                  <tbody id="stabilityIndexRows">
+                    <!-- Dynamic stability index -->
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
       </main>
 
       <footer id="statusBar">
@@ -253,35 +594,154 @@
       <section class="modal-card">
         <header class="modal-header">
           <div>
-            <h2 id="captureModalTitle">Configurar captura</h2>
-            <p>Define parámetros antes de lanzar la foto semanal.</p>
+            <h2 id="captureModalTitle">Nueva captura histórica</h2>
+            <p>Configura qué tipos de datos capturar: hoteles Booking y/o conectividad aérea Google Flights.</p>
           </div>
           <button id="closeCaptureModal" class="icon-button" aria-label="Cerrar">✕</button>
         </header>
-        <div class="modal-grid">
-          <label class="modal-field modal-field--full">
-            <span>Zonas a capturar</span>
-            <select id="modalZones" multiple size="6"></select>
-          </label>
-          <label class="modal-field">
-            <span>Check-in</span>
-            <input id="modalCheckIn" type="date" />
-          </label>
-          <label class="modal-field">
-            <span>Noches</span>
-            <input id="modalNights" type="number" min="1" max="30" />
-          </label>
-          <label class="modal-field">
-            <span>Semanas</span>
-            <input id="modalWeeks" type="number" min="1" max="26" />
-          </label>
-          <label class="modal-field">
-            <span>Hoteles (máx)</span>
-            <input id="modalLimit" type="number" min="1" max="500" />
-          </label>
+        <div class="capture-type-selector" aria-label="Tipo de captura">
+          <button type="button" class="capture-type-card is-active" data-capture-type="hotels">
+            <span class="capture-type-card__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            </span>
+            <div class="capture-type-card__info">
+              <strong>Foto hotelera</strong>
+              <small>Booking · Decodo</small>
+            </div>
+            <span class="capture-type-card__badge">ON</span>
+          </button>
+          <div class="capture-type-sep">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </div>
+          <button type="button" class="capture-type-card capture-type-card--air is-active" data-capture-type="flights">
+            <span class="capture-type-card__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19.5 2.5S18 2 16.5 3.5L13 7 4.8 5.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"></path></svg>
+            </span>
+            <div class="capture-type-card__info">
+              <strong>Foto aérea</strong>
+              <small>Google Flights · SerpApi</small>
+            </div>
+            <span class="capture-type-card__badge">ON</span>
+          </button>
+        </div>
+        <div class="capture-stepper" aria-label="Progreso de configuracion de captura">
+          <button type="button" class="capture-stepper__item is-active" data-capture-step-target="hotels">
+            <span>01</span>
+            <strong>Foto hotelera</strong>
+            <small>Decodo + Booking</small>
+          </button>
+          <button type="button" class="capture-stepper__item" data-capture-step-target="flights">
+            <span>02</span>
+            <strong>Foto aérea</strong>
+            <small>SerpApi + Google Flights</small>
+          </button>
+        </div>
+        <div id="captureModalSummary" class="capture-modal-summary" aria-live="polite"></div>
+        <div class="capture-step-panels">
+          <div class="capture-step-panel is-active" data-capture-step-panel="hotels">
+            <div class="capture-step-layout">
+              <aside class="capture-api-card">
+                <span class="capture-api-card__eyebrow">API hotelera</span>
+                <h3>Booking vía Decodo</h3>
+                <p>Genera snapshots de precios hoteleros por zona, fecha y duración para comparar evolución.</p>
+                <div class="capture-capabilities">
+                  <span>Precio total</span>
+                  <span>ADR hab/noche</span>
+                  <span>Rating</span>
+                  <span>Habitación</span>
+                  <span>Ubicación si Booking la expone</span>
+                </div>
+                <small>No aporta ocupación real ni inventario interno del hotel.</small>
+              </aside>
+              <div class="modal-grid modal-grid--decision">
+                <div class="modal-section-title modal-field--full">1 · Qué mercado hotelero fotografiamos</div>
+                <label class="modal-field modal-field--full">
+                  <span>Zonas Booking</span>
+                  <select id="modalZones" multiple size="6"></select>
+                  <small>Selecciona una o varias zonas. Estas zonas también sugieren el área de vuelos del paso 2.</small>
+                </label>
+                <label class="modal-field">
+                  <span>Fecha de entrada</span>
+                  <input id="modalCheckIn" type="date" />
+                </label>
+                <label class="modal-field">
+                  <span>Noches de estancia</span>
+                  <input id="modalNights" type="number" min="1" max="30" />
+                </label>
+                <label class="modal-field">
+                  <span>Semanas a observar</span>
+                  <input id="modalWeeks" type="number" min="1" max="26" />
+                  <small>Se crea una foto por semana para evolución temporal.</small>
+                </label>
+                <label class="modal-field">
+                  <span>Hoteles máximo</span>
+                  <input id="modalLimit" type="number" min="1" max="500" />
+                  <small>Límite operativo por zona y foto.</small>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="capture-step-panel" data-capture-step-panel="flights">
+            <div class="capture-step-layout">
+              <aside class="capture-api-card capture-api-card--air">
+                <span class="capture-api-card__eyebrow">API aérea</span>
+                <h3>Google Flights vía SerpApi</h3>
+                <p>Guarda observaciones por ruta para seguir precio, compañías, horarios y escalas.</p>
+                <div class="capture-capabilities">
+                  <span>Precio vuelo</span>
+                  <span>Compañías</span>
+                  <span>Horarios</span>
+                  <span>Escalas</span>
+                  <span>Duración</span>
+                </div>
+                <small>No usamos emisiones de carbono ni ocupación/capacidad real.</small>
+              </aside>
+              <div class="modal-grid modal-grid--decision">
+                <div class="modal-section-title modal-field--full">2 · Qué conectividad aérea medimos</div>
+                <label class="modal-field">
+                  <span>Área destino</span>
+                  <select id="modalAirAreas" multiple size="4"></select>
+                  <small>Normalmente se sincroniza con las zonas hoteleras elegidas.</small>
+                </label>
+                <label class="modal-field">
+                  <span>País emisor</span>
+                  <select id="modalAirCountries" multiple size="4"></select>
+                  <small>Si no eliges país, se consultan todos los mercados disponibles.</small>
+                </label>
+                <label class="modal-field modal-field--full">
+                  <span>Rutas origen → destino</span>
+                  <select id="modalAirRoutes" multiple size="7"></select>
+                  <small id="modalAirRouteHint">Las rutas se agrupan por área y país emisor.</small>
+                </label>
+                <label class="modal-field modal-field--full">
+                  <span>Tipo de búsqueda aérea</span>
+                  <div class="modal-segmented modal-segmented--large" role="group" aria-label="Tipo de viaje aéreo">
+                    <button type="button" data-air-trip-type="one_way"><strong>One way</strong><small>Solo llegada al destino</small></button>
+                    <button type="button" data-air-trip-type="round_trip"><strong>Round trip</strong><small>Ida y vuelta como 2 one-way</small></button>
+                  </div>
+                  <small>Incluso en round trip, SerpApi se consulta siempre con type=2 para evitar precios mezclados.</small>
+                </label>
+                <label id="modalAirReturnDateField" class="modal-field modal-field--full is-hidden">
+                  <span>Fecha de vuelta</span>
+                  <input id="modalAirReturnDate" type="date" />
+                  <small>Se lanzará una segunda búsqueda one-way en sentido inverso para esta fecha.</small>
+                </label>
+                <label class="modal-field modal-field--full">
+                  <span>Filtro obligatorio de vuelo</span>
+                  <div class="modal-segmented modal-segmented--large" role="group" aria-label="Vuelo directo">
+                    <button type="button" data-air-direct-value="true"><strong>Directos</strong><small>Solo vuelos sin escala</small></button>
+                    <button type="button" data-air-direct-value="false"><strong>No directos</strong><small>Opciones con escala</small></button>
+                  </div>
+                  <input id="modalAirDirect" type="hidden" required />
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
         <footer class="modal-footer">
           <button id="cancelCaptureModal" class="button button--secondary">Cancelar</button>
+          <button id="backCaptureStep" class="button button--secondary" type="button">Atrás</button>
+          <button id="nextCaptureStep" class="button button--primary" type="button">Continuar a vuelos</button>
           <button id="confirmCaptureModal" class="button button--primary">Lanzar captura</button>
         </footer>
       </section>
@@ -334,6 +794,13 @@
     </div>
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <div id="status" class="status status--info" role="status" aria-live="polite"></div>
-    <script src="{{ url_for('static', filename='app.js') }}?v=bbg4" defer></script>
+    <div id="commandDock" class="command-dock" aria-hidden="true">
+      <div class="cmd-bar cmd-bar--dock" aria-label="Terminal Command Console flotante">
+        <span class="cmd-bar__prompt">RIU></span>
+        <input id="dockCmdInput" class="cmd-bar__input" placeholder="Comando..." />
+        <span class="cmd-bar__cursor"></span>
+      </div>
+    </div>
+    <script src="{{ url_for('static', filename='app.js') }}?v=bbg36" defer></script>
   </body>
 </html>
