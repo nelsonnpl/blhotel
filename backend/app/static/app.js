@@ -189,6 +189,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   initPresets();
   initWorkspaceControls();
   initHotelControls();
+  initZoneList();
   bindEvents();
   showView("dashboard");
   renderAll();
@@ -249,7 +250,14 @@ function toggleNavGroup(group) {
 
 function showView(view) {
   state.runtime.activeView = view;
-  $$(".nav__item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === view));
+  $$(".nav__item").forEach((item) => {
+    const active = item.dataset.view === view;
+    item.classList.toggle("is-active", active);
+    if (item.dataset.view) {
+      if (active) item.setAttribute("aria-current", "page");
+      else item.removeAttribute("aria-current");
+    }
+  });
   $$(".view").forEach((section) => section.classList.toggle("is-visible", section.id === view));
   // Keep the "Datos" group expanded + highlighted while one of its sub-views is active.
   const datosGroup = document.querySelector('.nav__group[data-nav-group="datos"]');
@@ -712,6 +720,47 @@ function bindEvents() {
     updateRatingQuickButtons();
     saveExplorerFilters();
     renderExplorer();
+  });
+}
+
+// Custom zone selector: native <select multiple> stays as the data engine (hidden);
+// this paints a styled, accessible checkbox list on top and keeps them in sync.
+function initZoneList() {
+  const select = document.getElementById("zoneSelect");
+  const list = document.getElementById("zoneList");
+  if (!select || !list) return;
+
+  const paint = () => {
+    const opts = Array.from(select.options);
+    if (!opts.length) {
+      list.innerHTML = `<div class="zone-list__empty">Sin zonas disponibles</div>`;
+      return;
+    }
+    list.innerHTML = opts
+      .map(
+        (o) => `<button type="button" class="zone-list__item ${o.selected ? "is-selected" : ""}" role="checkbox" aria-checked="${o.selected ? "true" : "false"}" data-value="${escapeHtml(o.value)}">
+          <span class="zone-list__check" aria-hidden="true"></span>
+          <span class="zone-list__label">${escapeHtml(o.textContent)}</span>
+        </button>`
+      )
+      .join("");
+  };
+
+  paint();
+  // Re-paint whenever the app repopulates the select (renderPreset) or selection changes.
+  new MutationObserver(paint).observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ["selected"] });
+
+  list.addEventListener("click", (event) => {
+    const item = event.target.closest(".zone-list__item");
+    if (!item) return;
+    const option = Array.from(select.options).find((o) => o.value === item.dataset.value);
+    if (!option) return;
+    // Keep at least one zone active (the change handler ignores an empty selection).
+    const selectedCount = Array.from(select.selectedOptions).length;
+    if (option.selected && selectedCount <= 1) return;
+    option.selected = !option.selected;
+    paint();
+    select.dispatchEvent(new Event("change", { bubbles: true }));
   });
 }
 
@@ -3845,7 +3894,12 @@ function readableError(error) {
 }
 
 function empty(text) {
-  return `<div class="empty">${escapeHtml(text)}</div>`;
+  return `<div class="empty">
+    <span class="empty__icon" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M7 14l3-3 3 3 4-5"></path></svg>
+    </span>
+    <span class="empty__text">${escapeHtml(text)}</span>
+  </div>`;
 }
 
 function loadWidgets() {

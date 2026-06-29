@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>RIU Revenue Terminal</title>
-    <meta name="description" content="Consola Bloomberg Terminal para análisis de revenue hotelero y benchmarking competitivo de RIU Hotels." />
+    <title>RIU Revenue · Market Intelligence</title>
+    <meta name="description" content="Plataforma de inteligencia de revenue hotelero: benchmarking competitivo, precios de mercado, conectividad aérea y oportunidades de tarifa para RIU Hotels." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=bbg37" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=shad2" />
   </head>
   <body>
     <div class="shell">
@@ -17,7 +17,7 @@
         <div class="brand">
           <div class="brand__mark">RIU</div>
           <div>
-            <strong>Revenue Terminal</strong>
+            <strong>Revenue</strong>
             <span>Market Intelligence</span>
           </div>
         </div>
@@ -87,10 +87,11 @@
 
         <div class="nav-group-label nav-group-label--support">Zonas de Visualización</div>
         <div class="sidebar-tools">
-          <label class="sidebar-select" for="zoneSelect">
+          <div class="sidebar-select">
             <span>Zonas activas</span>
-            <select id="zoneSelect" multiple size="6"></select>
-          </label>
+            <select id="zoneSelect" multiple size="6" tabindex="-1" aria-hidden="true"></select>
+            <div id="zoneList" class="zone-list" role="group" aria-label="Zonas activas"></div>
+          </div>
         </div>
 
         <section class="operator">
@@ -813,6 +814,6 @@
         </form>
       </div>
     </div>
-    <script src="{{ url_for('static', filename='app.js') }}?v=bbg37" defer></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=shad2" defer></script>
   </body>
 </html>
