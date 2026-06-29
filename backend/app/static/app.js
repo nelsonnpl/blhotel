@@ -167,11 +167,13 @@ const state = {
     activeTab: "table",
     filters: { query: "", board: "", rating: "", riu: "", cancel: "" },
   },
+  ai: { active: false, pending: false, messages: [] },
   airCatalog: { areas: [], countries: [], routes: [] },
   hotelHistory: {},
   runtime: {
     airBootPromise: null,
     airBootReady: false,
+    activeView: "dashboard",
   },
 };
 const mapRegistry = new Map();
@@ -246,6 +248,7 @@ function toggleNavGroup(group) {
 }
 
 function showView(view) {
+  state.runtime.activeView = view;
   $$(".nav__item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === view));
   $$(".view").forEach((section) => section.classList.toggle("is-visible", section.id === view));
   // Keep the "Datos" group expanded + highlighted while one of its sub-views is active.
@@ -556,11 +559,35 @@ function bindEvents() {
   });
   dockCmdInput?.addEventListener("keyup", (event) => {
     if (event.key === "Enter") {
-      executeCommand(dockCmdInput.value);
+      const value = dockCmdInput.value;
       dockCmdInput.value = "";
-      closeCommandDock();
+      executeCommand(value);
+      renderDockSuggestions("");
+      if (!state.ai.active) closeCommandDock();
     }
     if (event.key === "Escape") closeCommandDock();
+  });
+  dockCmdInput?.addEventListener("input", (event) => renderDockSuggestions(event.target.value));
+  $("#dockSuggest")?.addEventListener("click", (event) => {
+    const row = event.target.closest("[data-cmd]");
+    if (!row) return;
+    if (dockCmdInput) dockCmdInput.value = "";
+    executeCommand(row.dataset.cmd);
+    if (!state.ai.active) {
+      renderDockSuggestions("");
+      dockCmdInput?.focus();
+    }
+  });
+  $("#aiChatForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("#aiChatInput");
+    const value = input?.value || "";
+    if (input) input.value = "";
+    sendAiMessage(value);
+  });
+  $("#aiChatClose")?.addEventListener("click", () => exitAiMode());
+  $("#aiChatInput")?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") exitAiMode();
   });
   $("#dashboardTableExport")?.addEventListener("click", exportCsv);
   initTickerControls();
@@ -4277,6 +4304,17 @@ function toggleCommandDock() {
   if (isOpen) {
     input.focus();
     input.select();
+    if (!state.ai.active) renderDockSuggestions(input.value || "");
+  } else {
+    hideDockSuggestions();
+  }
+}
+
+function hideDockSuggestions() {
+  const host = $("#dockSuggest");
+  if (host) {
+    host.innerHTML = "";
+    host.classList.remove("is-visible");
   }
 }
 
@@ -4285,44 +4323,283 @@ function closeCommandDock() {
   if (!dock) return;
   dock.classList.remove("is-visible");
   dock.setAttribute("aria-hidden", "true");
+  hideDockSuggestions();
+}
+
+// Registro de comandos del shortcut (Ctrl+Shift+R). Añadir uno nuevo = añadir
+// una entrada aquí: aparece automáticamente en /help y en el autocompletado.
+const COMMANDS = [
+  // — Vistas —
+  { names: ["/dash", "/dashboard"], group: "Vistas", arg: false, desc: "Ir al Dashboard ejecutivo", run: () => goToView("dashboard", "DASHBOARD") },
+  { names: ["/riu"], group: "Vistas", arg: false, desc: "Análisis de propiedades RIU", run: () => goToView("riu", "ANÁLISIS RIU") },
+  { names: ["/hotel", "/hoteles", "/hotels"], group: "Vistas", arg: false, desc: "Datos hoteleros (KPIs, tabla, mapa)", run: () => goToView("hotelData", "DATOS HOTELEROS") },
+  { names: ["/air", "/vuelos", "/flight"], group: "Vistas", arg: false, desc: "Inteligencia aérea Air_Data", run: () => goToView("airData", "AIR_DATA") },
+  { names: ["/rev", "/revenue"], group: "Vistas", arg: false, desc: "Revenue Management", run: () => goToView("revenue", "REVENUE") },
+  { names: ["/map", "/heatmap"], group: "Vistas", arg: false, desc: "Mapa de calor por ADR", run: () => goToView("map", "MAPA") },
+  { names: ["/exp", "/tabla"], group: "Vistas", arg: false, desc: "Explorador con filtros", run: () => goToView("explorer", "EXPLORADOR") },
+  { names: ["/work"], group: "Vistas", arg: false, desc: "Área de trabajo modular", run: () => goToView("workspace", "WORKSPACE") },
+  { names: ["/scrap", "/capturas"], group: "Vistas", arg: false, desc: "Consola de capturas", run: () => goToView("scraping", "CAPTURAS") },
+  // — Acciones —
+  { names: ["/run", "/capture", "/captura"], group: "Acciones", arg: false, desc: "Abrir configurador de captura", run: () => { openCaptureModal(); setStatus("Abriendo configurador de captura…", "info"); } },
+  { names: ["/refresh", "/reload", "/actualizar"], group: "Acciones", arg: false, desc: "Recargar datos de mercado y vuelos", run: () => refreshAllData() },
+  { names: ["/export", "/csv"], group: "Acciones", arg: false, desc: "Exportar CSV de la vista actual", run: () => exportActiveView() },
+  { names: ["/settings", "/config", "/ajustes"], group: "Acciones", arg: false, desc: "Abrir configuración", run: () => { openSettingsModal(); setStatus("Abriendo configuración…", "info"); } },
+  { names: ["/clear", "/limpiar"], group: "Acciones", arg: false, desc: "Limpiar chat IA o consola", run: () => clearActive() },
+  // — Copiloto IA —
+  { names: ["/ask", "/ia", "/copilot"], group: "Copiloto IA", arg: true, desc: "Preguntar al copiloto (texto libre)", run: (args) => enterAiMode(args || null) },
+  { names: ["/gaps"], group: "Copiloto IA", arg: false, desc: "IA: hoteles con mayor gap vs mercado", run: () => enterAiMode("¿Qué hoteles tienen el mayor gap de precio vs el mercado y qué debería hacer con la tarifa de cada uno?") },
+  { names: ["/oportunidades", "/opp"], group: "Copiloto IA", arg: false, desc: "IA: oportunidades de revenue ahora", run: () => enterAiMode("Dame las 3 principales oportunidades de revenue ahora mismo, justificadas con las cifras del snapshot.") },
+  { names: ["/pricing", "/tarifa"], group: "Copiloto IA", arg: false, desc: "IA: recomendaciones de pricing RIU", run: () => enterAiMode("Recomiéndame ajustes de pricing concretos para las propiedades RIU según el comp-set y el régimen.") },
+  { names: ["/demanda", "/momentum"], group: "Copiloto IA", arg: false, desc: "IA: presión de demanda y momentum aéreo", run: () => enterAiMode("¿Cómo está la presión de demanda del destino y el momentum de los precios aéreos? ¿Qué implica para la tarifa?") },
+  // — Ayuda —
+  { names: ["/help", "/ayuda", "/?"], group: "Ayuda", arg: false, desc: "Mostrar todos los comandos", run: () => { renderDockSuggestions(""); setStatus("Comandos disponibles listados. Escribe / para filtrar.", "info"); } },
+];
+
+function goToView(view, label) {
+  showView(view);
+  setStatus(`Terminal cambiada a: ${label}`, "ok");
+}
+
+function findCommand(word) {
+  const token = String(word || "").toLowerCase();
+  return COMMANDS.find((command) => command.names.includes(token));
 }
 
 function executeCommand(val) {
-  const clean = val.trim().toLowerCase();
-  if (!clean) return;
-  
-  if (clean.startsWith("/dash")) {
-    showView("dashboard");
-    setStatus("Terminal cambiada a: DASHBOARD", "ok");
-  } else if (clean.startsWith("/riu")) {
-    showView("riu");
-    setStatus("Terminal cambiada a: ANÁLISIS RIU", "ok");
-  } else if (clean.startsWith("/work")) {
-    showView("workspace");
-    setStatus("Terminal cambiada a: WORKSPACE", "ok");
-  } else if (clean.startsWith("/scrap") || clean.startsWith("/capturas")) {
-    showView("scraping");
-    setStatus("Terminal cambiada a: CAPTURAS", "ok");
-  } else if (clean.startsWith("/map") || clean.startsWith("/heatmap")) {
-    showView("map");
-    setStatus("Terminal cambiada a: MAPA", "ok");
-  } else if (clean.startsWith("/exp") || clean.startsWith("/tabla")) {
-    showView("explorer");
-    setStatus("Terminal cambiada a: EXPLORADOR", "ok");
-  } else if (clean.startsWith("/air") || clean.startsWith("/flight") || clean.startsWith("/vuelos")) {
-    showView("airData");
-    setStatus("Terminal cambiada a: AIR_DATA", "ok");
-  } else if (clean.startsWith("/rev") || clean.startsWith("/revenue")) {
-    showView("revenue");
-    setStatus("Terminal cambiada a: REVENUE", "ok");
-  } else if (clean.startsWith("/run")) {
-    openCaptureModal();
-    setStatus("Abriendo configurador de captura...", "info");
-  } else if (clean.startsWith("/help")) {
-    setStatus("Cmds: /dash, /riu, /air, /rev, /work, /scrap, /map, /exp, /run, /help", "info");
-  } else {
-    setStatus(`Comando no reconocido: ${val}. Escribe /help`, "error");
+  const raw = (val || "").trim();
+  if (!raw) return;
+  const parts = raw.split(/\s+/);
+  const word = parts[0].toLowerCase();
+  const args = raw.slice(parts[0].length).trim();
+  const command = findCommand(word);
+  if (!command) {
+    setStatus(`Comando no reconocido: ${raw}. Escribe /help`, "error");
+    return;
   }
+  try {
+    command.run(args);
+  } catch (error) {
+    setStatus(`Error ejecutando ${word}: ${readableError(error)}`, "error");
+  }
+}
+
+// Exporta la vista activa al CSV adecuado (aéreo o hotelero).
+function exportActiveView() {
+  if (state.runtime.activeView === "airData") {
+    exportAirCsv();
+  } else {
+    exportCsv();
+  }
+}
+
+async function refreshAllData() {
+  setStatus("Recargando datos de mercado y vuelos…", "busy");
+  try {
+    await Promise.all([
+      loadTargetsForSelection().catch(() => {}),
+      (async () => { try { await ensureAirDataBoot(); } catch (_) { await loadAirData().catch(() => {}); } })(),
+    ]);
+    renderAll();
+    if (state.runtime.activeView === "airData") renderAirData();
+    setStatus("Datos recargados.", "ok");
+  } catch (error) {
+    setStatus(`No se pudieron recargar los datos: ${readableError(error)}`, "error");
+  }
+}
+
+function clearActive() {
+  if (state.ai.active) {
+    state.ai.messages = [];
+    enterAiMode();
+    setStatus("Chat del copiloto limpiado.", "ok");
+    return;
+  }
+  const consoleBox = document.getElementById("scrapeConsole");
+  if (consoleBox) consoleBox.innerHTML = "";
+  setStatus("Consola limpiada.", "ok");
+}
+
+// Autocompletado del dock: filtra COMMANDS mientras escribes y permite clic.
+function renderDockSuggestions(query) {
+  const host = $("#dockSuggest");
+  if (!host) return;
+  if (state.ai.active) {
+    host.innerHTML = "";
+    host.classList.remove("is-visible");
+    return;
+  }
+  const q = String(query || "").trim().toLowerCase().replace(/^\//, "");
+  const matches = COMMANDS.filter((command) => {
+    if (!q) return true;
+    return command.names.some((name) => name.replace(/^\//, "").includes(q)) || command.desc.toLowerCase().includes(q);
+  });
+  if (!matches.length) {
+    host.innerHTML = `<div class="cmd-suggest__empty">Sin comandos para “${escapeHtml(query)}”</div>`;
+    host.classList.add("is-visible");
+    return;
+  }
+  host.innerHTML = matches
+    .map(
+      (command) => `
+      <button type="button" class="cmd-suggest__row" data-cmd="${command.names[0]}">
+        <span class="cmd-suggest__cmd">${command.names[0]}${command.arg ? " <em>…</em>" : ""}</span>
+        <span class="cmd-suggest__desc">${escapeHtml(command.desc)}</span>
+        <span class="cmd-suggest__group">${escapeHtml(command.group)}</span>
+      </button>`,
+    )
+    .join("");
+  host.classList.add("is-visible");
+}
+
+// ---------------------------------------------------------------------------
+// Copiloto IA de revenue (/ask) — chat sobre el snapshot del mercado activo
+// ---------------------------------------------------------------------------
+function enterAiMode(initialQuestion) {
+  state.ai.active = true;
+  const dock = $("#commandDock");
+  const cmdBar = dock?.querySelector(".cmd-bar--dock");
+  const chat = $("#aiChat");
+  if (dock) {
+    dock.classList.add("is-visible", "is-ai");
+    dock.setAttribute("aria-hidden", "false");
+  }
+  if (cmdBar) cmdBar.style.display = "none";
+  if (chat) chat.hidden = false;
+  hideDockSuggestions();
+  if (!state.ai.messages.length) {
+    state.ai.messages.push({
+      role: "assistant",
+      content: "Hola 👋 Soy tu copiloto de revenue. Tengo el snapshot del mercado activo (hoteles y vuelos). Pregúntame por pricing, gaps vs mercado, presión de demanda, oportunidades o el momentum aéreo.",
+    });
+  }
+  renderAiChat();
+  window.requestAnimationFrame(() => $("#aiChatInput")?.focus());
+  if (initialQuestion) sendAiMessage(initialQuestion);
+}
+
+function exitAiMode() {
+  state.ai.active = false;
+  const dock = $("#commandDock");
+  const cmdBar = dock?.querySelector(".cmd-bar--dock");
+  const chat = $("#aiChat");
+  if (chat) chat.hidden = true;
+  if (cmdBar) cmdBar.style.display = "";
+  if (dock) {
+    dock.classList.remove("is-visible", "is-ai");
+    dock.setAttribute("aria-hidden", "true");
+  }
+}
+
+async function sendAiMessage(text) {
+  const clean = (text || "").trim();
+  if (!clean || state.ai.pending) return;
+  state.ai.messages.push({ role: "user", content: clean });
+  state.ai.pending = true;
+  renderAiChat();
+  // El snapshot aéreo se calienta en segundo plano; nos aseguramos de que esté
+  // listo antes de construir el contexto para que el copiloto "vea" los vuelos.
+  try {
+    await ensureAirDataBoot();
+  } catch (error) {
+    console.warn("Air data no disponible para el copiloto:", error);
+  }
+  try {
+    const payload = {
+      messages: state.ai.messages.filter((message) => message.role === "user" || message.role === "assistant"),
+      context: buildAiContext(),
+    };
+    const data = await api("/api/ai/chat", { method: "POST", body: JSON.stringify(payload) });
+    state.ai.messages.push({ role: "assistant", content: data.reply || "(sin respuesta)" });
+  } catch (error) {
+    state.ai.messages.push({ role: "assistant", content: `⚠️ ${readableError(error)}`, error: true });
+  } finally {
+    state.ai.pending = false;
+    renderAiChat();
+  }
+}
+
+function renderAiChat() {
+  const host = $("#aiChatMessages");
+  if (!host) return;
+  const bubbles = state.ai.messages.map((message) => {
+    const cls = message.role === "user" ? "ai-msg ai-msg--user" : `ai-msg ai-msg--ai${message.error ? " ai-msg--error" : ""}`;
+    return `<div class="${cls}">${formatAiText(message.content)}</div>`;
+  });
+  if (state.ai.pending) {
+    bubbles.push(`<div class="ai-msg ai-msg--ai ai-msg--pending"><span class="ai-typing"><i></i><i></i><i></i></span></div>`);
+  }
+  host.innerHTML = bubbles.join("");
+  host.scrollTop = host.scrollHeight;
+}
+
+function formatAiText(text) {
+  let html = escapeHtml(String(text || ""));
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/^\s*[-*]\s+(.+)$/gm, "<li>$1</li>");
+  html = html.replace(/((?:<li>.*?<\/li>\s*)+)/gs, "<ul>$1</ul>");
+  html = html.replace(/\n/g, "<br>");
+  return html;
+}
+
+function buildAiContext() {
+  const rows = state.rows || [];
+  const summary = state.photoDetail?.summary || {};
+  const metrics = state.metrics || {};
+  const median = metrics.market?.medianPricePerNight ?? summary.medianPricePerNight ?? null;
+  const round1 = (value) => (typeof value === "number" ? Math.round(value * 10) / 10 : value);
+  // El servidor trunca el snapshot (ventana de contexto pequeña). Limitamos la
+  // lista de hoteles para dejar sitio garantizado a vuelos y métricas.
+  const list = rows.slice(0, 18).map((row) => ({
+    nombre: row.hotelName,
+    riu: isRiuHotel(row.hotelName),
+    adrNoche: row.pricePerNight,
+    adrPersona: row.pricePerPersonPerNight,
+    rating: row.rating,
+    resenas: row.reviewCount,
+    regimen: row.board,
+    cancelacionGratis: row.freeCancellation === true,
+    gapVsMercadoPct: (row.pricePerNight != null && median) ? round1(((row.pricePerNight - median) / median) * 100) : null,
+  }));
+  const airRoutes = state.airData?.routes || [];
+  const air = (state.airData?.summary || airRoutes.length)
+    ? {
+        resumen: state.airData?.summary || null,
+        fuente: state.airData?.isLive ? "datos en vivo (SerpApi)" : "datos de demostración",
+        rutas: airRoutes.slice(0, 12).map((route) => ({
+          mercado: route.market,
+          ruta: `${route.origin}-${route.destination}`,
+          precioMin: route.lowest_price,
+          precioMedio: route.avg_price,
+          gapPrecioPct: round1(route.price_gap_pct),
+          nivelPrecio: route.price_quality_label,
+          nivelGoogle: route.google_price_level,
+          pctDirectos: route.direct_share != null ? round1(route.direct_share * 100) : null,
+          numAerolineas: route.num_airlines,
+          calidadHorariaScore: route.avg_schedule_quality_score,
+          ofertaVuelosScore: route.flight_supply_score,
+          tension: airSemaphore(route).label,
+          senalRevenue: route.revenue_signal,
+        })),
+      }
+    : null;
+  return {
+    mercado: (typeof activePresets === "function" ? activePresets().map((preset) => preset.name).join(", ") : "") || "Mercado activo",
+    capturadoEn: state.latest?.snapshot?.scrapedAt || null,
+    // Orden deliberado: vuelos y agregados primero; la lista larga de hoteles al
+    // final, que es lo que se recorta si el snapshot supera el límite del modelo.
+    vuelos: air,
+    hoteles: {
+      total: rows.length,
+      adrMedioNoche: summary.avgPricePerNight,
+      adrMedioPersona: summary.avgPricePerPersonNight,
+      medianaNoche: median,
+      rateShoppingIndex: metrics.rateShoppingIndex,
+      indicadoresDemanda: metrics.demandIndicators,
+      distribucionTiers: metrics.priceTierDistribution,
+      correlacionRatingPrecio: metrics.ratingPriceCorrelation,
+      lista: list,
+    },
+  };
 }
 
 function addConsoleLog(message, type = "info") {

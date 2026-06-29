@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=bbg36" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=bbg37" />
   </head>
   <body>
     <div class="shell">
@@ -797,10 +797,22 @@
     <div id="commandDock" class="command-dock" aria-hidden="true">
       <div class="cmd-bar cmd-bar--dock" aria-label="Terminal Command Console flotante">
         <span class="cmd-bar__prompt">RIU></span>
-        <input id="dockCmdInput" class="cmd-bar__input" placeholder="Comando..." />
+        <input id="dockCmdInput" class="cmd-bar__input" placeholder="Escribe / para ver comandos · /ask para IA" autocomplete="off" />
         <span class="cmd-bar__cursor"></span>
       </div>
+      <div id="dockSuggest" class="cmd-suggest" role="listbox" aria-label="Comandos disponibles"></div>
+      <div id="aiChat" class="ai-chat" hidden>
+        <div class="ai-chat__header">
+          <span class="ai-chat__title"><span class="ai-chat__dot"></span> Copiloto Revenue · IA</span>
+          <button id="aiChatClose" class="ai-chat__close" type="button" aria-label="Cerrar copiloto (Esc)">✕</button>
+        </div>
+        <div id="aiChatMessages" class="ai-chat__messages" aria-live="polite"></div>
+        <form id="aiChatForm" class="ai-chat__form">
+          <input id="aiChatInput" class="ai-chat__input" placeholder="Pregunta al copiloto…" autocomplete="off" />
+          <button type="submit" class="ai-chat__send" aria-label="Enviar">▸</button>
+        </form>
+      </div>
     </div>
-    <script src="{{ url_for('static', filename='app.js') }}?v=bbg36" defer></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=bbg37" defer></script>
   </body>
 </html>

@@ -308,6 +308,35 @@ def air_data_capture():
     return ok({"run": {"id": run_id, "source": source, "capturedFlights": len(raw_rows)}, "data": payload}, 201)
 
 
+# ---------------------------------------------------------------------------
+# Copiloto IA de revenue
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/ai/status")
+def ai_status():
+    from .ai import is_configured, openai_settings
+    return ok({"configured": is_configured(), "model": openai_settings()["model"]})
+
+
+@app.post("/api/ai/chat")
+def ai_chat_endpoint():
+    from .ai import ai_chat
+    body = request.get_json(silent=True) or {}
+    messages = body.get("messages")
+    context = body.get("context")
+    if not isinstance(messages, list) or not messages:
+        return error_response("Faltan mensajes para el copiloto IA", 400)
+    try:
+        reply = ai_chat(messages, context if isinstance(context, dict) else None)
+    except ValueError as exc:
+        return error_response(str(exc), 503)
+    except Exception as exc:  # noqa: BLE001 - surface a clean message to the terminal
+        logger.exception("AI chat error")
+        return error_response(f"Error del copiloto IA: {exc}", 502)
+    return ok({"reply": reply})
+
+
 @app.errorhandler(ValidationError)
 def validation_error(error: ValidationError):
     return error_response("Payload invalido", 400, details=error.errors())
