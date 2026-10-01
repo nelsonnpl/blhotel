@@ -130,22 +130,22 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 - [ ] §4 · panel lateral «Configuración» (460 px) con fuentes, límites, interruptor, coste, estimación, Cancelar / Guardar · falta · js:`reputationConfigHTML`
 
 ## 5 Vuelos
-- [ ] §5 · cabecera «Conectividad aérea hacia Gran Canaria · N rutas directas desde N mercados emisores», «Foto aérea … · N opciones» y «Nueva captura aérea» · falta · js:`renderFlights`
-- [ ] §5 · desplegable de 380 px con primera salida, presupuesto y estimación (verde/rojo); «Iniciar captura» → `POST /api/jobs/air-capture` · parcial · js:`flightPlanHTML`
-- [ ] §5 · pestañas Resumen · Rutas (N) · Operación aérea (N) · parcial · js:`flightTabsHTML`
-- [ ] §5 · Resumen · 7 KPIs · falta · js:`flightKpisHTML`
-- [ ] §5 · Resumen · red de rutas: arcos bezier a LPA por tercil, grosor por modo (Oferta / Aerolíneas / Precio), etiquetas, LPA con halo, selección, leyenda · falta · js:`renderFlightMap`
-- [ ] §5 · Resumen · ruta seleccionada (select, rejilla 3×2, barras por fecha, aerolíneas, «Ver N vuelos», Copilot) · falta · js:`flightRouteCardHTML`
-- [ ] §5 · Resumen · mapa de calor ruta × semana · falta · js:`flightHeatHTML`
-- [ ] §5 · Resumen · curva de antelación · falta · js:`flightLeadHTML`
-- [ ] §5 · Resumen · cuota por aerolínea (top 8) · falta · js:`flightShareHTML`
-- [ ] §5 · Resumen · mercados emisores · falta · js:`flightMarketsHTML`
-- [ ] §5 · Resumen · señales aéreas (5) · falta · js:`flightSignalsHTML`
-- [ ] §5 · Rutas · gráfico de rangos con Mín · medio · máx, Directos y Δ foto · falta · js:`flightRoutesHTML`
-- [ ] §5 · Operación aérea · cabecera «N de M opciones», Exportar CSV, Pantalla completa · parcial · js:`renderAirOperations`
-- [ ] §5 · Operación aérea · filtros Buscar · Mercado · Ruta · Aerolínea · Conexión · Restablecer · parcial · js:`renderAirOperations`
-- [ ] §5 · Operación aérea · 17 columnas en el orden y anchos del README, primera columna y cabecera fijas · parcial · js:`airOperationRow`
-- [ ] §5 · Operación aérea · ordenación por cabecera (Origen, Fecha, Duración, Precio, AAI) y paginación de 50 · parcial · js:`renderAirOperations`
+- [x] §5 · cabecera «Conectividad aérea hacia Gran Canaria · N rutas directas desde N mercados emisores», «Foto aérea … · N opciones» y «Nueva captura aérea» · hecho · js:`flightHeaderHTML` · el nº de «rutas directas» cuenta rutas con alguna opción directa
+- [x] §5 · desplegable de 380 px con primera salida, presupuesto y estimación (verde/rojo); «Iniciar captura» → `POST /api/jobs/air-capture` · hecho · js:`flightPlanHTML`/`estimateAirCapture`/`startAirCapture` · estimación real de `POST /api/air-data/capture/estimate`; cierra con clic fuera
+- [x] §5 · pestañas Resumen · Rutas (N) · Operación aérea (N) · hecho · js:`flightHeaderHTML` · pestaña recordada en `atlas.flightTab`
+- [x] §5 · Resumen · 7 KPIs · hecho · js:`flightKpisHTML` · Variación = media del Δ de las rutas comparables de `/api/air-data/comparison`
+- [x] §5 · Resumen · red de rutas: arcos bezier a LPA por tercil, grosor por modo (Oferta / Aerolíneas / Precio), etiquetas, LPA con halo, selección, leyenda · hecho · js:`renderFlightMap`/`paintFlightMap` · capa GeoJSON que se reañade tras `setStyle` en oscuro
+- [x] §5 · Resumen · ruta seleccionada (select, rejilla 3×2, barras por fecha, aerolíneas, «Ver N vuelos», Copilot) · hecho · js:`flightRouteCardHTML` · con datos actuales solo hay 1 fecha de salida capturada → 1 barra
+- [x] §5 · Resumen · mapa de calor ruta × semana · hecho · js:`flightHeatHTML` · semanas desde la foto aérea; hoy solo una semana tiene datos (una sola fecha de salida)
+- [x] §5 · Resumen · curva de antelación · hecho · js:`flightLeadHTML` · AAI medio por tramo; tramos sin opciones se muestran «—»
+- [x] §5 · Resumen · cuota por aerolínea (top 8) · hecho · js:`flightShareHTML`
+- [x] §5 · Resumen · mercados emisores · hecho · js:`flightMarketsHTML`
+- [x] §5 · Resumen · señales aéreas (5) · hecho · js:`flightSignalsHTML` · «Mayor cambio» solo si hay foto aérea comparable
+- [x] §5 · Rutas · gráfico de rangos con Mín · medio · máx, Directos y Δ foto · hecho · js:`flightRoutesHTML`
+- [x] §5 · Operación aérea · cabecera «N de M opciones», Exportar CSV, Pantalla completa · hecho · js:`flightOperationsHTML`/`exportAirOperations`/`toggleAirOperationsFullscreen` · CSV `;` con BOM
+- [x] §5 · Operación aérea · filtros Buscar · Mercado · Ruta · Aerolínea · Conexión · Restablecer · hecho · js:`flightOperationsHTML` · backend: nuevo filtro `segment` en `/api/air-data/options`
+- [x] §5 · Operación aérea · 17 columnas en el orden y anchos del README, primera columna y cabecera fijas · hecho · js:`airOperationRow` · anchos exactos vía `<colgroup>`
+- [x] §5 · Operación aérea · ordenación por cabecera (Origen, Fecha, Duración, Precio, AAI) y paginación de 50 · hecho · js:`setAirSort` · backend: nuevas ordenaciones `origin-*` y `date-desc`
 
 ## 6 Copilot
 - [ ] §6 · barra lateral de conversaciones (280 px, ocultable, «+», buscador, descargo al pie) · parcial · js:`renderCopilot`

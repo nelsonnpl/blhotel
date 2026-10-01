@@ -2758,7 +2758,7 @@ function flightHeaderHTML(model) {
   const at = model.capture.capturedAt;
   const plan = st.planOpen ? flightPlanHTML(model) : '';
   return `<div class="page-head"><div><h1>Vuelos</h1><p>Conectividad aérea hacia Gran Canaria · ${direct} ${direct === 1 ? 'ruta directa' : 'rutas directas'} desde ${segments} ${segments === 1 ? 'mercado emisor' : 'mercados emisores'}</p></div>
-    <div class="page-head__meta fl-head"><span>Foto aérea ${esc(fmtStamp(at))} · ${nEs(model.flights.length)} opciones</span><button type="button" class="btn btn--primary btn--icon-text" data-fl-plan aria-expanded="${st.planOpen}" aria-controls="flPlan">Nueva captura aérea</button>${plan}</div></div>
+    <div class="page-head__meta fl-head"><span>Foto aérea ${esc(fmtStamp(at))} · ${nEs(model.flights.length)} opciones</span><button type="button" class="btn btn--primary page-head__btn" data-fl-plan aria-expanded="${st.planOpen}" aria-controls="flPlan">Nueva captura aérea</button>${plan}</div></div>
     <div class="htabs" role="tablist" aria-label="Vistas de vuelos">${[['overview', 'Resumen', ''], ['routes', 'Rutas', model.routes.length], ['operations', 'Operación aérea', model.flights.length]].map(([id, label, count]) => `<button type="button" role="tab" class="htabs__tab${st.tab === id ? ' is-active' : ''}" id="flTab-${id}" data-flight-tab="${id}" aria-selected="${st.tab === id}" aria-controls="flPanel" tabindex="${st.tab === id ? 0 : -1}">${label}${count === '' ? '' : `<span>${nEs(count)}</span>`}</button>`).join('')}</div>`;
 }
 
@@ -2790,7 +2790,7 @@ function flightKpisHTML(model) {
     ['Opciones', nEs(fl.length), '', `${dates} ${dates === 1 ? 'fecha' : 'fechas'} de salida`],
     ['Precio de acceso', access == null ? '—' : nEs(access), access == null ? '' : '€', 'mínimo medio por ruta'],
     ['Precio medio', prices.length ? nEs(prices.reduce((a, b) => a + b, 0) / prices.length) : '—', prices.length ? '€' : '', '1 adulto · solo ida'],
-    ['Variación', v == null ? '—' : biSigned(v), v == null ? '' : '%', v == null ? 'sin foto aérea comparable' : `vs foto aérea anterior · ${model.comparableRoutes} rutas`, v == null ? '' : v > 0 ? 'neg' : v < 0 ? 'pos' : ''],
+    ['Variación', v == null ? '—' : biSigned(v), v == null ? '' : '%', v == null ? 'sin foto aérea comparable' : `vs foto anterior · ${model.comparableRoutes} rutas`, v == null ? '' : v > 0 ? 'neg' : v < 0 ? 'pos' : ''],
     ['Directos', fl.length ? nEs((direct / fl.length) * 100) : '—', fl.length ? '%' : '', `${fl.length - direct} opciones con escala`],
     ['Aerolíneas', nEs(airlines), '', durs.length ? `duración media ${durationLabel(durs.reduce((a, b) => a + b, 0) / durs.length)}` : 'sin duración publicada'],
   ];
@@ -2885,7 +2885,7 @@ function flightOverviewHTML(model) {
   const focus = model.routes.find((r) => r.code === st.focus) || model.routes[0] || null;
   st.focus = focus ? focus.code : null;
   const legend = { options: 'Número de opciones observadas', airlines: 'Número de aerolíneas', price: 'Más gruesa = más barata' }[st.mapMode];
-  return `<section class="kpi-strip kpi-strip--bi" aria-label="Resumen de conectividad">${flightKpisHTML(model)}</section>
+  return `<section class="kpi-strip kpi-strip--bi kpi-strip--fl" aria-label="Resumen de conectividad">${flightKpisHTML(model)}</section>
     <div class="dash-grid">
       <article class="dash-card dash-card--map fl-map-card"><div class="dash-card__head"><div><span class="card__kicker">Red de rutas</span><h2>Conectividad hacia LPA</h2></div>
         <div class="fl-map__tools"><div class="seg seg--sm" role="group" aria-label="Grosor de línea">${[['options', 'Oferta'], ['airlines', 'Aerolíneas'], ['price', 'Precio']].map(([id, label]) => `<button type="button" class="${st.mapMode === id ? 'is-active' : ''}" data-fl-mode="${id}" aria-pressed="${st.mapMode === id}">${label}</button>`).join('')}</div>
@@ -5418,9 +5418,6 @@ function wireEvents() {
       const close = $('#closeCopilotPanel'); close?.click(); e.preventDefault(); return;
     }
   });
-  document.addEventListener('error', (e) => {
-    if (e.target instanceof HTMLImageElement && e.target.classList.contains('flight-airline__logo-img')) e.target.remove();
-  }, true);
   document.addEventListener('mouseover', (e) => {
     const item = e.target instanceof Element ? e.target.closest('.palette__item') : null;
     if (item && Number(item.dataset.paletteIndex) !== State.palette.index) setPaletteIndex(Number(item.dataset.paletteIndex), false);
