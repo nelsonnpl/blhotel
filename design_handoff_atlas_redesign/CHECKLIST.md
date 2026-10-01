@@ -156,12 +156,12 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 - [x] §6 · abrir con pregunta escrita desde otras vistas (crea conversación nueva y envía) · hecho · js:`askCopilot`/`renderCopilot`
 
 ## 7 Espacio de trabajo
-- [ ] §7 · paleta de bloques (300 px) con etiquetas KPI / TAB / LIN / AIR / QA y «+» · parcial · js:`renderWorkspace`
-- [ ] §7 · cabecera: título editable, estado Guardado / Cambios sin guardar, Copilot, Guardar · parcial · js:`renderWorkspace`
-- [ ] §7 · barra de contexto: extracción, entrada, observaciones, chip «Enlace A · hotel» con × · parcial · js:`workspaceContextHTML`
-- [ ] §7 · tablero de 2 columnas (KPIs a todo el ancho), ↑ ↓ × por bloque · parcial · js:`renderLayer`
-- [ ] §7 · pulsar un hotel en la tabla lo enlaza y la gráfica ADR muestra su cambio · parcial · js:`toggleWorkspaceHotelSelection`
-- [ ] §7 · estado vacío «Tablero vacío» con «Restaurar tablero base» · falta · js:`renderWorkspace`
+- [x] §7 · paleta de bloques (300 px) con etiquetas KPI / TAB / LIN / AIR / QA y «+» · hecho · js:`blockAdd` · se quita la nota «Enlaces seguros» (no está en el prototipo)
+- [x] §7 · cabecera: título editable, estado Guardado / Cambios sin guardar, Copilot, Guardar · hecho · js:`renderWorkspace`
+- [x] §7 · barra de contexto: extracción, entrada, observaciones, chip «Enlace A · hotel» con × · hecho · js:`workspaceContextHTML` · el chip de enlace aparece por cada grupo con hotel enlazado
+- [x] §7 · tablero de 2 columnas (KPIs a todo el ancho), ↑ ↓ × por bloque · hecho · js:`renderLayer` · KPIs a todo el ancho; la tarjeta meteorológica existente se conserva al final, a media columna; el historial de versiones pasa debajo del tablero
+- [x] §7 · pulsar un hotel en la tabla lo enlaza y la gráfica ADR muestra su cambio · hecho · js:`workspaceHotelTrendHTML` · corrige una regresión: la gráfica llamaba a `dashboardHotelTrendHTML`, eliminada con el Dashboard antiguo
+- [x] §7 · estado vacío «Tablero vacío» con «Restaurar tablero base» · hecho · js:`renderWorkspace` · «Restaurar tablero base» repone los bloques por defecto como borrador
 - [ ] §7 · guardado en el endpoint actual (o `atlas.ws.v1`) · hecho · js:`saveWorkspaceDraft`
 
 ## Interactions & Behavior

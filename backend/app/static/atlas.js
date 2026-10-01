@@ -4666,10 +4666,10 @@ async function uploadCopilotAttachment(file) {
 
 /* =============================================================== WORKSPACE */
 const WORKSPACE_BLOCK_LIBRARY = {
-  'market-kpis': { badge: 'KPI', title: 'KPIs certificados', description: 'Mediana, IQR y cobertura', size: 'wide', linkGroup: 'none' },
+  'market-kpis': { badge: 'KPI', title: 'KPIs certificados', description: 'Mediana, rango y cobertura', size: 'wide', linkGroup: 'none' },
   'hotel-table': { badge: 'TAB', title: 'Tabla hotelera', description: 'Selecciona y enlaza', size: 'wide', linkGroup: 'A' },
   'hotel-trend': { badge: 'LIN', title: 'Gráfica ADR', description: 'Evolución del mercado', size: 'medium', linkGroup: 'A' },
-  'flight-chart': { badge: 'AIR', title: 'Gráfica aérea', description: 'Mediana por ruta', size: 'medium', linkGroup: 'B' },
+  'flight-chart': { badge: 'AIR', title: 'Gráfica aérea', description: 'Mínimo por ruta', size: 'medium', linkGroup: 'B' },
   'data-quality': { badge: 'QA', title: 'Calidad de datos', description: 'Vigencia y límites', size: 'medium', linkGroup: 'none' },
 };
 
@@ -4807,15 +4807,15 @@ function workspaceSemanticHotels(payload) {
   }).filter((item) => item.hotelKey && Number.isFinite(item.pricePerNight)).sort((a, b) => b.pricePerNight - a.pricePerNight);
 }
 
-function workspaceContextHTML(context, semantic) {
-  if (!context.capture) return '<div class="workspace-context empty">No hay extracciones disponibles para fijar el contexto del tablero.</div>';
-  const captureLabel = context.capture.snapshotIds?.length > 1
-    ? `fotos #${context.capture.snapshotIds[0]}–#${context.capture.snapshotIds.at(-1)}`
-    : `foto #${context.anchorSnapshotId}`;
-  const scope = context.checkIn ? `Entrada ${context.checkIn}` : 'Todas las entradas del barrido';
-  const inferred = context.capture.kind === 'legacy_inferred_capture_group' ? ' · agrupación histórica inferida' : '';
+function workspaceContextHTML(context, semantic, selections = {}) {
+  if (!context.capture) return '<div class="ws-context"><span class="card__kicker">Contexto</span><span class="dim">No hay extracciones disponibles para fijar el contexto del tablero.</span></div>';
   const population = semantic?.population;
-  return `<section class="workspace-context" aria-label="Contexto común del tablero"><div><span class="nav-label">Contexto común</span><strong>${esc(scope)}</strong><small>${esc(captureLabel)} · observada ${esc(fmtStamp(context.capture.observedAt))}${esc(inferred)}</small></div><div class="workspace-context__fields"><label>Extracción<select class="input" data-workspace-context="captureAnchorSnapshotId">${(State.captureHistories[State.targetId]?.captures || []).map((capture) => `<option value="${nEs(capture.anchorSnapshotId)}"${capture.anchorSnapshotId === context.anchorSnapshotId ? ' selected' : ''}>${esc(fmtStamp(capture.observedAt))} · #${nEs(capture.snapshotIds?.[0])}–#${nEs(capture.snapshotIds?.at(-1))}</option>`).join('')}</select></label><label>Entrada<select class="input" data-workspace-context="checkIn"><option value="">Todas</option>${context.availableCheckIns.map((checkIn) => `<option value="${esc(checkIn)}"${checkIn === context.checkIn ? ' selected' : ''}>${esc(checkIn)}</option>`).join('')}</select></label></div><p>Aplicado a KPIs, tabla hotelera y gráfica ADR · ${population ? `${nEs(population.comparableRows)} observaciones comparables` : 'consulta pendiente'}</p></section>`;
+  const inferred = context.capture.kind === 'legacy_inferred_capture_group' ? ' · agrupación histórica inferida' : '';
+  const links = Object.entries(selections).filter(([, sel]) => sel).map(([group, sel]) => `<span class="ws-link">Enlace ${esc(group)} · ${esc(sel.hotelName)}<button type="button" data-workspace-unlink="${esc(group)}" aria-label="Quitar enlace ${esc(group)}">×</button></span>`).join('');
+  return `<section class="ws-context" aria-label="Contexto común del tablero"><span class="card__kicker">Contexto</span>
+    <label><span class="sr-only">Extracción</span><select data-workspace-context="captureAnchorSnapshotId" title="Observada ${esc(fmtStamp(context.capture.observedAt))}${esc(inferred)}">${(State.captureHistories[State.targetId]?.captures || []).map((capture) => `<option value="${nEs(capture.anchorSnapshotId)}"${capture.anchorSnapshotId === context.anchorSnapshotId ? ' selected' : ''}>Extracción ${esc(fmtStamp(capture.observedAt))} · #${nEs(capture.snapshotIds?.[0])}–#${nEs(capture.snapshotIds?.at(-1))}</option>`).join('')}</select></label>
+    <label><span class="sr-only">Entrada</span><select data-workspace-context="checkIn"><option value="">Todas las entradas</option>${context.availableCheckIns.map((checkIn) => `<option value="${esc(checkIn)}"${checkIn === context.checkIn ? ' selected' : ''}>Entrada ${esc(biDayLabel(checkIn))}</option>`).join('')}</select></label>
+    <span class="ws-context__obs">${population ? `${nEs(population.comparableRows)} observaciones comparables` : 'consulta pendiente'}</span>${links}</section>`;
 }
 
 function workspaceSelectionKey(targetId, linkGroup) { return `${targetId}:${linkGroup || 'none'}`; }
@@ -4929,41 +4929,32 @@ async function renderWorkspace() {
     }));
     if (State.targetId !== renderTargetId) return;
   } catch (_) { if (State.targetId !== renderTargetId) return; /* cada bloque expresa el error de su histórico sin bloquear el tablero */ }
+  if (layers.some((layer) => layer.type.startsWith('flight-')) && !State.air) {
+    try { State.air = await api('/api/air-data?direction=arrival'); } catch (_) { /* el bloque aéreo muestra su propio vacío */ }
+    if (State.targetId !== renderTargetId) return;
+  }
   const blocks = layers.map((l, index) => renderLayer(l, m, selections, selectionHistories, index, layers.length, semantic, context)).join('');
   const saveLabel = State.workspaceDirty ? 'Cambios sin guardar' : 'Guardado';
 
   host.innerHTML = `<div class="workspace">
-    <aside class="workspace__aside">
-      <div>
-        <div class="nav-label" style="padding:0 0 5px;">Composición</div>
-        <h2>Fuentes y capas</h2>
-        <p>Añade bloques al tablero. Los grupos de enlace se muestran sólo cuando el bloque declara una dimensión compatible.</p>
-      </div>
-      <div class="block-list">
-        ${Object.entries(WORKSPACE_BLOCK_LIBRARY).map(([type, block]) => blockAdd(type, block)).join('')}
-      </div>
-      <div class="note-box"><strong>Enlaces seguros</strong>Hoteles por hotel y estancia; vuelos por ruta. No hay cruces many-to-many.</div>
+    <aside class="workspace__aside" aria-label="Bloques disponibles">
+      <div><span class="card__kicker">Composición</span><h2>Bloques</h2><p>Añade bloques al tablero. Los enlazados comparten el hotel seleccionado.</p></div>
+      <div class="block-list">${Object.entries(WORKSPACE_BLOCK_LIBRARY).map(([type, block]) => blockAdd(type, block)).join('')}</div>
     </aside>
     <section class="workspace__main">
-      <div class="page-head" style="margin-bottom:18px;">
-        <div>
-          <div class="nav-label" style="padding:0 0 5px;">Pizarra personal</div>
-          <div class="workspace-title-row">
-            <label class="workspace-title-label"><span class="sr-only">Nombre del análisis</span><input id="workspaceName" value="${esc(ws.name)}" maxlength="120" aria-label="Nombre del análisis"></label>
-            <span class="saved-chip${State.workspaceDirty ? ' is-dirty' : ''}"><i></i>${saveLabel}</span>
-          </div>
-        </div>
-        <div class="workspace-actions"><button type="button" class="btn btn--quiet" data-workspace-ask data-workspace-anchor="${nEs(context?.anchorSnapshotId)}" data-workspace-checkin="${esc(context?.checkIn || '')}">Preguntar al Copilot</button><button type="button" class="btn btn--sm" id="workspaceSave"${State.workspaceDirty ? '' : ' disabled'}>Guardar cambios</button></div>
+      <div class="ws-head">
+        <div><span class="card__kicker">Pizarra personal</span><label class="ws-title"><span class="sr-only">Nombre del análisis</span><input id="workspaceName" value="${esc(ws.name)}" maxlength="120" aria-label="Nombre del análisis"></label></div>
+        <div class="ws-head__actions"><span class="saved-chip${State.workspaceDirty ? ' is-dirty' : ''}"><i></i>${saveLabel}</span><button type="button" class="btn page-head__btn" data-workspace-ask data-workspace-anchor="${nEs(context?.anchorSnapshotId)}" data-workspace-checkin="${esc(context?.checkIn || '')}">Preguntar al Copilot</button><button type="button" class="btn btn--primary page-head__btn" id="workspaceSave"${State.workspaceDirty ? '' : ' disabled'}>Guardar</button></div>
       </div>
       ${State.workspaceSaveError ? `<div class="inline-error workspace-save-error" role="alert">${esc(State.workspaceSaveError)}</div>` : ''}
-      ${workspaceContextHTML(context, semantic)}
-      ${workspaceRevisionHistoryHTML(revisions, ws.version)}
-      <div class="board">${blocks || '<div class="empty workspace-empty">Añade un bloque para iniciar este análisis.</div>'}
-        <article class="wblock wide" id="workspaceWeatherExample">
-          <div class="wblock__head"><div class="lhs"><span class="badge">MET</span><strong>Cobertura meteorológica por mercado</strong></div><button type="button" class="btn btn--quiet" data-weather-market>Consultar ahora</button></div>
+      ${workspaceContextHTML(context, semantic, selections)}
+      <div class="board">${blocks || '<div class="ws-empty"><strong>Tablero vacío</strong><span>Añade bloques desde la columna izquierda o vuelve al tablero base.</span><button type="button" class="btn" data-workspace-reset>Restaurar tablero base</button></div>'}
+        ${blocks ? `<article class="wblock" id="workspaceWeatherExample">
+          <div class="wblock__head"><div class="lhs"><span class="badge">MET</span><strong>Cobertura meteorológica</strong></div><button type="button" class="btn btn--xs" data-weather-market>Consultar ahora</button></div>
           <div class="empty">Agrupa hoteles cercanos y consulta una previsión por grupo geográfico.</div>
-        </article>
+        </article>` : ''}
       </div>
+      ${workspaceRevisionHistoryHTML(revisions, ws.version)}
     </section>
   </div>`;
   runCounters(host);
@@ -5000,7 +4991,7 @@ function blockAdd(type, block) {
 function renderLayer(l, m, selections = {}, selectionHistories = {}, index = 0, layerCount = 0, semantic = null, context = null) {
   const badge = { 'market-kpis': 'KPI', 'hotel-table': 'TAB', 'hotel-trend': 'LIN', 'flight-table': 'AIR', 'flight-chart': 'AIR', 'data-quality': 'QA' }[l.type] || '·';
   const link = l.linkGroup && l.linkGroup !== 'none' ? `<span class="link-badge">Enlace ${l.linkGroup}</span>` : '';
-  const wide = l.size === 'wide' ? ' wide' : '';
+  const wide = l.type === 'market-kpis' ? ' wide' : '';
   let inner = '';
   const market = m.market || {}, rs = m.rateShoppingIndex || {}, dq = m.dataQuality || {};
   const scopedHotels = workspaceSemanticHotels(semantic);
@@ -5026,30 +5017,49 @@ function renderLayer(l, m, selections = {}, selectionHistories = {}, index = 0, 
     }
   } else if (l.type === 'hotel-table') {
     const selectable = l.linkGroup && l.linkGroup !== 'none';
-    inner = `<table class="t workspace-hotel-table"><tbody>${cs.slice(0, 4).map((h) => `<tr class="${selectedHotel?.hotelKey === h.hotelKey ? 'is-selected' : ''}"><td class="name" style="padding:0;">${selectable && h.hotelKey ? `<button type="button" class="workspace-hotel-select" data-workspace-hotel="${esc(h.hotelKey)}" data-workspace-hotel-name="${esc(h.hotelName)}" data-workspace-link="${esc(l.linkGroup)}" aria-pressed="${selectedHotel?.hotelKey === h.hotelKey ? 'true' : 'false'}">${esc(h.hotelName)}</button>` : esc(h.hotelName)}</td><td class="num" style="padding:9px 0;">${eur(h.pricePerNight)}</td><td class="num" style="padding:9px 0 9px 12px; color:var(--ac);">${signPct(h.gapVsMarketPct)}</td></tr>`).join('')}</tbody></table>`;
+    inner = `<table class="ws-table"><caption class="sr-only">Hoteles del contexto con precio por noche y diferencia frente a la media</caption><tbody>${cs.slice(0, 5).map((h) => `<tr class="${selectedHotel?.hotelKey === h.hotelKey ? 'is-selected' : ''}"><td>${selectable && h.hotelKey ? `<button type="button" class="ws-table__hotel" data-workspace-hotel="${esc(h.hotelKey)}" data-workspace-hotel-name="${esc(h.hotelName)}" data-workspace-link="${esc(l.linkGroup)}" aria-pressed="${selectedHotel?.hotelKey === h.hotelKey ? 'true' : 'false'}" title="${esc(h.hotelName)}">${esc(h.hotelName)}</button>` : `<span class="ws-table__hotel">${esc(h.hotelName)}</span>`}</td><td class="r mono">${eur(h.pricePerNight)}</td><td class="r mono ws-table__gap">${signPct(h.gapVsMarketPct)}</td></tr>`).join('')}</tbody></table>`;
   } else if (l.type === 'hotel-trend') {
     const selectedHistory = selectedHotel ? selectionHistories[selectedHotel.hotelKey] : null;
     const scopedHistory = context?.checkIn ? (selectedHistory || []).filter((entry) => entry.checkIn === context.checkIn) : selectedHistory;
     inner = selectedHotel
-      ? `<div class="workspace-selection-note">Hotel seleccionado · <strong>${esc(selectedHotel.hotelName)}</strong>${context?.checkIn ? ` · entrada ${esc(context.checkIn)}` : ''}</div>${scopedHistory?.length ? dashboardHotelTrendHTML({ hotelName: selectedHotel.hotelName, currency: 'EUR' }, scopedHistory, 620) : '<div class="dashboard-trend-empty">No hay histórico del hotel para la fecha de entrada seleccionada.</div>'}`
+      ? `<div class="workspace-selection-note">Hotel seleccionado · <strong>${esc(selectedHotel.hotelName)}</strong>${context?.checkIn ? ` · entrada ${esc(context.checkIn)}` : ''}</div>${scopedHistory?.length ? workspaceHotelTrendHTML(scopedHistory) : '<div class="dashboard-trend-empty">No hay histórico del hotel para la fecha de entrada seleccionada.</div>'}`
       : (() => {
         const pts = (m.trend || []).filter((t) => t.avgPricePerNight != null && t.currency === 'EUR').map((t) => ({ v: t.avgPricePerNight }));
-        return pts.length >= 2 ? `${lineSVG(pts)}<small>Selecciona un hotel de la tabla enlazada para comparar dos extracciones por fecha de entrada.</small>` : '<div class="empty">Se necesitan dos fotos con tarifa por noche en EUR.</div>';
+        return pts.length >= 2 ? `${lineSVG(pts)}<small class="ws-hint">Selecciona un hotel en la tabla enlazada para compararlo entre fotos.</small>` : '<div class="empty">Se necesitan dos fotos con tarifa por noche en EUR.</div>';
       })();
-  } else if (l.type === 'flight-chart' || l.type === 'flight-table') {
-    const routes = (State.air ? State.air.routes : []).slice(0, 5).map((r) => ({ v: r.avg_price }));
-    inner = routes.length ? lineSVG(routes) : `<div class="empty" style="height:120px;">Captura vuelos para ver esta gráfica.</div>`;
+  } else if (l.type === 'flight-table') {
+    const routes = (State.air?.routes || []).filter((r) => Number(r.lowest_price) > 0).sort((a, b) => Number(a.lowest_price) - Number(b.lowest_price)).slice(0, 6);
+    inner = routes.length ? `<table class="ws-table"><caption class="sr-only">Rutas aéreas con opciones, precio mínimo y medio</caption><thead><tr><th scope="col">Ruta</th><th scope="col" class="r">Opciones</th><th scope="col" class="r">Mínimo</th><th scope="col" class="r">Medio</th></tr></thead><tbody>${routes.map((r) => `<tr><td><span class="ws-table__hotel">${esc(r.origin)} → ${esc(r.destination || 'LPA')} <small class="dim">${esc(r.market || '')}</small></span></td><td class="r mono">${nEs(r.num_options || 0)}</td><td class="r mono">${eur(r.lowest_price)}</td><td class="r mono">${eur(r.avg_price)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Captura vuelos para ver esta tabla.</div>';
+  } else if (l.type === 'flight-chart') {
+    const routes = (State.air?.routes || []).filter((r) => Number(r.lowest_price) > 0).sort((a, b) => Number(b.lowest_price) - Number(a.lowest_price)).slice(0, 6);
+    const max = Math.max(1, ...routes.map((r) => Number(r.lowest_price)));
+    inner = routes.length ? `<div class="ws-air">${routes.map((r) => `<div class="ws-air__row"><strong>${esc(r.origin)} → ${esc(r.destination || 'LPA')}</strong><span class="ws-air__bar"><i style="width:${((Number(r.lowest_price) / max) * 100).toFixed(1)}%"></i></span><span class="mono">${eur(r.lowest_price)}</span></div>`).join('')}</div>` : '<div class="empty">Captura vuelos para ver esta gráfica.</div>';
   } else if (l.type === 'data-quality') {
     const population = semantic?.population;
-    inner = `<div class="mini-kpis" style="grid-template-columns:repeat(2,1fr);">
-      ${miniKpi('Filas', nEs(population?.totalRows ?? dq.totalRows ?? 0))}
-      ${miniKpi('Con precio', nEs(population?.pricedRows ?? dq.pricedRows ?? 0))}
-    </div>${(dq.notes || []).slice(0, 2).map((n) => `<p style="margin:10px 0 0; font-size:11.5px; color:var(--muted);">${esc(n)}</p>`).join('')}`;
+    const age = dataAgeDays(State.lastExtractionAt);
+    const tile = (label, value, tone = '') => `<div class="ws-qa"><span>${label}</span><strong class="${tone}">${value}</strong></div>`;
+    inner = `<div class="ws-qa-grid">${tile('Filas', nEs(population?.totalRows ?? dq.totalRows ?? 0))}${tile('Con precio', nEs(population?.pricedRows ?? dq.pricedRows ?? 0))}${tile('Vigencia', age == null ? '—' : age <= 1 ? 'Vigente' : `Hace ${nEs(age)} d`, age != null && age > 1 ? 'warn' : '')}${tile('Comparables', nEs(population?.comparableRows ?? dq.comparableRows ?? 0))}</div>${(dq.notes || []).slice(0, 2).map((n) => `<p class="ws-note">${esc(n)}</p>`).join('')}`;
   }
   return `<article class="wblock${wide}">
     <div class="wblock__head"><div class="lhs"><span class="badge">${badge}</span><strong>${esc(l.title)}</strong></div><div class="wblock__tools">${link}<div class="workspace-layer-order" role="group" aria-label="Orden de ${esc(l.title)}"><button type="button" class="icon-btn workspace-layer-move" data-workspace-move="${esc(l.id || '')}" data-workspace-direction="-1" aria-label="Subir ${esc(l.title)}"${index === 0 ? ' disabled' : ''}>↑</button><button type="button" class="icon-btn workspace-layer-move" data-workspace-move="${esc(l.id || '')}" data-workspace-direction="1" aria-label="Bajar ${esc(l.title)}"${index === layerCount - 1 ? ' disabled' : ''}>↓</button></div><button type="button" class="icon-btn workspace-layer-remove" data-workspace-remove="${esc(l.id || '')}" aria-label="Quitar ${esc(l.title)}">×</button></div></div>
     ${inner}
   </article>`;
+}
+/* Precio del hotel enlazado por foto (mediana de sus estancias) y cambio entre las dos últimas fotos. */
+function workspaceHotelTrendHTML(history) {
+  const bySnapshot = new Map();
+  (history || []).forEach((entry) => {
+    const price = Number(entry.pricePerNight);
+    if (entry.snapshotId == null || !Number.isFinite(price) || !Number.isFinite(Date.parse(entry.scrapedAt))) return;
+    if (!bySnapshot.has(entry.snapshotId)) bySnapshot.set(entry.snapshotId, { snapshotId: entry.snapshotId, scrapedAt: entry.scrapedAt, prices: [] });
+    bySnapshot.get(entry.snapshotId).prices.push(price);
+  });
+  const series = [...bySnapshot.values()].map((item) => ({ ...item, v: median(item.prices) })).sort((a, b) => Date.parse(a.scrapedAt) - Date.parse(b.scrapedAt) || a.snapshotId - b.snapshotId);
+  if (series.length < 2) return '<div class="dashboard-trend-empty">Se necesitan dos fotos con precio válido para representar la evolución.</div>';
+  const previous = series.at(-2), current = series.at(-1);
+  const change = previous.v ? ((current.v / previous.v) - 1) * 100 : null;
+  const stat = (label, value, foot, tone = '') => `<div class="ws-trend__stat"><span>${label}</span><strong class="${tone}">${value}</strong><small>${foot}</small></div>`;
+  return `<div class="ws-trend">${stat('Foto anterior', eur(previous.v), `#${nEs(previous.snapshotId)} · ${esc(fmtStamp(previous.scrapedAt))}`)}${stat('Última foto', eur(current.v), `#${nEs(current.snapshotId)} · ${esc(fmtStamp(current.scrapedAt))}`)}${stat('Cambio', signPct(change), 'mediana de sus estancias', change > 0 ? 'neg' : change < 0 ? 'pos' : '')}</div>${lineSVG(series.map((item) => ({ v: item.v })))}`;
 }
 function miniKpi(k, v) { return `<div class="mini-kpi"><div class="k">${esc(k)}</div><strong>${v}</strong></div>`; }
 
@@ -5643,6 +5653,9 @@ function wireEvents() {
     const workspaceRestore = e.target.closest('[data-workspace-restore]');
     if (workspaceRestore) { restoreWorkspaceRevision(workspaceRestore.dataset.workspaceRestore); return; }
     if (e.target.closest('#workspaceSave')) { void saveWorkspaceDraft(); return; }
+    const workspaceUnlink = e.target.closest('[data-workspace-unlink]');
+    if (workspaceUnlink) { delete State.workspaceHotelSelections[workspaceSelectionKey(State.targetId, workspaceUnlink.dataset.workspaceUnlink)]; renderWorkspace(); return; }
+    if (e.target.closest('[data-workspace-reset]') && State.workspaceDraft) { State.workspaceDraft.layers = defaultWorkspaceDraft(State.targetId).layers; setWorkspaceDirty(); renderWorkspace(); return; }
     const mk = e.target.closest('[data-market]');
     if (mk) { selectMarket(mk.dataset.market); return; }
     const capMk = e.target.closest('[data-cap-market]');
