@@ -4373,7 +4373,7 @@ function copilotSections(text) {
 }
 
 function copilotConfidence(text) {
-  const m = String(text || '').match(/confianza\s+\**\s*(media-alta|media-baja|alta|media|baja)\b/i);
+  const m = String(text || '').match(/confianza\s+\**\s*(media-alta|media-baja|baja-media|alta-media|alta|media|baja)\b/i);
   return m ? m[1].toLowerCase() : null;
 }
 

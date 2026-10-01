@@ -828,8 +828,8 @@ body[data-view="copilot"] .topbar [data-nav="copilot"] { display: none; }
 .msg-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .msg-card__head strong { font-size: 14px; font-weight: 600; }
 .msg-card__conf { padding: 3px 8px; border-radius: 6px; background: var(--line-soft); color: var(--muted); font: 9.5px 'Space Mono', monospace; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
-.msg-card__conf--alta, .msg-card__conf--media-alta { background: var(--good-bg); color: var(--green); }
-.msg-card__conf--media-baja, .msg-card__conf--baja { background: var(--warn-bg); color: var(--warn-ink); }
+.msg-card__conf--alta, .msg-card__conf--media-alta, .msg-card__conf--alta-media { background: var(--good-bg); color: var(--green); }
+.msg-card__conf--media-baja, .msg-card__conf--baja-media, .msg-card__conf--baja { background: var(--warn-bg); color: var(--warn-ink); }
 .msg-card__text { font-size: 13.5px; }
 .msg-card__next { display: flex; align-items: baseline; gap: 12px; margin-top: 12px; padding: 11px 14px; border-radius: 9px; background: var(--accent-soft); }
 .msg-card__next > span { flex: 0 0 auto; font: 9.5px 'Space Mono', monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--ac); }
