@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="display:flex;height:calc(100vh - 60px);animation:atFade 300ms ease both">
+  <sc-if value="{{ listOpen }}" hint-placeholder-val="{{ true }}">
+    <aside style="width:280px;flex:0 0 280px;border-right:1px solid var(--border);background:var(--card);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 16px 12px">
+        <div><strong style="font-size:15px;font-weight:600">Conversaciones</strong><div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--faint);margin-top:2px">{{ convCount }}</div></div>
+        <button type="button" onClick="{{ newConv }}" aria-label="Nueva conversación" title="Nueva conversación" style="width:32px;height:32px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-size:17px;line-height:1">+</button>
+      </div>
+      <div style="padding:0 16px 12px">
+        <input value="{{ convQ }}" onChange="{{ onConvQ }}" placeholder="Buscar conversaciones" style="width:100%;height:34px;padding:0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);font-size:12.5px;outline:0">
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:0 10px;display:flex;flex-direction:column;gap:2px">
+        <sc-for list="{{ convs }}" as="c" hint-placeholder-count="2">
+          <button type="button" onClick="{{ c.pick }}" style="display:flex;flex-direction:column;gap:3px;padding:10px 12px;border:0;border-radius:9px;background:{{ c.bg }};text-align:left;color:var(--ink)" style-hover="background:var(--hover)">
+            <span style="font-size:13px;font-weight:{{ c.weight }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%">{{ c.title }}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)">{{ c.date }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <p style="margin:0;padding:14px 16px;border-top:1px solid var(--line);font-size:11px;line-height:1.5;color:var(--faint)">Respuestas basadas en capturas de Booking y vuelos. No sustituye pickup ni ocupación del PMS.</p>
+    </aside>
+  </sc-if>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)">
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--card)">
+      <button type="button" onClick="{{ toggleList }}" aria-label="Mostrar conversaciones" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--muted);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button>
+      <div style="flex:1">
+        <strong style="font-size:17px;font-weight:600;letter-spacing:-.015em">Copilot</strong>
+        <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--faint);margin-top:2px;white-space:nowrap">{{ market }} · asistente de revenue</div>
+      </div>
+      <span style="font-family:'Space Mono',monospace;font-size:10px;padding:5px 9px;border-radius:6px;background:var(--warn-bg);color:var(--warn-ink);white-space:nowrap">Datos de hace 38 días</span>
+      <select style="height:32px;padding:0 8px;border:1px solid var(--border-soft);border-radius:8px;background:var(--card);font-size:12px;color:var(--ink)"><option>Modelo automático</option><option>Rápido</option><option>Razonamiento</option></select>
+    </div>
+
+    <div ref="{{ scrollRef }}" style="flex:1;overflow-y:auto;padding:28px 24px">
+      <div style="max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:22px">
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:80px 0 20px;text-align:center">
+            <div style="width:44px;height:44px;border-radius:12px;background:var(--accent-soft);color:var(--ac);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5z"></path></svg></div>
+            <strong style="font-size:18px;font-weight:600;letter-spacing:-.015em">¿Qué quieres revisar hoy?</strong>
+            <span style="font-size:13px;color:var(--muted)">Pregunta por precios, movimientos o posicionamiento del set.</span>
+          </div>
+        </sc-if>
+        <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="2">
+          <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}">
+            <div style="align-self:flex-end;max-width:70%;padding:11px 15px;border-radius:14px 14px 4px 14px;background:var(--ac);color:#fff;font-size:13.5px;line-height:1.45;animation:atIn 240ms cubic-bezier(.22,1,.36,1) both">{{ m.text }}</div>
+          </sc-if>
+          <sc-if value="{{ m.isAi }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:12px;align-items:flex-start;animation:atIn 300ms cubic-bezier(.22,1,.36,1) both">
+              <div style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:var(--dark);display:flex;align-items:center;justify-content:center"><div style="width:9px;height:9px;border-radius:50%;border:2px solid #fff;border-right-color:transparent"></div></div>
+              <div style="flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:4px 14px 14px 14px;overflow:hidden">
+                <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;font-size:13.5px;line-height:1.55">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                    <strong style="font-size:14px;font-weight:600">{{ m.title }}</strong>
+                    <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:{{ m.confBg }};color:{{ m.confInk }}">Confianza {{ m.conf }}</span>
+                  </div>
+                  <p style="margin:0;text-wrap:pretty" dangerouslySetInnerHTML="{{ m.lead }}"></p>
+                  <sc-if value="{{ m.hasBars }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:10px;background:var(--input);border:1px solid var(--line)">
+                      <sc-for list="{{ m.bars }}" as="b" hint-placeholder-count="5">
+                        <div style="display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr) 84px;align-items:center;gap:12px;font-size:12px">
+                          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.name }}</span>
+                          <div style="height:6px;border-radius:3px;background:var(--line)"><div style="height:100%;width:{{ b.w }};border-radius:3px;background:{{ b.c }};transform-origin:left;animation:atWipe 700ms cubic-bezier(.22,1,.36,1) both"></div></div>
+                          <span style="font-family:'Space Mono',monospace;font-size:11px;text-align:right">{{ b.v }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ m.hasNext }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:10px;padding:10px 12px;border-radius:9px;background:var(--accent-soft)">
+                      <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ac);padding-top:2px;white-space:nowrap">Siguiente</span>
+                      <span style="font-size:13px">{{ m.next }}</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ m.hasLimit }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:12px;color:var(--faint)">{{ m.limit }}</span>
+                  </sc-if>
+                </div>
+                <button type="button" onClick="{{ m.toggleTrace }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 18px;border:0;border-top:1px solid var(--line);background:var(--input);font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">
+                  <span>Trazabilidad · {{ m.src }}</span><span style="color:var(--green)">{{ m.traceSign }}</span>
+                </button>
+                <sc-if value="{{ m.traceOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:10px 18px 14px;background:var(--input);display:flex;flex-direction:column;gap:5px;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted)">
+                    <sc-for list="{{ m.trace }}" as="tr" hint-placeholder-count="3"><span>{{ tr }}</span></sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+        </sc-for>
+        <sc-if value="{{ typing }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:12px;align-items:center">
+            <div style="width:28px;height:28px;border-radius:8px;background:var(--dark);display:flex;align-items:center;justify-content:center"><div style="width:9px;height:9px;border-radius:50%;border:2px solid #fff;border-right-color:transparent;animation:atPulse 1s ease-in-out infinite"></div></div>
+            <div style="width:220px;height:14px;border-radius:7px;background:linear-gradient(90deg,var(--line) 25%,var(--card) 50%,var(--line) 75%);background-size:400px 100%;animation:atShimmer 1.1s linear infinite"></div>
+            <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)">consultando foto #18…</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <div style="padding:12px 24px 20px;background:var(--bg)">
+      <div style="max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <sc-for list="{{ suggestions }}" as="sg" hint-placeholder-count="4">
+            <button type="button" onClick="{{ sg.use }}" style="height:30px;padding:0 12px;border:1px solid var(--border-soft);border-radius:999px;background:var(--card);font-size:12px;color:var(--ink);white-space:nowrap" style-hover="border-color:var(--ac);color:var(--ac)">{{ sg.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:10px;padding:10px 10px 10px 16px;border:1px solid var(--border-soft);border-radius:14px;background:var(--card);box-shadow:0 4px 18px rgba(20,22,28,.05)">
+          <textarea value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKeyDown }}" rows="2" placeholder="Pregunta, compara o pide una gráfica…" style="flex:1;border:0;outline:0;resize:none;background:transparent;font-size:14px;line-height:1.45;padding:4px 0;color:var(--ink)"></textarea>
+          <button type="button" onClick="{{ send }}" aria-label="Enviar" style="width:38px;height:38px;flex:0 0 38px;border:0;border-radius:10px;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;opacity:{{ sendOp }}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const eur = n => (Math.round(n * 100) / 100).toLocaleString('es-ES') + ' €';
+const med = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const CONF = { alta: ['var(--good-bg)', 'var(--green)'], media: ['var(--bg)', 'var(--muted)'], 'media-baja': ['var(--warn-bg)', 'var(--warn-ink)'] };
+const STALE = 'Datos de hace 38 días: úsalo como referencia, no como precio actual.';
+
+function reply(q, hs) {
+  const t = q.toLowerCase();
+  const bars = (arr, max) => arr.map(h => ({ name: h.name, v: eur(h.adr), w: (h.adr / max * 100) + '%', c: 'var(--ac)' }));
+  const hotel = hs.find(h => t.includes(h.name.toLowerCase().split(' - ')[0].toLowerCase()));
+  if (hotel) {
+    const rank = [...hs].sort((a, b) => b.adr - a.adr).findIndex(h => h.id === hotel.id) + 1;
+    return { title: 'Posición de ' + hotel.name, conf: 'media-baja', lead: '<b>' + eur(hotel.adr) + '</b>/noche, puesto <b>' + rank + ' de ' + hs.length + '</b> y un <b>' + (hotel.vsMedian > 0 ? '+' : '') + hotel.vsMedian.toFixed(1).replace('.', ',') + ' %</b> frente a la mediana (268 €).',
+      bars: bars([...hs].sort((a, b) => Math.abs(a.adr - hotel.adr) - Math.abs(b.adr - hotel.adr)).slice(0, 5), 700), next: 'Compara con los cuatro hoteles de precio más cercano antes de mover tarifa.', limit: STALE, trace: ['hotel-market-adr · foto #18', 'ranking por ADR hab/noche', 'comparables: 38'] };
+  }
+  if (/baj|descen|rebaj/.test(t)) {
+    const d = hs.filter(h => h.delta < 0).sort((a, b) => a.delta - b.delta);
+    return { title: 'Hoteles que han bajado precio', conf: 'media', lead: '<b>' + d.length + ' hoteles</b> bajaron entre la foto #17 y la #18. El mayor descenso es <b>' + d[0].name + '</b> (' + d[0].delta.toFixed(1).replace('.', ',') + ' %).',
+      bars: d.slice(0, 6).map(h => ({ name: h.name, v: h.delta.toFixed(1).replace('.', ',') + ' %', w: Math.abs(h.delta) / 12 * 100 + '%', c: 'var(--red)' })), next: 'Revisa si los descensos coinciden con tu segmento antes de reaccionar.', limit: STALE, trace: ['hotel-market-delta · #17 → #18', 'umbral: cualquier cambio', 'comparables: ' + hs.length] };
+  }
+  if (/escasez|queda|disponib/.test(t)) {
+    const d = hs.filter(h => h.avail).sort((a, b) => parseInt(a.avail.replace(/\D/g, '')) - parseInt(b.avail.replace(/\D/g, '')));
+    return { title: 'Hoteles con escasez', conf: 'media', lead: '<b>' + d.length + ' hoteles</b> muestran aviso de pocas unidades. Con una sola habitación: <b>' + d.filter(h => /Queda 1/.test(h.avail)).map(h => h.name).join(', ') + '</b>.',
+      bars: d.slice(0, 6).map(h => ({ name: h.name + ' · ' + h.avail, v: eur(h.adr), w: h.adr / 700 * 100 + '%', c: 'var(--warn-ink)' })), next: 'La escasez pública suele anticipar subidas: vigila estos hoteles en la próxima captura.', limit: STALE, trace: ['hotel-market-availability · foto #18', 'fuente: aviso público de Booking'] };
+  }
+  if (/cadena|lopesan|dunas|compar/.test(t)) {
+    const g = {}; hs.forEach(h => (g[h.chain] = g[h.chain] || []).push(h.adr));
+    const rows = Object.entries(g).filter(([, a]) => a.length > 1).map(([c, a]) => ({ name: c + ' · ' + a.length + ' hoteles', m: med(a) })).sort((a, b) => b.m - a.m);
+    return { title: 'Mediana por cadena', conf: 'media', lead: 'Comparo las cadenas con al menos dos hoteles en el set. <b>' + rows[0].name.split(' ·')[0] + '</b> encabeza con ' + eur(rows[0].m) + '.',
+      bars: rows.map(r => ({ name: r.name, v: eur(r.m), w: r.m / 450 * 100 + '%', c: 'var(--ac)' })), next: 'Filtra la hoja de mercado por cadena para ver cada hotel.', limit: STALE, trace: ['agrupación: cadena', 'mínimo 2 hoteles por grupo'] };
+  }
+  if (/median|distribu/.test(t)) {
+    return { title: 'Mediana del set', conf: 'media-baja', lead: 'La mediana del set es <b>268,48 €/noche</b> con <b>38 hoteles comparables</b>, observada el 23/08/2026 con un 73,68 % de cobertura temporal.',
+      bars: bars([...hs].sort((a, b) => b.adr - a.adr).slice(0, 6), 700), next: 'Usa 268,48 € como referencia y solicita una nueva captura para decidir hoy.', limit: 'Mediana de precios públicos observados; no de reservas, ocupación, pickup ni RevPAR.', trace: ['hotel-market-adrMediano', 'comparabilidad matched_partial · 73,68 %', 'foto #18 · 23/08/2026 14:41'] };
+  }
+  return { title: 'Lectura rápida del mercado', conf: 'media', lead: 'El set sube un <b>+0,4 %</b>: 8 hoteles suben y 3 bajan. Hay dos alertas: <b>Relaxia Beverly Park</b> un 15,2 % bajo la media y <b>Gloria Palace San Agustín</b> un −11,1 %.', bars: [], next: 'Pregunta por un hotel concreto o por los que han bajado precio.', limit: STALE, trace: ['señales calculadas: 6', 'foto #18'] };
+}
+
+class Component extends DCLogic {
+  scrollRef = React.createRef();
+  state = {
+    listOpen: true, convQ: '', active: 0, typing: false, draft: '', trace: {},
+    convs: [{ title: 'Muéstrame la distribución de ADR', date: '10/09/2026, 18:49', msgs: null }],
+  };
+  componentDidMount() {
+    const hs = this.props.data?.hotels || [];
+    const seed = [{ role: 'user', text: '¿Cuál es la mediana del set?' }, { role: 'ai', ...reply('mediana', hs) }];
+    this.setState(s => ({ convs: s.convs.map((c, i) => i === 0 ? { ...c, msgs: seed } : c) }), () => {
+      const pr = this.props.prompt;
+      if (pr && pr.text) this.startNew(pr.text); else if (pr) this.startNew(null);
+    });
+    this.lastT = this.props.prompt?.t;
+  }
+  componentDidUpdate(pp, ps) {
+    const pr = this.props.prompt;
+    if (pr && pr.t !== this.lastT) { this.lastT = pr.t; this.startNew(pr.text); }
+    const el = this.scrollRef.current;
+    if (el && (ps.typing !== this.state.typing || ps.convs !== this.state.convs)) el.scrollTop = el.scrollHeight;
+  }
+  startNew(text) {
+    this.setState(s => ({ convs: [{ title: text || 'Nueva conversación', date: 'Hoy', msgs: [] }, ...s.convs], active: 0 }), () => text && this.send(text));
+  }
+  send = (txt) => {
+    const text = (typeof txt === 'string' ? txt : this.state.draft).trim();
+    if (!text || this.state.typing) return;
+    const i = this.state.active;
+    const upd = (s, m) => s.convs.map((c, k) => k === i ? { ...c, title: c.msgs.length ? c.title : text, msgs: [...c.msgs, m] } : c);
+    this.setState(s => ({ convs: upd(s, { role: 'user', text }), draft: '', typing: true }));
+    setTimeout(() => this.setState(s => ({ convs: upd(s, { role: 'ai', ...reply(text, this.props.data?.hotels || []) }), typing: false })), 1100);
+  };
+  renderVals() {
+    const s = this.state, conv = s.convs[s.active] || { msgs: [] };
+    const q = s.convQ.toLowerCase();
+    const msgs = (conv.msgs || []).map((m, k) => {
+      if (m.role === 'user') return { isUser: true, isAi: false, text: m.text };
+      const open = !!s.trace[s.active + '-' + k], c = CONF[m.conf] || CONF.media;
+      return { isUser: false, isAi: true, title: m.title, conf: m.conf, confBg: c[0], confInk: c[1], lead: { __html: m.lead }, bars: m.bars || [], hasBars: !!(m.bars && m.bars.length),
+        next: m.next, hasNext: !!m.next, limit: m.limit, hasLimit: !!m.limit, src: 'Booking · foto #18', traceSign: open ? 'Formato comprobado −' : 'Formato comprobado +', traceOpen: open, trace: m.trace || [],
+        toggleTrace: () => this.setState(st => ({ trace: { ...st.trace, [s.active + '-' + k]: !open } })) };
+    });
+    return {
+      listOpen: s.listOpen, toggleList: () => this.setState({ listOpen: !s.listOpen }), scrollRef: this.scrollRef,
+      convCount: s.convs.length + (s.convs.length === 1 ? ' sesión' : ' sesiones'), convQ: s.convQ, onConvQ: e => this.setState({ convQ: e.target.value }),
+      convs: s.convs.map((c, i) => ({ c, i })).filter(({ c }) => !q || c.title.toLowerCase().includes(q)).map(({ c, i }) => ({ title: c.title, date: c.date, bg: i === s.active ? 'var(--accent-soft)' : 'transparent', weight: i === s.active ? 600 : 500, pick: () => this.setState({ active: i }) })),
+      newConv: () => this.startNew(null), market: this.props.market || 'Gran Canaria (Sur)',
+      msgs, isEmpty: !msgs.length && !s.typing, typing: s.typing,
+      suggestions: ['¿Quién ha bajado precio?', 'Hoteles con escasez', 'Compara cadenas', '¿Cómo está Seaside Palm Beach?'].map(l => ({ label: l, use: () => this.send(l) })),
+      draft: s.draft, onDraft: e => this.setState({ draft: e.target.value }),
+      onKeyDown: e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); } },
+      send: () => this.send(), sendOp: s.draft.trim() ? 1 : .5,
+    };
+  }
+}
+</script>
+</body>
+</html>

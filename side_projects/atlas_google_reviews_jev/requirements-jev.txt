@@ -1,0 +1,3 @@
+# Optional side-project dependency. Keep it out of Atlas production requirements.
+langdetect==1.0.9
+# Then run this module with that environment's Python/PYTHONPATH.

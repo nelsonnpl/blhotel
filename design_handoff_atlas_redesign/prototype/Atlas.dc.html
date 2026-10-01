@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<title>Atlas · Rate Intelligence</title>
+<script src="atlas-data.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=Space+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f5f6f9;--card:#ffffff;--ink:#14161c;--muted:#5d6377;--faint:#737a8c;--fainter:#a4a9b8;--border:#e7e9ef;--border-soft:#e0e3ea;--line:#eef0f4;--line-soft:#f4f5f8;--input:#fbfcfe;--accent-soft:#eef2fd;--ac:#2f55d4;--green:#1f7a52;--red:#b94f50;--good-bg:#eef6f1;--warn-bg:#fdf3e7;--warn-ink:#8a6119;--bad-bg:#fbeeee;--lo:#c3cbdd;--mid:#7f93c9;--dark:#14161c;--hover:#f8f9fc;--topbar:rgba(245,246,249,.86);--rp:13px;--sw:236px;}
+html,body{margin:0;padding:0;background:var(--bg)}
+body{font-family:Archivo,'Helvetica Neue',Helvetica,sans-serif;-webkit-font-smoothing:antialiased;color:#14161c}
+*{box-sizing:border-box}
+button{font:inherit;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+a{color:#2f55d4;text-decoration:none}
+a:hover{color:#1d3aa8}
+::selection{background:#d7e0fb}
+@keyframes atIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes atFade{from{opacity:0}to{opacity:1}}
+@keyframes atTick{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}
+@keyframes atPulse{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes atShimmer{from{background-position:-400px 0}to{background-position:400px 0}}
+@keyframes atPop{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes atWipe{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes atSlideL{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}}
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="display:flex;min-height:100vh;background:var(--bg);color:var(--ink);font-family:Archivo,'Helvetica Neue',Helvetica,sans-serif;transition:background 200ms ease,color 200ms ease">
+
+  <aside style="width:var(--sw);flex:0 0 var(--sw);background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;transition:width 260ms cubic-bezier(.22,1,.36,1),flex-basis 260ms cubic-bezier(.22,1,.36,1);overflow:hidden;z-index:30">
+    <div style="padding:22px 16px 18px 19px;display:flex;align-items:center;gap:11px;min-height:74px">
+      <div style="width:30px;height:30px;flex:0 0 30px;border-radius:9px;background:var(--dark);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)">
+        <div style="width:11px;height:11px;border-radius:50%;border:2.5px solid #fff;border-right-color:transparent"></div>
+      </div>
+      <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;white-space:nowrap">
+          <strong style="font-size:15px;font-weight:700;letter-spacing:-.02em">Atlas</strong>
+          <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)">Rate intelligence</span>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="padding:0 12px 14px;position:relative">
+      <button type="button" onClick="{{ toggleMarketMenu }}" title="Cambiar mercado" style="width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--input);color:var(--ink);text-align:left;white-space:nowrap;min-height:44px">
+        <span style="width:22px;height:22px;flex:0 0 22px;border-radius:6px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--ac);animation:atPulse 2.4s ease-in-out infinite"></span>
+        </span>
+        <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+          <span style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0">
+            <span style="font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Mercado</span>
+            <span style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis">{{ market }}</span>
+          </span>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--faint)"><path d="m7 10 5 5 5-5"></path></svg>
+        </sc-if>
+      </button>
+      <sc-if value="{{ marketMenu }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:12px;top:50px;width:212px;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(20,22,28,.14);padding:5px;z-index:40;animation:atPop 160ms cubic-bezier(.22,1,.36,1) both">
+          <sc-for list="{{ markets }}" as="m" hint-placeholder-count="2">
+            <button type="button" onClick="{{ m.pick }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border:0;border-radius:7px;background:{{ m.bg }};color:var(--ink);font-size:12.5px;text-align:left">
+              <span>{{ m.name }}</span><span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">{{ m.count }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+
+    <nav aria-label="Navegación principal" style="display:flex;flex-direction:column;gap:14px;padding:0 12px;flex:1;overflow-y:auto">
+      <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="2">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--fainter);padding:4px 10px 6px;height:22px;white-space:nowrap;overflow:hidden">{{ g.label }}</div>
+          <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4">
+            <button type="button" onClick="{{ it.go }}" title="{{ it.label }}" style="position:relative;height:36px;display:flex;align-items:center;gap:11px;padding:0 11px;border:0;border-radius:9px;background:{{ it.bg }};color:{{ it.color }};font-size:13.5px;font-weight:{{ it.weight }};text-align:left;white-space:nowrap;transition:background 160ms ease,color 160ms ease" style-hover="color:var(--ac)">
+              <span style="position:absolute;left:0;top:10px;width:2px;height:16px;border-radius:2px;background:var(--ac);opacity:{{ it.tick }};transition:opacity 160ms ease"></span>
+              <span style="width:16px;height:16px;flex:0 0 16px;display:flex;align-items:center;justify-content:center;opacity:{{ it.iconOp }}" dangerouslySetInnerHTML="{{ it.icon }}"></span>
+              <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+                <span style="flex:1">{{ it.label }}</span>
+                <sc-if value="{{ it.badge }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family:'Space Mono',monospace;font-size:9.5px;padding:2px 6px;border-radius:5px;background:var(--warn-bg);color:var(--warn-ink)">{{ it.badge }}</span>
+                </sc-if>
+              </sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-for>
+    </nav>
+
+    <div style="padding:12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px;padding:4px;white-space:nowrap">
+        <div style="width:30px;height:30px;flex:0 0 30px;border-radius:50%;background:var(--accent-soft);color:var(--ac);display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:10px;font-weight:700">RC</div>
+        <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0">
+            <strong style="font-size:12.5px;font-weight:600">Revenue · Canarias</strong>
+            <span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">2 mercados</span>
+          </div>
+        </sc-if>
+      </div>
+      <div style="display:flex;gap:6px;flex-direction:{{ footDir }}">
+        <button type="button" onClick="{{ toggleTheme }}" title="Cambiar tema" aria-label="Cambiar tema" style="flex:1;height:32px;display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--muted);font-size:12px" style-hover="color:var(--ink);border-color:var(--lo)">
+          <span style="display:flex" dangerouslySetInnerHTML="{{ themeIcon }}"></span>
+          <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}"><span>{{ themeLabel }}</span></sc-if>
+        </button>
+        <button type="button" onClick="{{ toggleCollapse }}" title="{{ collapseLabel }}" aria-label="{{ collapseLabel }}" style="width:32px;height:32px;flex:0 0 32px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--muted)" style-hover="color:var(--ink);border-color:var(--lo)">
+          <span style="display:flex;transform:{{ collapseRot }};transition:transform 260ms ease"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="4" width="17" height="16" rx="2.5"></rect><path d="M9 4v16"></path><path d="m15 10-2 2 2 2"></path></svg></span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <header style="height:60px;flex:0 0 60px;display:flex;align-items:center;gap:16px;padding:0 32px;background:var(--topbar);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20">
+      <div style="display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);white-space:nowrap">
+        <span>Atlas</span><span style="opacity:.45">/</span><b style="color:var(--ink);font-weight:400">{{ crumb }}</b>
+      </div>
+      <div style="width:1px;height:20px;background:var(--border-soft)"></div>
+      <div style="position:relative;flex:1;min-width:0;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 5%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 5%,#000 92%,transparent)" title="Movimientos del set · pasa el cursor para pausar">
+        <div style="display:flex;width:max-content;animation:atTick 60s linear infinite;animation-play-state:{{ tickerState }};font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)" onMouseEnter="{{ pauseTicker }}" onMouseLeave="{{ playTicker }}">
+          <sc-for list="{{ ticker }}" as="t" hint-placeholder-count="10">
+            <button type="button" onClick="{{ t.open }}" style="display:flex;align-items:center;gap:10px;padding:0 13px;border:0;background:transparent;font:inherit;color:inherit;white-space:nowrap;height:28px;border-radius:6px" style-hover="background:var(--card)">
+              <span>{{ t.name }}</span><b style="color:var(--ink)">{{ t.adr }}</b><span style="color:{{ t.color }}">{{ t.delta }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+      <button type="button" onClick="{{ openFresh }}" title="{{ freshTitle }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 10px;border:1px solid {{ freshBorder }};border-radius:999px;background:{{ freshBg }};color:{{ freshInk }};font-family:'Space Mono',monospace;font-size:10px;white-space:nowrap">
+        <span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ freshLabel }}
+      </button>
+      <button type="button" onClick="{{ openPalette }}" style="display:flex;align-items:center;gap:9px;height:34px;width:250px;flex:0 1 250px;min-width:44px;overflow:hidden;white-space:nowrap;padding:0 8px 0 11px;border:1px solid var(--border-soft);border-radius:9px;background:var(--card);color:var(--faint);font-size:12.5px;text-align:left" style-hover="border-color:var(--lo)">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis">Buscar hotel, vista o acción</span>
+        <kbd style="font-family:'Space Mono',monospace;font-size:9.5px;padding:3px 5px;border-radius:5px;background:var(--bg);color:var(--faint);border:1px solid var(--border)">⌘K</kbd>
+      </button>
+      <button type="button" onClick="{{ goCopilot }}" style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border:1px solid var(--border-soft);border-radius:9px;background:var(--card);font-size:12.5px;font-weight:500;color:var(--ink)" style-hover="border-color:var(--ac);color:var(--ac)">Copilot</button>
+      <button type="button" onClick="{{ startCapture }}" style="position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:8px;height:34px;min-width:112px;justify-content:center;padding:0 14px;border:0;border-radius:9px;background:var(--ac);color:#fff;font-size:12.5px;font-weight:600;box-shadow:0 1px 2px rgba(20,22,28,.18)" style-hover="filter:brightness(1.08)" style-active="transform:scale(.97)">
+        <span style="position:absolute;left:0;top:0;bottom:0;width:{{ jobPct }};background:rgba(255,255,255,.18);transition:width 300ms linear"></span>
+        <span style="position:relative">{{ captureLabel }}</span>
+      </button>
+    </header>
+
+    <div style="flex:1;min-width:0">
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:28px 32px;display:flex;flex-direction:column;gap:14px">
+          <div style="width:320px;height:30px;border-radius:8px;background:linear-gradient(90deg,var(--line) 25%,var(--line-soft) 50%,var(--line) 75%);background-size:400px 100%;animation:atShimmer 1.1s linear infinite"></div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+            <div style="height:104px;border-radius:12px;background:linear-gradient(90deg,var(--line) 25%,var(--line-soft) 50%,var(--line) 75%);background-size:400px 100%;animation:atShimmer 1.1s linear infinite"></div>
+            <div style="height:104px;border-radius:12px;background:linear-gradient(90deg,var(--line) 25%,var(--line-soft) 50%,var(--line) 75%);background-size:400px 100%;animation:atShimmer 1.1s linear infinite"></div>
+            <div style="height:104px;border-radius:12px;background:linear-gradient(90deg,var(--line) 25%,var(--line-soft) 50%,var(--line) 75%);background-size:400px 100%;animation:atShimmer 1.1s linear infinite"></div>
+            <div style="height:104px;border-radius:12px;background:linear-gradient(90deg,var(--line) 25%,var(--line-soft) 50%,var(--line) 75%);background-size:400px 100%;animation:atShimmer 1.1s linear infinite"></div>
+          </div>
+          <div style="height:520px;border-radius:12px;background:linear-gradient(90deg,var(--line) 25%,var(--line-soft) 50%,var(--line) 75%);background-size:400px 100%;animation:atShimmer 1.1s linear infinite"></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ false }}">
+        <dc-import name="Atlas-Dashboard" data="{{ data }}" go="{{ go }}" open-hotel="{{ openHotel }}" ask="{{ ask }}" theme="{{ theme }}" fresh="{{ fresh }}" market="{{ market }}" start-capture="{{ startCapture }}" hint-size="100%,1400px"></dc-import>
+      </sc-if>
+      <sc-if value="{{ isHotels }}" hint-placeholder-val="{{ false }}">
+        <dc-import name="Atlas-Hoteles" data="{{ data }}" theme="{{ theme }}" variant="{{ variant }}" set-variant="{{ setVariant }}" density="{{ density }}" set-density="{{ setDensity }}" search="{{ hotelSearch }}" ask="{{ ask }}" notify="{{ notify }}" fresh="{{ fresh }}" market="{{ market }}" hint-size="100%,1400px"></dc-import>
+      </sc-if>
+      <sc-if value="{{ isReputation }}" hint-placeholder-val="{{ false }}">
+        <dc-import name="Atlas-Reputacion" data="{{ data }}" notify="{{ notify }}" density="{{ density }}" hint-size="100%,1200px"></dc-import>
+      </sc-if>
+      <sc-if value="{{ isFlights }}" hint-placeholder-val="{{ false }}">
+        <dc-import name="Atlas-Vuelos" data="{{ data }}" theme="{{ theme }}" notify="{{ notify }}" ask="{{ ask }}" hint-size="100%,1200px"></dc-import>
+      </sc-if>
+      <sc-if value="{{ isCopilot }}" hint-placeholder-val="{{ false }}">
+        <dc-import name="Atlas-Copilot" data="{{ data }}" prompt="{{ copilotPrompt }}" market="{{ market }}" go="{{ go }}" hint-size="100%,calc(100vh - 60px)"></dc-import>
+      </sc-if>
+      <sc-if value="{{ isWorkspace }}" hint-placeholder-val="{{ false }}">
+        <dc-import name="Atlas-Workspace" data="{{ data }}" notify="{{ notify }}" ask="{{ ask }}" hint-size="100%,1200px"></dc-import>
+      </sc-if>
+      <sc-if value="{{ isCaptures }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:28px 32px">
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:520px;border:1px dashed var(--border-soft);border-radius:14px;background:var(--card);text-align:center;animation:atIn 420ms cubic-bezier(.22,1,.36,1) both">
+            <div style="width:44px;height:44px;border-radius:12px;background:var(--accent-soft);color:var(--ac);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16v16H4z"></path><path d="M7 9h10M8 13h3M8 17h5"></path></svg></div>
+            <strong style="font-size:17px;font-weight:600;letter-spacing:-.015em">Capturas queda para la siguiente ronda</strong>
+            <p style="margin:0;max-width:420px;font-size:13px;line-height:1.5;color:var(--muted)">Mientras tanto, lanza una captura desde el botón superior; el progreso se muestra en la barra.</p>
+            <button type="button" onClick="{{ startCapture }}" style="margin-top:6px;height:36px;padding:0 16px;border:0;border-radius:9px;background:var(--ac);color:#fff;font-size:13px;font-weight:600">Capturar ahora</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </main>
+
+  <sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePalette }}" style="position:fixed;inset:0;z-index:100;background:rgba(20,22,28,.32);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;justify-content:center;align-items:flex-start;padding-top:14vh;animation:atFade 140ms ease both">
+      <div onClick="{{ stop }}" role="dialog" aria-label="Paleta de comandos" style="width:640px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 24px 64px rgba(20,22,28,.28);overflow:hidden;animation:atPop 180ms cubic-bezier(.22,1,.36,1) both">
+        <div style="display:flex;align-items:center;gap:10px;padding:0 16px;height:56px;border-bottom:1px solid var(--line)">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--faint)"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+          <input ref="{{ paletteInput }}" value="{{ paletteQuery }}" onChange="{{ onPaletteQuery }}" placeholder="Buscar hotel, vista o acción…" style="flex:1;height:100%;border:0;outline:0;background:transparent;font-size:15px;color:var(--ink)">
+          <kbd style="font-family:'Space Mono',monospace;font-size:9.5px;padding:3px 6px;border-radius:5px;background:var(--bg);color:var(--faint);border:1px solid var(--border)">ESC</kbd>
+        </div>
+        <div style="max-height:420px;overflow-y:auto;padding:6px">
+          <sc-for list="{{ paletteGroups }}" as="pg" hint-placeholder-count="3">
+            <div style="padding:10px 10px 4px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)">{{ pg.label }}</div>
+            <sc-for list="{{ pg.items }}" as="pi" hint-placeholder-count="3">
+              <button type="button" onClick="{{ pi.run }}" onMouseEnter="{{ pi.hover }}" style="width:100%;display:flex;align-items:center;gap:12px;height:40px;padding:0 10px;border:0;border-radius:8px;background:{{ pi.bg }};color:var(--ink);font-size:13.5px;text-align:left">
+                <span style="width:24px;height:24px;flex:0 0 24px;border-radius:6px;background:var(--bg);color:var(--muted);display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:8.5px">{{ pi.tag }}</span>
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ pi.label }}</span>
+                <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint)">{{ pi.hint }}</span>
+              </button>
+            </sc-for>
+          </sc-for>
+          <sc-if value="{{ paletteEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:36px 16px;text-align:center;color:var(--muted);font-size:13px">Sin resultados para «{{ paletteQuery }}»</div>
+          </sc-if>
+        </div>
+        <div style="display:flex;gap:16px;padding:10px 16px;border-top:1px solid var(--line);font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">
+          <span>↑↓ navegar</span><span>↵ abrir</span><span>⌘K cerrar</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="position:fixed;right:24px;bottom:24px;z-index:90;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none">
+    <sc-for list="{{ toasts }}" as="t" hint-placeholder-count="0">
+      <div style="pointer-events:auto;display:flex;align-items:center;gap:12px;min-width:300px;max-width:420px;padding:12px 14px;background:var(--dark);color:#fff;border-radius:11px;box-shadow:0 12px 32px rgba(20,22,28,.28);font-size:13px;animation:atSlideL 260ms cubic-bezier(.22,1,.36,1) both">
+        <span style="width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:{{ t.dot }}"></span>
+        <span style="flex:1;line-height:1.4">{{ t.text }}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;hotelVariant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;A&quot;,&quot;B&quot;],&quot;default&quot;:&quot;A&quot;,&quot;tsType&quot;:&quot;'A'|'B'&quot;,&quot;section&quot;:&quot;Hoteles&quot;},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;claro&quot;,&quot;oscuro&quot;],&quot;default&quot;:&quot;claro&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Apariencia&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compacta&quot;,&quot;equilibrada&quot;,&quot;espaciosa&quot;],&quot;default&quot;:&quot;equilibrada&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Apariencia&quot;},&quot;sidebarCollapsed&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Apariencia&quot;}}">
+const ICONS = {
+  dashboard: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>',
+  hotels: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 21V5a2 2 0 0 1 2-2h8v18M14 9h4a2 2 0 0 1 2 2v10"></path><path d="M8 7h2M8 11h2M8 15h2M16 14h2M16 18h2"></path></svg>',
+  reputation: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3.5 14.6 9l6.1.8-4.4 4.3 1.1 6.1L12 17.3l-5.4 2.9 1-6.1-4.4-4.3L9.3 9z"></path></svg>',
+  flights: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 16.5 13.5 13V6.5a1.5 1.5 0 0 0-3 0V13L2 16.5V19l8.5-2v3.5l-2 1V23h7v-1.5l-2-1V17l8.5 2z"></path></svg>',
+  copilot: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5z"></path><path d="M8 8h8M8 12h5"></path></svg>',
+  workspace: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"></path></svg>',
+  captures: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16v16H4z"></path><path d="M7 9h10M8 13h3M8 17h5"></path></svg>',
+};
+const SUN = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"></path></svg>';
+const MOON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>';
+const VIEWS = [
+  { id: 'dashboard', label: 'Dashboard', group: 'Análisis' }, { id: 'hotels', label: 'Hoteles', group: 'Análisis' },
+  { id: 'reputation', label: 'Reputación', group: 'Análisis' }, { id: 'flights', label: 'Vuelos', group: 'Análisis' },
+  { id: 'copilot', label: 'Copilot', group: 'Herramientas' }, { id: 'workspace', label: 'Espacio de trabajo', group: 'Herramientas' },
+  { id: 'captures', label: 'Capturas', group: 'Herramientas' },
+];
+const DARK = { '--bg': '#0e1014', '--card': '#16181e', '--ink': '#eceef3', '--muted': '#a3a9b8', '--faint': '#8a91a2', '--fainter': '#646a7a', '--border': '#252a33', '--border-soft': '#2c313b', '--line': '#20242c', '--line-soft': '#1b1f26', '--input': '#1a1d24', '--accent-soft': '#1c2544', '--ac': '#6583f0', '--green': '#55b98c', '--red': '#e2807f', '--good-bg': '#15261e', '--warn-bg': '#2b2314', '--warn-ink': '#dcae5a', '--bad-bg': '#2d1b1c', '--lo': '#3c4352', '--mid': '#5d6b96', '--dark': '#262a33', '--hover': '#1b1e25', '--topbar': 'rgba(14,16,20,.82)' };
+const LIGHT = { '--bg': '#f5f6f9', '--card': '#ffffff', '--ink': '#14161c', '--muted': '#5d6377', '--faint': '#737a8c', '--fainter': '#a4a9b8', '--border': '#e7e9ef', '--border-soft': '#e0e3ea', '--line': '#eef0f4', '--line-soft': '#f4f5f8', '--input': '#fbfcfe', '--accent-soft': '#eef2fd', '--ac': '#2f55d4', '--green': '#1f7a52', '--red': '#b94f50', '--good-bg': '#eef6f1', '--warn-bg': '#fdf3e7', '--warn-ink': '#8a6119', '--bad-bg': '#fbeeee', '--lo': '#c3cbdd', '--mid': '#7f93c9', '--dark': '#14161c', '--hover': '#f8f9fc', '--topbar': 'rgba(245,246,249,.86)' };
+const RP = { compacta: '8px', equilibrada: '13px', espaciosa: '18px' };
+const fmtEur = n => Math.round(n).toLocaleString('es-ES') + ' €';
+
+class Component extends DCLogic {
+  rootRef = React.createRef();
+  paletteInput = React.createRef();
+  state = {
+    view: localStorage.getItem('atlas.view') || 'hotels', collapsed: this.props.sidebarCollapsed ?? false,
+    theme: this.props.theme ?? 'claro', density: this.props.density ?? 'equilibrada', variant: this.props.hotelVariant ?? 'A',
+    market: 'Gran Canaria (Sur)', marketMenu: false, data: null, paletteOpen: false, paletteQuery: '', paletteIdx: 0,
+    job: null, fresh: false, toasts: [], hotelSearch: '', copilotPrompt: null, tickerPaused: false,
+  };
+  componentDidMount() {
+    const t0 = Date.now(); const poll = () => window.AtlasData ? setTimeout(() => this.setState({ data: window.AtlasData }), Math.max(0, 450 - (Date.now() - t0))) : setTimeout(poll, 40); poll();
+    this.onKey = e => this.handleKey(e);
+    window.addEventListener('keydown', this.onKey);
+    this.applyVars();
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.onKey); clearInterval(this.jobTimer); }
+  componentDidUpdate(pp, ps) {
+    if (pp.theme !== this.props.theme && this.props.theme) this.setState({ theme: this.props.theme });
+    if (pp.density !== this.props.density && this.props.density) this.setState({ density: this.props.density });
+    if (pp.hotelVariant !== this.props.hotelVariant && this.props.hotelVariant) this.setState({ variant: this.props.hotelVariant });
+    if (pp.sidebarCollapsed !== this.props.sidebarCollapsed) this.setState({ collapsed: !!this.props.sidebarCollapsed });
+    if (ps.theme !== this.state.theme || ps.density !== this.state.density || ps.collapsed !== this.state.collapsed) this.applyVars();
+    if (!ps.paletteOpen && this.state.paletteOpen) setTimeout(() => this.paletteInput.current && this.paletteInput.current.focus(), 30);
+    if (ps.view !== this.state.view) localStorage.setItem('atlas.view', this.state.view);
+  }
+  applyVars() {
+    const el = document.documentElement;
+    const v = this.state.theme === 'oscuro' ? DARK : LIGHT;
+    Object.entries(v).forEach(([k, val]) => el.style.setProperty(k, val));
+    el.style.setProperty('--rp', RP[this.state.density] || '13px');
+    el.style.setProperty('--sw', this.state.collapsed ? '68px' : '236px');
+  }
+  handleKey(e) {
+    const k = e.key.toLowerCase();
+    if ((e.metaKey || e.ctrlKey) && k === 'k') { e.preventDefault(); this.setState(s => ({ paletteOpen: !s.paletteOpen, paletteQuery: '', paletteIdx: 0 })); return; }
+    if ((e.metaKey || e.ctrlKey) && k === 'o') { e.preventDefault(); this.go('copilot'); return; }
+    if (!this.state.paletteOpen) { if (k === 'escape' && this.state.marketMenu) this.setState({ marketMenu: false }); return; }
+    const flat = this.paletteItems().flatMap(g => g.items);
+    if (k === 'escape') { this.setState({ paletteOpen: false }); }
+    else if (k === 'arrowdown') { e.preventDefault(); this.setState(s => ({ paletteIdx: Math.min(flat.length - 1, s.paletteIdx + 1) })); }
+    else if (k === 'arrowup') { e.preventDefault(); this.setState(s => ({ paletteIdx: Math.max(0, s.paletteIdx - 1) })); }
+    else if (k === 'enter') { e.preventDefault(); const it = flat[this.state.paletteIdx]; if (it) this.runItem(it); }
+  }
+  go = (view, extra = {}) => this.setState({ view, marketMenu: false, ...extra });
+  openHotel = name => this.go('hotels', { hotelSearch: name + '' });
+  ask = text => this.go('copilot', { copilotPrompt: { text, t: Date.now() } });
+  notify = (text, tone = 'info') => {
+    const id = Math.random();
+    const dot = tone === 'ok' ? '#55b98c' : tone === 'warn' ? '#dcae5a' : '#6583f0';
+    this.setState(s => ({ toasts: [...s.toasts, { id, text, dot }] }));
+    setTimeout(() => this.setState(s => ({ toasts: s.toasts.filter(t => t.id !== id) })), 3600);
+  };
+  startCapture = () => {
+    if (this.state.job) { this.notify('Ya hay una captura en curso'); return; }
+    this.setState({ job: { pct: 0 } });
+    this.notify('Captura en cola · ' + this.state.market + ' · Booking.com');
+    this.jobTimer = setInterval(() => {
+      const pct = Math.min(100, (this.state.job?.pct || 0) + 4 + Math.random() * 6);
+      if (pct >= 100) { clearInterval(this.jobTimer); this.setState({ job: null, fresh: true }); this.notify('Foto #19 guardada · 38 hoteles con tarifa', 'ok'); }
+      else this.setState({ job: { pct } });
+    }, 260);
+  };
+  paletteItems() {
+    const q = this.state.paletteQuery.trim().toLowerCase();
+    const m = s => !q || s.toLowerCase().includes(q);
+    const nav = VIEWS.filter(v => m(v.label)).map(v => ({ tag: 'IR', label: v.label, hint: v.group, run: () => this.go(v.id) }));
+    const hot = (this.state.data?.hotels || []).filter(h => q && m(h.name)).slice(0, 6).map(h => ({ tag: 'HTL', label: h.name, hint: fmtEur(h.adr), run: () => this.openHotel(h.name) }));
+    const acts = [
+      { tag: 'CAP', label: 'Capturar mercado activo', hint: 'Booking', run: this.startCapture },
+      { tag: 'AI', label: q ? 'Preguntar al Copilot: «' + this.state.paletteQuery + '»' : 'Preguntar al Copilot', hint: '⌘O', run: () => this.ask(q ? this.state.paletteQuery : null) },
+      { tag: 'UI', label: this.state.theme === 'oscuro' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro', hint: 'Tema', run: this.toggleTheme },
+      { tag: 'UI', label: 'Densidad compacta', hint: 'Tablas', run: () => this.setState({ density: 'compacta' }) },
+      { tag: 'UI', label: 'Densidad equilibrada', hint: 'Tablas', run: () => this.setState({ density: 'equilibrada' }) },
+      { tag: 'UI', label: this.state.collapsed ? 'Expandir barra lateral' : 'Contraer barra lateral', hint: 'Navegación', run: this.toggleCollapse },
+    ].filter(a => m(a.label) || a.tag === 'AI' && q);
+    return [{ label: 'Hoteles', items: hot }, { label: 'Ir a', items: nav }, { label: 'Acciones', items: acts }].filter(g => g.items.length);
+  }
+  runItem(it) { this.setState({ paletteOpen: false }); it.run(); }
+  toggleTheme = () => this.setState(s => ({ theme: s.theme === 'oscuro' ? 'claro' : 'oscuro' }));
+  toggleCollapse = () => this.setState(s => ({ collapsed: !s.collapsed, marketMenu: false }));
+
+  renderVals() {
+    const s = this.state, d = s.data;
+    const expanded = !s.collapsed;
+    const vk = s.theme + '|' + s.density + '|' + s.collapsed;
+    if (this._vk !== vk) { this._vk = vk; Promise.resolve().then(() => this.applyVars()); }
+    const navGroups = ['Análisis', 'Herramientas'].map(g => ({
+      label: expanded ? g : '·',
+      items: VIEWS.filter(v => v.group === g).map(v => {
+        const on = v.id === s.view;
+        return { label: v.label, icon: { __html: ICONS[v.id] }, go: () => this.go(v.id), bg: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--ac)' : 'var(--ink)', weight: on ? 600 : 500, tick: on ? 1 : 0, iconOp: on ? 1 : .72, badge: v.id === 'dashboard' && d ? '3' : '' };
+      }),
+    }));
+    const moved = (d?.hotels || []).filter(h => h.delta);
+    const tick = moved.map(h => ({ name: h.name, adr: fmtEur(h.adr), delta: (h.delta > 0 ? '▲' : '▼') + Math.abs(h.delta).toFixed(1).replace('.', ',') + '%', color: h.delta > 0 ? 'var(--green)' : 'var(--red)', open: () => this.openHotel(h.name) }));
+    let idx = 0;
+    const paletteGroups = s.paletteOpen ? this.paletteItems().map(g => ({ label: g.label, items: g.items.map(it => { const i = idx++; return { ...it, bg: i === s.paletteIdx ? 'var(--accent-soft)' : 'transparent', run: () => this.runItem(it), hover: () => this.setState({ paletteIdx: i }) }; }) })) : [];
+    const job = s.job;
+    return {
+      rootRef: this.rootRef, paletteInput: this.paletteInput, expanded, navGroups, market: s.market, marketMenu: s.marketMenu && expanded,
+      toggleMarketMenu: () => expanded ? this.setState({ marketMenu: !s.marketMenu }) : this.setState({ collapsed: false, marketMenu: true }),
+      markets: ['Gran Canaria (Sur)', 'Gran Canaria (General)'].map((n, i) => ({ name: n, count: i ? '52 htl' : '38 htl', bg: n === s.market ? 'var(--accent-soft)' : 'transparent', pick: () => { this.setState({ market: n, marketMenu: false }); this.notify('Mercado activo: ' + n); } })),
+      footDir: expanded ? 'row' : 'column', toggleTheme: this.toggleTheme, themeIcon: { __html: s.theme === 'oscuro' ? SUN : MOON }, themeLabel: s.theme === 'oscuro' ? 'Tema claro' : 'Tema oscuro',
+      toggleCollapse: this.toggleCollapse, collapseLabel: expanded ? 'Contraer barra lateral' : 'Expandir barra lateral', collapseRot: expanded ? 'none' : 'scaleX(-1)',
+      crumb: (VIEWS.find(v => v.id === s.view) || {}).label, ticker: [...tick, ...tick], tickerState: s.tickerPaused ? 'paused' : 'running',
+      pauseTicker: () => this.setState({ tickerPaused: true }), playTicker: () => this.setState({ tickerPaused: false }),
+      freshLabel: s.fresh ? 'Actualizado · ahora' : 'Datos de hace 38 días', freshTitle: s.fresh ? 'Foto #19 · 30/09/2026' : 'Última extracción 23/08/2026, 14:41 · pulsa para capturar',
+      freshBg: s.fresh ? 'var(--good-bg)' : 'var(--warn-bg)', freshInk: s.fresh ? 'var(--green)' : 'var(--warn-ink)', freshBorder: 'transparent',
+      openFresh: () => s.fresh ? this.notify('Datos al día · foto #19') : this.startCapture(),
+      openPalette: () => this.setState({ paletteOpen: true, paletteQuery: '', paletteIdx: 0 }), closePalette: () => this.setState({ paletteOpen: false }), stop: e => e.stopPropagation(),
+      paletteQuery: s.paletteQuery, onPaletteQuery: e => this.setState({ paletteQuery: e.target.value, paletteIdx: 0 }), paletteGroups, paletteEmpty: s.paletteOpen && !paletteGroups.length, paletteOpen: s.paletteOpen,
+      goCopilot: () => this.go('copilot'), startCapture: this.startCapture, jobPct: job ? job.pct + '%' : '0%', captureLabel: job ? 'Capturando ' + Math.round(job.pct) + '%' : 'Capturar',
+      loading: !d, data: d, go: this.go, openHotel: this.openHotel, ask: this.ask, notify: this.notify, theme: s.theme, fresh: s.fresh,
+      variant: s.variant, setVariant: v => this.setState({ variant: v }), density: s.density, setDensity: v => this.setState({ density: v }),
+      hotelSearch: s.hotelSearch, copilotPrompt: s.copilotPrompt,
+      isDashboard: !!d && s.view === 'dashboard', isHotels: !!d && s.view === 'hotels', isReputation: !!d && s.view === 'reputation', isFlights: !!d && s.view === 'flights',
+      isCopilot: !!d && s.view === 'copilot', isWorkspace: !!d && s.view === 'workspace', isCaptures: !!d && s.view === 'captures',
+      toasts: s.toasts,
+    };
+  }
+}
+</script>
+</body>
+</html>

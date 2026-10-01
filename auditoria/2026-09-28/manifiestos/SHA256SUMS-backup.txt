@@ -1,0 +1,2 @@
+298c74aea4e85275bae08605cbcb65819b6c73d68b73e71459b4c3045648afb3  backups/pre-auditoria-20260928/booking-prices-backup.sqlite
+1de5d27614266e64783e14eae428e9a711219c1ff7eb3cfcf209e1cfa3b62e0d  backups/pre-auditoria-20260928/codigo-20260928.tar.gz

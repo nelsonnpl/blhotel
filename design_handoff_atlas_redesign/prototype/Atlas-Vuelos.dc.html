@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+</helmet>
+<div style="padding:28px 32px 48px;display:flex;flex-direction:column;gap:16px;animation:atIn 420ms cubic-bezier(.22,1,.36,1) both">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px">
+    <div>
+      <h1 style="margin:0 0 6px;font-size:28px;font-weight:700;letter-spacing:-.025em">Vuelos</h1>
+      <p style="margin:0;font-size:13.5px;color:var(--muted)">Conectividad aérea hacia Gran Canaria · 13 rutas directas desde 8 mercados emisores</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;position:relative">
+      <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint);white-space:nowrap">Foto aérea 23/08/2026, 14:41 · {{ totalOpts }} opciones</span>
+      <button type="button" onClick="{{ togglePlan }}" style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border:0;border-radius:9px;background:var(--ac);color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap">Nueva captura aérea</button>
+      <sc-if value="{{ planOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;right:0;top:42px;width:380px;z-index:40;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 40px rgba(20,22,28,.18);padding:18px;display:flex;flex-direction:column;gap:14px;animation:atPop 180ms cubic-bezier(.22,1,.36,1) both">
+          <div>
+            <strong style="font-size:14px;font-weight:600">Preparar una foto de conectividad</strong>
+            <p style="margin:4px 0 0;font-size:12px;line-height:1.45;color:var(--muted)">SerpAPI · 1 adulto · turista · solo ida. 14 fechas diarias y después una semanal hasta 90 días.</p>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:var(--muted)">Primera salida</span><input type="date" value="{{ date }}" onChange="{{ onDate }}" style="height:36px;padding:0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);font-size:12.5px"></label>
+            <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:var(--muted)">Presupuesto de consultas</span><input type="number" value="{{ budget }}" onChange="{{ onBudget }}" style="height:36px;padding:0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);font-size:12.5px"></label>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px;border-radius:9px;background:{{ estBg }}">
+            <span style="font-size:12.5px;color:var(--muted)">25 fechas × 13 rutas</span>
+            <strong style="font-family:'Space Mono',monospace;font-size:14px;color:{{ estInk }}">{{ estLabel }}</strong>
+          </div>
+          <button type="button" onClick="{{ launch }}" disabled="{{ cantLaunch }}" style="height:38px;border:0;border-radius:9px;background:var(--ac);color:#fff;font-size:13px;font-weight:600;opacity:{{ launchOp }};cursor:{{ launchCursor }}">Iniciar captura</button>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div role="tablist" style="display:flex;gap:4px;border-bottom:1px solid var(--border)">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+      <button type="button" role="tab" onClick="{{ t.pick }}" style="display:flex;align-items:center;gap:7px;height:38px;padding:0 12px;border:0;border-bottom:2px solid {{ t.line }};margin-bottom:-1px;background:transparent;color:{{ t.ink }};font-size:13px;font-weight:{{ t.weight }}">{{ t.label }}<span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">{{ t.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ isBi }}" hint-placeholder-val="{{ true }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="7">
+        <div style="padding:14px 18px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:6px;min-width:0">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);white-space:nowrap">{{ k.label }}</span>
+          <div style="display:flex;align-items:baseline;gap:4px"><strong style="font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1;white-space:nowrap">{{ k.value }}</strong><span style="font-size:13px;color:var(--muted)">{{ k.unit }}</span></div>
+          <span style="font-size:11.5px;color:{{ k.footInk }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.foot }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px">
+      <div style="grid-column:span 8;background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;gap:12px">
+          <div>
+            <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Red de rutas</span>
+            <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Conectividad hacia LPA</h2>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="display:flex;gap:2px;padding:3px;background:var(--bg);border-radius:8px">
+              <sc-for list="{{ mapModes }}" as="mm" hint-placeholder-count="3">
+                <button type="button" onClick="{{ mm.pick }}" style="height:26px;padding:0 10px;border:0;border-radius:6px;background:{{ mm.bg }};color:{{ mm.ink }};box-shadow:{{ mm.sh }};font-size:12px;font-weight:500;white-space:nowrap">{{ mm.label }}</button>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:10px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint);white-space:nowrap">
+              <span style="display:flex;align-items:center;gap:5px"><i style="width:14px;height:3px;border-radius:2px;background:#1f7a52"></i>bajo</span>
+              <span style="display:flex;align-items:center;gap:5px"><i style="width:14px;height:3px;border-radius:2px;background:#c98a1e"></i>medio</span>
+              <span style="display:flex;align-items:center;gap:5px"><i style="width:14px;height:3px;border-radius:2px;background:#b94f50"></i>alto</span>
+            </div>
+          </div>
+        </div>
+        <div style="position:relative;height:560px;border-top:1px solid var(--line);background:repeating-linear-gradient(135deg,var(--line-soft) 0 10px,var(--card) 10px 20px)">
+          <div ref="{{ mapRef }}" style="position:absolute;inset:0"></div>
+          <sc-if value="{{ mapFailed }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:11px;color:var(--faint)">mapa de rutas · MapLibre + CARTO</div>
+          </sc-if>
+          <div style="position:absolute;left:14px;bottom:14px;z-index:3;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:4px;box-shadow:0 4px 14px rgba(20,22,28,.08)">
+            <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Grosor de línea</span>
+            <span>{{ mapLegend }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="grid-column:span 4;background:var(--card);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;min-width:0">
+        <div style="padding:18px 20px 14px;border-bottom:1px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+            <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Ruta seleccionada</span>
+            <select value="{{ focus }}" onChange="{{ onFocus }}" style="height:28px;padding:0 6px;border:1px solid var(--border-soft);border-radius:7px;background:var(--input);font-family:'Space Mono',monospace;font-size:11px;color:var(--ink)">
+              <sc-for list="{{ routeOpts }}" as="ro" hint-placeholder-count="13"><option value="{{ ro.code }}">{{ ro.label }}</option></sc-for>
+            </select>
+          </div>
+          <h2 style="margin:8px 0 2px;font-size:20px;font-weight:700;letter-spacing:-.02em">{{ fr.code }} → LPA</h2>
+          <span style="font-size:12.5px;color:var(--muted)">{{ fr.airport }} · {{ fr.country }}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)">
+          <sc-for list="{{ fr.facts }}" as="f" hint-placeholder-count="6">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--line-soft);border-right:1px solid var(--line-soft);display:flex;flex-direction:column;gap:3px">
+              <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">{{ f.k }}</span>
+              <strong style="font-family:'Space Mono',monospace;font-size:15px;color:{{ f.c }}">{{ f.v }}</strong>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:14px 20px;border-bottom:1px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+            <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Mínimo por fecha de salida</span>
+            <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)">{{ fr.barHover }}</span>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:3px;height:84px">
+            <sc-for list="{{ fr.bars }}" as="b" hint-placeholder-count="25">
+              <div onMouseEnter="{{ b.hover }}" title="{{ b.title }}" style="flex:1;height:{{ b.h }};min-height:3px;border-radius:3px 3px 0 0;background:{{ b.c }};transform-origin:bottom;animation:atIn 360ms cubic-bezier(.22,1,.36,1) both;cursor:default"></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px;font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)"><span>24/08</span><span>06/09</span><span>22/11</span></div>
+        </div>
+        <div style="padding:14px 20px;display:flex;flex-direction:column;gap:8px;flex:1">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Aerolíneas</span>
+          <sc-for list="{{ fr.airlines }}" as="a" hint-placeholder-count="3">
+            <div style="display:grid;grid-template-columns:22px minmax(0,1fr) auto auto;align-items:center;gap:10px;font-size:12.5px">
+              <span style="width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:7.5px;font-weight:700;color:var(--muted)">{{ a.iata }}</span>
+              <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.name }} <span style="color:var(--faint);font-size:11px">· {{ a.aircraft }}</span></span>
+              <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint)">{{ a.n }} opc.</span>
+              <strong style="font-family:'Space Mono',monospace;font-size:12px">{{ a.min }}</strong>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:8px;padding:14px 20px;border-top:1px solid var(--line)">
+          <button type="button" onClick="{{ fr.ops }}" style="flex:1;height:34px;border:1px solid var(--border-soft);border-radius:8px;background:var(--card);font-size:12.5px;color:var(--ink)" style-hover="border-color:var(--ac);color:var(--ac)">Ver {{ fr.options }} vuelos</button>
+          <button type="button" onClick="{{ fr.askIt }}" style="flex:1;height:34px;border:0;border-radius:8px;background:var(--accent-soft);font-size:12.5px;color:var(--ac);font-weight:500">Preguntar al Copilot</button>
+        </div>
+      </div>
+
+      <div style="grid-column:span 8;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px">
+          <div>
+            <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Mapa de calor</span>
+            <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Precio mínimo por ruta y semana de salida</h2>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint);white-space:nowrap">
+            <span>bajo su media</span>
+            <span style="display:flex"><i style="width:18px;height:10px;background:rgba(31,122,82,.55)"></i><i style="width:18px;height:10px;background:rgba(31,122,82,.2)"></i><i style="width:18px;height:10px;background:var(--line-soft)"></i><i style="width:18px;height:10px;background:rgba(185,79,80,.2)"></i><i style="width:18px;height:10px;background:rgba(185,79,80,.55)"></i></span>
+            <span>sobre su media</span>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:86px repeat(13,minmax(0,1fr));gap:3px">
+          <span></span>
+          <sc-for list="{{ weeks }}" as="w" hint-placeholder-count="13"><span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint);text-align:center;padding-bottom:4px">{{ w }}</span></sc-for>
+          <sc-for list="{{ heat }}" as="hr" hint-placeholder-count="13">
+            <button type="button" onClick="{{ hr.pick }}" style="border:0;background:transparent;padding:0 6px 0 0;text-align:left;font-size:12px;font-weight:{{ hr.weight }};color:{{ hr.ink }};white-space:nowrap">{{ hr.code }} <span style="font-size:10.5px;color:var(--faint);font-weight:400">{{ hr.city }}</span></button>
+            <sc-for list="{{ hr.cells }}" as="c" hint-placeholder-count="13">
+              <span title="{{ c.title }}" style="height:30px;border-radius:5px;background:{{ c.bg }};display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:10px;color:{{ c.ink }};outline:{{ c.outline }};outline-offset:-1px">{{ c.v }}</span>
+            </sc-for>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="grid-column:span 4;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:0">
+        <div>
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Curva de antelación</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Precio según días hasta la salida</h2>
+        </div>
+        <sc-for list="{{ leadCurve }}" as="lc" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:84px minmax(0,1fr) 62px;align-items:center;gap:12px">
+            <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted)">{{ lc.label }}</span>
+            <div style="position:relative;height:22px;border-radius:6px;background:var(--line-soft)">
+              <span style="position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--lo)"></span>
+              <div style="position:absolute;top:0;bottom:0;left:{{ lc.l }};width:{{ lc.w }};border-radius:6px;background:{{ lc.c }}"></div>
+            </div>
+            <span style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;text-align:right;color:{{ lc.ink }}">{{ lc.v }}</span>
+          </div>
+        </sc-for>
+        <span style="font-size:11.5px;color:var(--faint);margin-top:auto">Índice frente al precio medio de cada ruta. Agrega las 13 rutas.</span>
+      </div>
+
+      <div style="grid-column:span 4;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:10px;min-width:0">
+        <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Cuota de oferta</span>
+        <h2 style="margin:0 0 4px;font-size:16px;font-weight:600;letter-spacing:-.015em">Aerolíneas</h2>
+        <sc-for list="{{ share }}" as="s" hint-placeholder-count="8">
+          <div style="display:grid;grid-template-columns:minmax(0,120px) minmax(0,1fr) 44px 52px;align-items:center;gap:10px;font-size:12px">
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</span>
+            <div style="height:8px;border-radius:4px;background:var(--line-soft)"><div style="height:100%;width:{{ s.w }};border-radius:4px;background:var(--ac);transform-origin:left;animation:atWipe 700ms cubic-bezier(.22,1,.36,1) both"></div></div>
+            <span style="font-family:'Space Mono',monospace;font-size:10.5px;text-align:right">{{ s.pct }}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint);text-align:right">{{ s.min }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="grid-column:span 4;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:10px;min-width:0">
+        <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Origen de la demanda</span>
+        <h2 style="margin:0 0 4px;font-size:16px;font-weight:600;letter-spacing:-.015em">Mercados emisores</h2>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 56px 56px 60px;gap:10px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)"><span>Mercado</span><span style="text-align:right">Rutas</span><span style="text-align:right">Opc.</span><span style="text-align:right">Desde</span></div>
+        <sc-for list="{{ segments }}" as="sg" hint-placeholder-count="8">
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 56px 56px 60px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line-soft);font-size:12.5px">
+            <span style="display:flex;align-items:center;gap:8px;min-width:0"><i style="width:{{ sg.dot }};height:8px;border-radius:4px;background:var(--mid);flex:0 0 auto"></i><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sg.name }}</span></span>
+            <span style="font-family:'Space Mono',monospace;font-size:11px;text-align:right;color:var(--muted)">{{ sg.routes }}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:11px;text-align:right;color:var(--muted)">{{ sg.opts }}</span>
+            <strong style="font-family:'Space Mono',monospace;font-size:11.5px;text-align:right">{{ sg.min }}</strong>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="grid-column:span 4;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:10px;min-width:0">
+        <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Lectura automática</span>
+        <h2 style="margin:0 0 4px;font-size:16px;font-weight:600;letter-spacing:-.015em">Señales aéreas</h2>
+        <sc-for list="{{ airSignals }}" as="as" hint-placeholder-count="5">
+          <button type="button" onClick="{{ as.pick }}" style="display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--input);text-align:left;color:var(--ink)" style-hover="border-color:var(--ac)">
+            <span style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;min-width:58px;color:{{ as.ink }}">{{ as.v }}</span>
+            <span style="display:flex;flex-direction:column;gap:2px"><strong style="font-size:12.5px;font-weight:600">{{ as.title }}</strong><span style="font-size:11.5px;color:var(--muted);line-height:1.4">{{ as.text }}</span></span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isRoutes }}" hint-placeholder-val="{{ false }}">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 22px 20px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px">
+        <div>
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Precio de entrada vs. medio vs. máximo</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Amplitud de tarifa por ruta</h2>
+        </div>
+        <div style="display:flex;gap:14px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)">
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:9px;height:9px;border-radius:50%;border:2px solid var(--ac);box-sizing:border-box"></i>mínimo</span>
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:9px;height:9px;border-radius:50%;background:var(--ink)"></i>medio</span>
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:9px;height:9px;border-radius:2px;background:var(--lo)"></i>máximo</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:170px minmax(0,1fr) 150px 80px 80px;gap:14px;padding:0 8px 8px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)"><span>Ruta</span><span></span><span style="text-align:right">Mín · medio · máx</span><span style="text-align:right">Directos</span><span style="text-align:right">Δ foto</span></div>
+      <sc-for list="{{ dumbbell }}" as="r" hint-placeholder-count="13">
+        <button type="button" onClick="{{ r.pick }}" style="width:100%;display:grid;grid-template-columns:170px minmax(0,1fr) 150px 80px 80px;align-items:center;gap:14px;height:40px;border:0;border-radius:8px;background:transparent;padding:0 8px;text-align:left;color:var(--ink)" style-hover="background:var(--hover)">
+          <div style="display:flex;align-items:baseline;gap:8px;white-space:nowrap"><strong style="font-size:12.5px;font-weight:600">{{ r.code }} → LPA</strong><span style="font-size:11px;color:var(--faint)">{{ r.city }}</span></div>
+          <div style="position:relative;height:12px">
+            <div style="position:absolute;left:0;right:0;top:5px;height:1px;background:var(--line)"></div>
+            <div style="position:absolute;left:{{ r.l }};width:{{ r.w }};top:4px;height:4px;border-radius:2px;background:var(--lo)"></div>
+            <span style="position:absolute;left:{{ r.l }};top:0;width:8px;height:8px;margin-left:-6px;border-radius:50%;border:2px solid var(--ac);background:var(--card)"></span>
+            <span style="position:absolute;left:{{ r.m }};top:1px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--ink)"></span>
+            <span style="position:absolute;left:{{ r.x }};top:2px;width:8px;height:8px;margin-left:-4px;border-radius:2px;background:var(--lo)"></span>
+          </div>
+          <span style="font-family:'Space Mono',monospace;font-size:11px;text-align:right;white-space:nowrap">{{ r.label }}</span>
+          <span style="font-family:'Space Mono',monospace;font-size:11px;text-align:right;color:var(--muted)">{{ r.direct }}</span>
+          <span style="font-family:'Space Mono',monospace;font-size:11px;text-align:right;color:{{ r.dInk }}">{{ r.delta }}</span>
+        </button>
+      </sc-for>
+      <div style="display:flex;justify-content:space-between;margin:10px 0 0 192px;padding-right:338px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)"><span>50 €</span><span>250 €</span><span>450 €</span><span>650 €</span><span>850 €</span></div>
+      <p style="margin:14px 0 0;font-size:11.5px;color:var(--faint)">Ofertas observadas, no billetes vendidos.</p>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isOps }}" hint-placeholder-val="{{ false }}">
+    <sc-if value="{{ full }}" hint-placeholder-val="{{ false }}"><div onClick="{{ toggleFull }}" style="position:fixed;inset:0;z-index:94;background:rgba(20,22,28,.3);animation:atFade 160ms ease both"></div></sc-if>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;position:{{ fsPos }};inset:{{ fsInset }};z-index:{{ fsZ }};box-shadow:{{ fsShadow }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border-bottom:1px solid var(--line)">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <strong style="font-size:15px;font-weight:600">Operación aérea</strong>
+          <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint)">{{ opsCount }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button type="button" onClick="{{ exportCsv }}" style="height:30px;padding:0 11px;border:1px solid var(--border-soft);border-radius:8px;background:var(--card);font-size:12px;color:var(--ink);white-space:nowrap" style-hover="border-color:var(--ac);color:var(--ac)">Exportar CSV</button>
+          <button type="button" onClick="{{ toggleFull }}" style="height:30px;padding:0 11px;border:1px solid var(--border-soft);border-radius:8px;background:var(--card);font-size:12px;color:var(--ink);white-space:nowrap" style-hover="border-color:var(--ac);color:var(--ac)">{{ fullLabel }}</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--input);flex-wrap:wrap">
+        <label style="display:flex;flex-direction:column;gap:5px;flex:1 1 260px"><span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Buscar</span>
+          <input value="{{ q }}" onChange="{{ onQ }}" placeholder="Aerolínea, vuelo, avión o aeropuerto" style="height:32px;padding:0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--card);font-size:12.5px;outline:0"></label>
+        <sc-for list="{{ filters }}" as="fl" hint-placeholder-count="4">
+          <label style="display:flex;flex-direction:column;gap:5px"><span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">{{ fl.label }}</span>
+            <select value="{{ fl.value }}" onChange="{{ fl.change }}" style="height:32px;min-width:140px;padding:0 8px;border:1px solid var(--border-soft);border-radius:8px;background:var(--card);font-size:12.5px;color:var(--ink)">
+              <sc-for list="{{ fl.opts }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.l }}</option></sc-for>
+            </select></label>
+        </sc-for>
+        <button type="button" onClick="{{ resetF }}" style="height:32px;padding:0 12px;border:0;background:transparent;color:var(--ac);font-size:12.5px">Restablecer</button>
+      </div>
+      <div style="overflow:auto;max-height:{{ tableMax }};flex:1">
+        <div style="min-width:1880px">
+          <div style="display:grid;grid-template-columns:{{ cols }};position:sticky;top:0;z-index:3;background:var(--card);border-bottom:1px solid var(--border);font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">
+            <sc-for list="{{ heads }}" as="h" hint-placeholder-count="17">
+              <button type="button" onClick="{{ h.sort }}" style="height:36px;padding:0 10px;border:0;background:var(--card);font:inherit;color:{{ h.ink }};display:flex;align-items:center;justify-content:{{ h.justify }};gap:4px;white-space:nowrap;position:{{ h.pos }};left:0;z-index:{{ h.z }};border-right:{{ h.br }};cursor:{{ h.cursor }}">{{ h.label }}<span style="color:var(--ac)">{{ h.arrow }}</span></button>
+            </sc-for>
+          </div>
+          <sc-for list="{{ rows }}" as="f" hint-placeholder-count="14">
+            <div style="display:grid;grid-template-columns:{{ cols }};align-items:center;border-bottom:1px solid var(--line-soft);font-size:12px;min-height:44px" style-hover="background:var(--hover)">
+              <div style="padding:6px 10px 6px 14px;position:sticky;left:0;z-index:1;background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:1px;height:100%;justify-content:center"><strong style="font-size:12px;font-weight:600">{{ f.segment }}</strong><span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">{{ f.city }}</span></div>
+              <div style="padding:0 10px;display:flex;flex-direction:column;gap:1px;min-width:0"><strong style="font-family:'Space Mono',monospace;font-size:12px">{{ f.from }}</strong><span style="font-size:10.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.airport }}</span></div>
+              <div style="padding:0 10px;display:flex;flex-direction:column;gap:1px"><strong style="font-family:'Space Mono',monospace;font-size:12px">LPA</strong><span style="font-size:10.5px;color:var(--faint)">Gran Canaria</span></div>
+              <span style="padding:0 10px;font-family:'Space Mono',monospace;font-size:11.5px;white-space:nowrap">{{ f.date }} <span style="font-size:9.5px;color:var(--faint)">{{ f.days }}d</span></span>
+              <span style="padding:0 10px;display:flex;align-items:center;gap:8px;min-width:0"><span style="width:20px;height:20px;flex:0 0 20px;border-radius:50%;border:1px solid var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:7px;font-weight:700;color:var(--muted)">{{ f.iata }}</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.airline }}</span></span>
+              <span style="padding:0 10px;font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ f.code }}">{{ f.code }}</span>
+              <span style="padding:0 10px;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ f.aircraft }}">{{ f.aircraft }}</span>
+              <span style="padding:0 10px;font-size:11.5px;color:var(--muted)">{{ f.cls }}</span>
+              <span style="padding:0 10px;font-family:'Space Mono',monospace;font-size:11.5px;text-align:right">{{ f.dep }}</span>
+              <span style="padding:0 10px;font-family:'Space Mono',monospace;font-size:11.5px;text-align:right">{{ f.arr }}</span>
+              <span style="padding:0 10px" title="{{ f.viaTitle }}"><span style="font-size:11px;padding:3px 7px;border-radius:5px;background:{{ f.connBg }};color:{{ f.connInk }};white-space:nowrap">{{ f.conn }}</span></span>
+              <span style="padding:0 10px;font-family:'Space Mono',monospace;font-size:11.5px;text-align:right;color:var(--muted)">{{ f.dur }}</span>
+              <span style="padding:0 10px;font-family:'Space Mono',monospace;font-size:12.5px;font-weight:700;text-align:right">{{ f.price }}</span>
+              <div style="padding:0 12px;display:flex;flex-direction:column;gap:4px">
+                <div style="position:relative;display:flex;height:4px;border-radius:2px">
+                  <i style="flex:1;background:#9bcfaf;border-radius:2px 0 0 2px"></i><i style="flex:1;background:#e7c66c"></i><i style="flex:1;background:#df9898;border-radius:0 2px 2px 0"></i>
+                  <em style="position:absolute;top:50%;left:{{ f.pos }};width:9px;height:9px;border:2px solid var(--ink);border-radius:50%;background:var(--card);transform:translate(-50%,-50%);box-sizing:border-box"></em>
+                </div>
+                <span style="font-family:'Space Mono',monospace;font-size:9px;color:{{ f.posInk }}">{{ f.posLabel }}</span>
+              </div>
+              <span style="padding:0 10px;font-family:'Space Mono',monospace;font-size:11.5px;text-align:right;color:{{ f.aaiInk }}" title="Precio observado / precio medio de la ruta">{{ f.aai }}</span>
+              <span style="padding:0 10px;font-size:11px;color:var(--faint)">{{ f.ret }}</span>
+              <span style="padding:0 14px 0 10px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint);white-space:nowrap">{{ f.captured }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ opsEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:64px 20px;text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center;position:sticky;left:0;max-width:calc(100vw - var(--sw) - 66px)">
+              <strong style="font-size:14px">Ninguna opción coincide</strong>
+              <span style="font-size:12.5px;color:var(--muted)">Cambia los filtros o restablécelos.</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-top:1px solid var(--line);font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint)">
+        <span>{{ pageLabel }}</span>
+        <div style="display:flex;gap:6px">
+          <button type="button" onClick="{{ prev }}" style="height:28px;padding:0 10px;border:1px solid var(--border-soft);border-radius:7px;background:var(--card);font:inherit;color:var(--ink);opacity:{{ prevOp }}">← Anterior</button>
+          <button type="button" onClick="{{ next }}" style="height:28px;padding:0 10px;border:1px solid var(--border-soft);border-radius:7px;background:var(--card);font:inherit;color:var(--ink);opacity:{{ nextOp }}">Siguiente →</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const eur = n => Math.round(n).toLocaleString('es-ES') + ' €';
+const nes = (n, d = 0) => n.toFixed(d).replace('.', ',');
+const STYLES = { claro: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json', oscuro: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json' };
+const PAGE = 50;
+const COLS = '150px 170px 110px 100px 170px 150px 150px 80px 72px 72px 130px 88px 84px 150px 64px 84px 130px';
+
+class Component extends DCLogic {
+  mapRef = React.createRef();
+  state = { tab: 'bi', planOpen: false, date: '2026-08-24', budget: 500, focus: 'AMS', mapMode: 'options', mapFailed: false,
+    q: '', seg: 'all', route: 'all', airline: 'all', conn: 'all', sort: { k: 'date', d: 1 }, page: 0, full: false, barHover: null };
+  componentDidMount() { if (this.state.tab === 'bi') this.initMap(); }
+  componentDidUpdate(pp, ps) {
+    if (ps.tab !== this.state.tab) { if (this.state.tab === 'bi') setTimeout(() => this.initMap(), 30); else this.killMap(); }
+    if (this.map && (ps.focus !== this.state.focus || ps.mapMode !== this.state.mapMode)) this.paint();
+    if (pp.theme !== this.props.theme && this.map) this.map.setStyle(STYLES[this.props.theme] || STYLES.claro);
+  }
+  componentWillUnmount() { this.killMap(); }
+  killMap() { if (this.map) { this.map.remove(); this.map = null; } }
+  routes() { return this.props.data?.routes || []; }
+  tier(r) { const all = this.routes().map(x => x.avgP).sort((a, b) => a - b); const q1 = all[Math.floor(all.length / 3)], q2 = all[Math.floor(all.length * 2 / 3)]; return r.avgP < q1 ? '#1f7a52' : r.avgP < q2 ? '#c98a1e' : '#b94f50'; }
+  geo() {
+    const L = this.props.data.LPA, feats = this.routes().map(r => {
+      const a = [r.lng, r.lat], b = [L[1], L[0]], pts = [];
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, dx = b[0] - a[0], dy = b[1] - a[1];
+      const cx = mx - dy * .22, cy = my + dx * .22;
+      for (let t = 0; t <= 1.0001; t += .04) pts.push([(1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * cx + t * t * b[0], (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * cy + t * t * b[1]]);
+      return { type: 'Feature', properties: { code: r.code, color: this.tier(r), opts: r.options, air: r.airlines.length, price: r.avgP }, geometry: { type: 'LineString', coordinates: pts } };
+    });
+    return { type: 'FeatureCollection', features: feats };
+  }
+  widthExpr() {
+    const m = this.state.mapMode;
+    const v = m === 'options' ? ['get', 'opts'] : m === 'airlines' ? ['*', ['get', 'air'], 22] : ['/', 40000, ['get', 'price']];
+    return ['case', ['==', ['get', 'code'], this.state.focus], ['+', 2.5, ['/', v, 14]], ['+', 1, ['/', v, 22]]];
+  }
+  paint() {
+    const m = this.map; if (!m || !m.getLayer('routes')) return;
+    m.setPaintProperty('routes', 'line-width', this.widthExpr());
+    m.setPaintProperty('routes', 'line-opacity', ['case', ['==', ['get', 'code'], this.state.focus], 1, .5]);
+    (this.markers || []).forEach(({ el, code }) => { const on = code === this.state.focus; el.style.background = on ? '#2f55d4' : '#fff'; el.style.color = on ? '#fff' : '#14161c'; el.style.zIndex = on ? 2 : 1; });
+  }
+  addLayers() {
+    const m = this.map; if (!m || m.getSource('routes')) return;
+    m.addSource('routes', { type: 'geojson', data: this.geo() });
+    m.addLayer({ id: 'routes', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': this.widthExpr(), 'line-opacity': .6 } });
+    m.on('click', 'routes', e => { const c = e.features?.[0]?.properties?.code; if (c) this.setState({ focus: c }); });
+    m.on('mouseenter', 'routes', () => m.getCanvas().style.cursor = 'pointer');
+    m.on('mouseleave', 'routes', () => m.getCanvas().style.cursor = '');
+    this.paint();
+  }
+  initMap() {
+    let tries = 0;
+    const go = () => {
+      if (!this.mapRef.current || this.map) return;
+      if (!window.maplibregl) { if (++tries > 100) return this.setState({ mapFailed: true }); return setTimeout(go, 60); }
+      try {
+        const ml = window.maplibregl;
+        const m = new ml.Map({ container: this.mapRef.current, style: STYLES[this.props.theme] || STYLES.claro, center: [-1.5, 43], zoom: 3.05, attributionControl: { compact: true } });
+        m.scrollZoom.disable(); m.addControl(new ml.NavigationControl({ showCompass: false }), 'top-left');
+        this.map = m;
+        m.on('style.load', () => this.addLayers());
+        this.markers = this.routes().map(r => {
+          const el = document.createElement('button');
+          el.textContent = r.code + ' · ' + r.minP + ' €';
+          el.style.cssText = 'padding:3px 7px;border-radius:6px;border:1px solid rgba(20,22,28,.16);background:#fff;color:#14161c;font:700 10px "Space Mono",monospace;box-shadow:0 2px 6px rgba(20,22,28,.18);cursor:pointer;white-space:nowrap';
+          el.onclick = e => { e.stopPropagation(); this.setState({ focus: r.code }); };
+          new ml.Marker({ element: el, anchor: 'bottom', offset: [0, -4] }).setLngLat([r.lng, r.lat]).addTo(m);
+          const dot = document.createElement('span'); dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + this.tier(r) + ';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)';
+          new ml.Marker({ element: dot }).setLngLat([r.lng, r.lat]).addTo(m);
+          return { el, code: r.code };
+        });
+        const L = this.props.data.LPA, hub = document.createElement('div');
+        hub.innerHTML = '<div style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;background:#14161c;border:3px solid #fff;box-shadow:0 0 0 4px rgba(47,85,212,.3)"></span><b style="font:700 11px \'Space Mono\',monospace;color:#14161c;background:#fff;padding:2px 6px;border-radius:5px;box-shadow:0 1px 4px rgba(0,0,0,.2)">LPA</b></div>';
+        new ml.Marker({ element: hub, anchor: 'left', offset: [-7, 0] }).setLngLat([L[1], L[0]]).addTo(m);
+        this.paint();
+      } catch (e) { this.setState({ mapFailed: true }); }
+    };
+    go();
+  }
+  filtered() {
+    const s = this.state, q = s.q.trim().toLowerCase();
+    let r = (this.props.data?.flightsAll || []).filter(f => (s.seg === 'all' || f.segment === s.seg) && (s.route === 'all' || f.from === s.route) && (s.airline === 'all' || f.airline === s.airline) && (s.conn === 'all' || (s.conn === 'direct' ? f.direct : !f.direct)));
+    if (q) r = r.filter(f => [f.airline, f.code, f.aircraft, f.airport, f.from, f.city].join(' ').toLowerCase().includes(q));
+    const k = s.sort.k, key = f => k === 'date' ? f.days * 10000 + parseInt(f.dep) : k === 'price' ? f.price : k === 'dur' ? f.durMin : k === 'aai' ? f.aai : f.from;
+    return r.sort((a, b) => (key(a) > key(b) ? 1 : key(a) < key(b) ? -1 : 0) * s.sort.d);
+  }
+  exportCsv = () => {
+    const r = this.filtered();
+    const head = ['Mercado', 'Origen', 'Destino', 'Fecha', 'Días', 'Aerolínea', 'Vuelo', 'Avión', 'Clase', 'Salida', 'Llegada', 'Conexión', 'Duración (min)', 'Precio', 'AAI', 'Vuelta', 'Captura'];
+    const lines = r.map(f => [f.segment, f.from, 'LPA', f.date, f.days, f.airline, f.code, f.aircraft, f.cls, f.dep, f.arr, f.direct ? 'Directo' : '1 escala ' + f.via, f.durMin, f.price, f.aai, f.ret, f.captured].map(x => '"' + String(x) + '"').join(';'));
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + [head.join(';'), ...lines].join('\n')], { type: 'text/csv' })); a.download = 'operacion-aerea.csv'; a.click();
+    this.props.notify && this.props.notify('CSV exportado · ' + r.length + ' opciones', 'ok');
+  };
+  renderVals() {
+    const s = this.state, p = this.props, d = p.data || {};
+    const routes = this.routes(), all = d.flightsAll || [];
+    const seg3 = on => ({ bg: on ? 'var(--card)' : 'transparent', ink: on ? 'var(--ink)' : 'var(--muted)', sh: on ? '0 1px 2px rgba(20,22,28,.08)' : 'none' });
+    const est = 25 * 13, ok = est <= (parseInt(s.budget) || 0);
+    const fr = routes.find(r => r.code === s.focus) || routes[0] || {};
+    const frF = all.filter(f => f.from === fr.code);
+    const dates = d.airDatesN || [];
+    const byDate = dates.map((dn, i) => { const fs = frF.filter(f => f.dateN === dn); return { d: (d.airDates || [])[i], v: fs.length ? Math.min(...fs.map(f => f.price)) : null }; });
+    const bmax = Math.max(...byDate.map(b => b.v || 0), 1), bmin = Math.min(...byDate.filter(b => b.v).map(b => b.v));
+    const airl = [...new Set(frF.map(f => f.airline))].map(n => { const fs = frF.filter(f => f.airline === n); return { name: n, iata: fs[0].iata, aircraft: fs[0].aircraft, n: fs.length, min: eur(Math.min(...fs.map(f => f.price))) }; });
+    // heatmap
+    const heat = routes.map(r => {
+      const fs = all.filter(f => f.from === r.code);
+      return { code: r.code, city: r.city, weight: r.code === s.focus ? 700 : 500, ink: r.code === s.focus ? 'var(--ac)' : 'var(--ink)', pick: () => this.setState({ focus: r.code }),
+        cells: Array.from({ length: 13 }, (_, w) => {
+          const ws = fs.filter(f => Math.floor((f.days - 1) / 7) === w); if (!ws.length) return { v: '—', bg: 'var(--line-soft)', ink: 'var(--faint)', title: 'Sin datos', outline: 'none' };
+          const v = Math.min(...ws.map(f => f.price)), idx = v / r.avgP - 1, a = Math.min(.6, Math.abs(idx) * 1.6);
+          return { v, bg: Math.abs(idx) < .04 ? 'var(--line-soft)' : idx < 0 ? 'rgba(31,122,82,' + a + ')' : 'rgba(185,79,80,' + a + ')', ink: a > .4 ? '#fff' : 'var(--ink)', title: r.code + ' · semana ' + (w + 1) + ' · ' + v + ' € (' + (idx > 0 ? '+' : '') + nes(idx * 100) + ' % vs media)', outline: r.code === s.focus ? '1px solid var(--ac)' : 'none' };
+        }) };
+    });
+    const weeks = Array.from({ length: 13 }, (_, w) => { const dt = new Date(2026, 7, 24 + w * 7); return String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0'); });
+    const buckets = [['≤ 14 días', 0, 14], ['15–30 días', 15, 30], ['31–60 días', 31, 60], ['61–90 días', 61, 90]].map(([l, a, b]) => { const fs = all.filter(f => f.days >= a && f.days <= b); const idx = fs.reduce((x, f) => x + f.aai, 0) / (fs.length || 1) - 1; const w = Math.min(50, Math.abs(idx) / .2 * 50); return { label: l, v: (idx > 0 ? '+' : '−') + nes(Math.abs(idx) * 100) + ' %', l: idx >= 0 ? '50%' : (50 - w) + '%', w: w + '%', c: idx >= 0 ? 'var(--red)' : 'var(--green)', ink: idx >= 0 ? 'var(--red)' : 'var(--green)' }; });
+    const alNames = [...new Set(all.map(f => f.airline))];
+    const share = alNames.map(n => { const fs = all.filter(f => f.airline === n); return { name: n, n: fs.length, min: Math.min(...fs.map(f => f.price)) }; }).sort((a, b) => b.n - a.n).slice(0, 8);
+    const smax = share[0]?.n || 1;
+    const segNames = [...new Set(routes.map(r => r.segment))];
+    const segs = segNames.map(n => { const rs = routes.filter(r => r.segment === n), fs = all.filter(f => f.segment === n); return { name: n, routes: rs.length, opts: fs.length, minN: Math.min(...fs.map(f => f.price)) }; }).sort((a, b) => b.opts - a.opts);
+    const segMax = segs[0]?.opts || 1;
+    const byAvg = [...routes].sort((a, b) => b.avgP - a.avgP), bySpread = [...routes].sort((a, b) => (b.maxP - b.minP) - (a.maxP - a.minP)), byDelta = [...routes].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+    const lowDir = [...routes].sort((a, b) => a.directPct - b.directPct)[0] || {};
+    const cheapest = [...routes].sort((a, b) => a.minP - b.minP)[0] || {};
+    const pick = c => () => this.setState({ focus: c });
+    const directPct = all.length ? Math.round(all.filter(f => f.direct).length / all.length * 100) : 0;
+    const accessAvg = routes.length ? Math.round(routes.reduce((x, r) => x + r.minP, 0) / routes.length) : 0;
+    const avgAll = all.length ? Math.round(all.reduce((x, f) => x + f.price, 0) / all.length) : 0;
+    const durAvg = all.length ? Math.round(all.reduce((x, f) => x + f.durMin, 0) / all.length) : 0;
+    // ops
+    const list = s.tab === 'ops' ? this.filtered() : [];
+    const pages = Math.max(1, Math.ceil(list.length / PAGE)), page = Math.min(s.page, pages - 1);
+    const H = [['Mercado', null, 'l', 1], ['Origen', 'from', 'l'], ['Destino', null, 'l'], ['Fecha', 'date', 'l'], ['Aerolínea', null, 'l'], ['Vuelo', null, 'l'], ['Avión', null, 'l'], ['Clase', null, 'l'], ['Salida', null, 'r'], ['Llegada', null, 'r'], ['Conexión', null, 'l'], ['Duración', 'dur', 'r'], ['Precio', 'price', 'r'], ['Posición en ruta', null, 'l'], ['AAI', 'aai', 'r'], ['Vuelta', null, 'l'], ['Captura', null, 'l']];
+    const heads = H.map(([l, k, a, st]) => ({ label: l, justify: a === 'r' ? 'flex-end' : 'flex-start', arrow: k && s.sort.k === k ? (s.sort.d > 0 ? '↑' : '↓') : '', ink: k && s.sort.k === k ? 'var(--ink)' : 'var(--faint)', cursor: k ? 'pointer' : 'default', pos: st ? 'sticky' : 'static', z: st ? 4 : 'auto', br: st ? '1px solid var(--line)' : '0', sort: () => k && this.setState(x => ({ sort: { k, d: x.sort.k === k ? -x.sort.d : (k === 'price' || k === 'aai' ? 1 : 1) }, page: 0 })) }));
+    const rows = list.slice(page * PAGE, page * PAGE + PAGE).map(f => ({
+      ...f, price: eur(f.price), dur: Math.floor(f.durMin / 60) + 'h ' + String(f.durMin % 60).padStart(2, '0') + 'm', conn: f.direct ? 'Directo' : '1 escala · ' + f.via, viaTitle: f.direct ? 'Sin escala' : 'Escala en ' + f.via,
+      connBg: f.direct ? 'var(--good-bg)' : 'var(--warn-bg)', connInk: f.direct ? 'var(--green)' : 'var(--warn-ink)', pos: (f.pos * 100) + '%',
+      posLabel: f.pos < .34 ? 'barato para la ruta' : f.pos > .66 ? 'caro para la ruta' : 'en la media', posInk: f.pos < .34 ? 'var(--green)' : f.pos > .66 ? 'var(--red)' : 'var(--muted)',
+      aai: nes(f.aai, 2), aaiInk: f.aai < .9 ? 'var(--green)' : f.aai > 1.1 ? 'var(--red)' : 'var(--ink)',
+    }));
+    const opt = (all2, label) => [{ v: 'all', l: label }, ...all2];
+    const set = k => e => this.setState({ [k]: e.target.value, page: 0 });
+    return {
+      totalOpts: all.length, tabs: [['bi', 'Resumen', ''], ['routes', 'Rutas', routes.length], ['ops', 'Operación aérea', all.length]].map(([id, label, count]) => ({ label, count, pick: () => this.setState({ tab: id }), line: s.tab === id ? 'var(--ac)' : 'transparent', ink: s.tab === id ? 'var(--ink)' : 'var(--muted)', weight: s.tab === id ? 600 : 500 })),
+      isBi: s.tab === 'bi', isRoutes: s.tab === 'routes', isOps: s.tab === 'ops',
+      kpis: [
+        { label: 'Rutas activas', value: routes.length, unit: '', foot: segNames.length + ' mercados emisores' },
+        { label: 'Opciones', value: all.length.toLocaleString('es-ES'), unit: '', foot: '25 fechas de salida' },
+        { label: 'Precio de acceso', value: accessAvg, unit: '€', foot: 'mínimo medio por ruta' },
+        { label: 'Precio medio', value: avgAll, unit: '€', foot: '1 adulto · solo ida' },
+        { label: 'Variación', value: '−0,4', unit: '%', foot: 'vs foto aérea anterior', footInk: 'var(--green)' },
+        { label: 'Directos', value: directPct, unit: '%', foot: (all.length - all.filter(f => f.direct).length) + ' opciones con escala' },
+        { label: 'Aerolíneas', value: alNames.length, unit: '', foot: 'duración media ' + Math.floor(durAvg / 60) + 'h ' + (durAvg % 60) + 'm' },
+      ].map(k => ({ footInk: 'var(--faint)', ...k })),
+      mapRef: this.mapRef, mapFailed: s.mapFailed,
+      mapModes: [['options', 'Oferta'], ['airlines', 'Aerolíneas'], ['price', 'Precio']].map(([id, l]) => ({ label: l, pick: () => this.setState({ mapMode: id }), ...seg3(s.mapMode === id) })),
+      mapLegend: s.mapMode === 'options' ? 'Número de opciones observadas' : s.mapMode === 'airlines' ? 'Número de aerolíneas' : 'Más gruesa = más barata',
+      focus: s.focus, onFocus: e => this.setState({ focus: e.target.value }), routeOpts: routes.map(r => ({ code: r.code, label: r.code + ' · ' + r.city })),
+      fr: {
+        code: fr.code, airport: fr.airport, country: fr.country, options: fr.options,
+        facts: [{ k: 'Mínimo', v: eur(fr.minP || 0), c: 'var(--ac)' }, { k: 'Medio', v: eur(fr.avgP || 0) }, { k: 'Máximo', v: eur(fr.maxP || 0) }, { k: 'Opciones', v: fr.options }, { k: 'Directos', v: (fr.directPct || 0) + ' %' }, { k: 'Duración', v: Math.floor((fr.durAvg || 0) / 60) + 'h ' + ((fr.durAvg || 0) % 60) + 'm' }].map(f => ({ c: 'var(--ink)', ...f })),
+        bars: byDate.map(b => ({ h: b.v ? (b.v / bmax * 100) + '%' : '0', c: b.v === bmin ? 'var(--green)' : s.barHover === b.d ? 'var(--ac)' : 'var(--mid)', title: b.d + ' · ' + (b.v ? b.v + ' €' : 'sin datos'), hover: () => this.setState({ barHover: b.d }) })),
+        barHover: s.barHover ? s.barHover + ' · ' + ((byDate.find(b => b.d === s.barHover) || {}).v || '—') + ' €' : 'más barato en verde',
+        airlines: airl, ops: () => this.setState({ tab: 'ops', route: fr.code, seg: 'all', airline: 'all', page: 0 }),
+        askIt: () => p.ask && p.ask('¿Cómo evoluciona el precio de ' + fr.code + ' → LPA?'),
+      },
+      heat, weeks, leadCurve: buckets,
+      share: share.map(x => ({ name: x.name, w: (x.n / smax * 100) + '%', pct: nes(x.n / all.length * 100) + '%', min: x.min + ' €' })),
+      segments: segs.map(x => ({ name: x.name, routes: x.routes, opts: x.opts, min: x.minN + ' €', dot: Math.max(8, x.opts / segMax * 36) + 'px' })),
+      airSignals: [
+        { v: eur(byAvg[0]?.avgP || 0), title: 'Ruta más cara: ' + (byAvg[0]?.code || ''), text: (byAvg[0]?.city || '') + ' duplica el precio medio de la red.', ink: 'var(--red)', pick: pick(byAvg[0]?.code) },
+        { v: eur(cheapest.minP || 0), title: 'Acceso más barato: ' + cheapest.code, text: 'Mínimo observado desde ' + cheapest.city + '.', ink: 'var(--green)', pick: pick(cheapest.code) },
+        { v: '+' + eur((bySpread[0]?.maxP || 0) - (bySpread[0]?.minP || 0)), title: 'Mayor amplitud: ' + (bySpread[0]?.code || ''), text: 'Diferencia entre mínimo y máximo en la ruta.', ink: 'var(--ink)', pick: pick(bySpread[0]?.code) },
+        { v: (lowDir.directPct || 0) + ' %', title: 'Menos directos: ' + lowDir.code, text: 'Parte de la oferta conecta vía ' + ((all.find(f => f.from === lowDir.code && !f.direct) || {}).via || '—') + '.', ink: 'var(--warn-ink)', pick: pick(lowDir.code) },
+        { v: (byDelta[0]?.delta > 0 ? '+' : '') + nes(byDelta[0]?.delta || 0, 1) + ' %', title: 'Mayor cambio: ' + (byDelta[0]?.code || ''), text: 'Variación del precio medio frente a la foto anterior.', ink: byDelta[0]?.delta > 0 ? 'var(--red)' : 'var(--green)', pick: pick(byDelta[0]?.code) },
+      ],
+      dumbbell: [...routes].sort((a, b) => b.avgP - a.avgP).map(r => { const X = v => ((v - 50) / 800 * 100); return { code: r.code, city: r.city, l: X(r.minP) + '%', m: X(r.avgP) + '%', x: X(r.maxP) + '%', w: (X(r.maxP) - X(r.minP)) + '%', label: r.minP + ' · ' + r.avgP + ' · ' + r.maxP + ' €', direct: r.directPct + ' %', delta: (r.delta > 0 ? '+' : '') + nes(r.delta, 1) + ' %', dInk: r.delta > 0 ? 'var(--red)' : 'var(--green)', pick: () => this.setState({ tab: 'bi', focus: r.code }) }; }),
+      planOpen: s.planOpen, togglePlan: () => this.setState({ planOpen: !s.planOpen }), date: s.date, onDate: e => this.setState({ date: e.target.value }), budget: s.budget, onBudget: e => this.setState({ budget: e.target.value }),
+      estLabel: est + ' consultas', estBg: ok ? 'var(--good-bg)' : 'var(--bad-bg)', estInk: ok ? 'var(--green)' : 'var(--red)', cantLaunch: !ok, launchOp: ok ? 1 : .5, launchCursor: ok ? 'pointer' : 'not-allowed',
+      launch: () => { this.setState({ planOpen: false }); p.notify && p.notify('Captura aérea en cola · ' + est + ' consultas'); },
+      q: s.q, onQ: set('q'),
+      filters: [
+        { label: 'Mercado', value: s.seg, change: set('seg'), opts: opt(segNames.map(n => ({ v: n, l: n })), 'Todos') },
+        { label: 'Ruta', value: s.route, change: set('route'), opts: opt(routes.map(r => ({ v: r.code, l: r.code + ' → LPA' })), 'Todas') },
+        { label: 'Aerolínea', value: s.airline, change: set('airline'), opts: opt(alNames.sort().map(n => ({ v: n, l: n })), 'Todas') },
+        { label: 'Conexión', value: s.conn, change: set('conn'), opts: [{ v: 'all', l: 'Todas' }, { v: 'direct', l: 'Solo directos' }, { v: 'stop', l: 'Con escala' }] },
+      ],
+      resetF: () => this.setState({ q: '', seg: 'all', route: 'all', airline: 'all', conn: 'all', page: 0 }),
+      cols: COLS, heads, rows, opsEmpty: s.tab === 'ops' && !list.length, opsCount: list.length + ' de ' + all.length + ' opciones',
+      pageLabel: list.length ? (page * PAGE + 1) + '–' + Math.min(list.length, (page + 1) * PAGE) + ' de ' + list.length + ' · página ' + (page + 1) + '/' + pages : '0 resultados',
+      prev: () => page > 0 && this.setState({ page: page - 1 }), next: () => page < pages - 1 && this.setState({ page: page + 1 }), prevOp: page > 0 ? 1 : .4, nextOp: page < pages - 1 ? 1 : .4,
+      exportCsv: this.exportCsv, full: s.full, toggleFull: () => this.setState({ full: !s.full }), fullLabel: s.full ? 'Salir de pantalla completa' : 'Pantalla completa',
+      fsPos: s.full ? 'fixed' : 'relative', fsInset: s.full ? '12px' : 'auto', fsZ: s.full ? 95 : 'auto', fsShadow: s.full ? '0 20px 60px rgba(20,22,28,.3)' : 'none', tableMax: s.full ? 'none' : 'calc(100vh - 380px)',
+    };
+  }
+}
+</script>
+</body>
+</html>

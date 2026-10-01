@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+</helmet>
+<div style="display:flex;flex-direction:column;gap:14px;animation:atIn 380ms cubic-bezier(.22,1,.36,1) both">
+
+  <div style="position:sticky;top:60px;z-index:12;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:12px 14px;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 6px 18px rgba(20,22,28,.05)">
+    <label style="display:flex;flex-direction:column;gap:5px;min-width:260px">
+      <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Hotel propio</span>
+      <select ref="{{ ownRef }}" onChange="{{ onOwn }}" style="height:34px;padding:0 10px;border:1px solid {{ ownBorder }};border-radius:8px;background:{{ ownBg }};font-size:12.5px;color:var(--ink);font-weight:{{ ownWeight }}">
+        <option value="" selected="{{ noOwnSel }}">Ninguno · vista de mercado</option>
+        <sc-for list="{{ hotelOpts }}" as="o" hint-placeholder-count="10"><option value="{{ o.id }}" selected="{{ o.sel }}">{{ o.name }}</option></sc-for>
+      </select>
+    </label>
+    <div style="display:flex;flex-direction:column;gap:5px">
+      <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Fechas de entrada</span>
+      <div style="display:flex;gap:2px;padding:3px;background:var(--bg);border-radius:8px">
+        <sc-for list="{{ horizons }}" as="hz" hint-placeholder-count="4">
+          <button type="button" onClick="{{ hz.pick }}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{ hz.bg }};color:{{ hz.ink }};box-shadow:{{ hz.sh }};font-size:12px;font-weight:500;white-space:nowrap">{{ hz.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+    <label style="display:flex;flex-direction:column;gap:5px">
+      <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Régimen</span>
+      <select value="{{ board }}" onChange="{{ onBoard }}" style="height:34px;min-width:190px;padding:0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);font-size:12.5px;color:var(--ink)">
+        <option value="all">Todos los regímenes</option><option value="Todo incluido">Todo incluido</option><option value="Todo incluido Premium">Todo incluido Premium</option>
+      </select>
+    </label>
+    <label style="display:flex;flex-direction:column;gap:5px">
+      <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Tipo de habitación</span>
+      <select value="{{ fam }}" onChange="{{ onFam }}" style="height:34px;min-width:190px;padding:0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);font-size:12.5px;color:var(--ink)">
+        <option value="all">Todas las habitaciones</option>
+        <sc-for list="{{ famOpts }}" as="f" hint-placeholder-count="5"><option value="{{ f.v }}">{{ f.l }}</option></sc-for>
+      </select>
+    </label>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;min-height:34px">
+      <sc-for list="{{ activeChips }}" as="ac" hint-placeholder-count="0">
+        <button type="button" onClick="{{ ac.clear }}" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 10px;border:1px solid var(--ac);border-radius:999px;background:var(--accent-soft);color:var(--ac);font-size:12px;white-space:nowrap">{{ ac.label }}<span style="font-size:14px;line-height:1">×</span></button>
+      </sc-for>
+      <sc-if value="{{ hasChips }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ clearAll }}" style="height:28px;padding:0 8px;border:0;background:transparent;color:var(--muted);font-size:12px">Limpiar</button></sc-if>
+      <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint);white-space:nowrap">{{ scopeLabel }}</span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="6">
+      <div style="padding:14px 18px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:6px;min-width:0">
+        <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);white-space:nowrap">{{ k.label }}</span>
+        <div style="display:flex;align-items:baseline;gap:4px"><strong style="font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1;white-space:nowrap;color:{{ k.color }}">{{ k.value }}</strong><span style="font-size:13px;color:var(--muted)">{{ k.unit }}</span></div>
+        <span style="font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.foot }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:14px">
+    <div style="flex:2 1 560px;background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;flex-wrap:wrap">
+        <div style="min-width:220px;flex:1 1 220px">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Mapa de precios · entrada {{ focusLabel }}</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Dónde está caro y dónde barato</h2>
+        </div>
+        <div style="display:flex;gap:6px 12px;flex-wrap:wrap;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint);white-space:nowrap">
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:9px;height:9px;border-radius:50%;background:#1f7a52"></i>−15 % o menos</span>
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:9px;height:9px;border-radius:50%;background:#c98a1e"></i>en la mediana</span>
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:9px;height:9px;border-radius:50%;background:#b94f50"></i>+15 % o más</span>
+          <span>· tamaño = reseñas</span>
+        </div>
+      </div>
+      <div style="position:relative;height:560px;border-top:1px solid var(--line);background:repeating-linear-gradient(135deg,var(--line-soft) 0 10px,var(--card) 10px 20px)">
+        <div ref="{{ mapRef }}" style="position:absolute;inset:0"></div>
+        <sc-if value="{{ mapFailed }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:11px;color:var(--faint)">mapa de precios · MapLibre + CARTO</div>
+        </sc-if>
+        <div style="position:absolute;top:12px;right:12px;z-index:3;width:250px;background:var(--card);border:1px solid var(--border);border-radius:11px;box-shadow:0 6px 18px rgba(20,22,28,.1);overflow:hidden">
+          <div style="display:flex;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--line);font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)"><span>Zona</span><span>Htl · mediana</span></div>
+          <sc-for list="{{ zones }}" as="z" hint-placeholder-count="9">
+            <button type="button" onClick="{{ z.pick }}" style="width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 12px;border:0;border-bottom:1px solid var(--line-soft);background:{{ z.bg }};color:{{ z.ink }};font-size:12px;text-align:left" style-hover="background:var(--hover)">
+              <span style="display:flex;align-items:center;gap:7px;min-width:0"><i style="width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:{{ z.dot }}"></i><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:{{ z.weight }}">{{ z.name }}</span></span>
+              <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);white-space:nowrap">{{ z.n }} · <b style="color:var(--ink)">{{ z.med }}</b></span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1 1 340px;display:flex;flex-direction:column;gap:14px;min-width:0">
+      <sc-if value="{{ hasOwn }}" hint-placeholder-val="{{ false }}">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;overflow:hidden">
+          <div style="padding:16px 18px 12px;border-bottom:1px solid var(--line)">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px 8px;flex-wrap:wrap">
+              <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Tarifa sugerida · entrada {{ focusLabel }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:9.5px;padding:3px 7px;border-radius:5px;background:var(--warn-bg);color:var(--warn-ink);white-space:nowrap">Confianza media-baja</span>
+            </div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ reco.name }}</div>
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:12px">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:11.5px;color:var(--faint)">Sugerida</span>
+                <strong style="font-size:40px;font-weight:700;letter-spacing:-.04em;line-height:1;color:var(--ac)">{{ reco.sug }}<span style="font-size:18px;font-weight:500;color:var(--muted)"> €</span></strong>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">
+                <span style="font-size:11.5px;color:var(--faint)">Actual {{ reco.cur }}</span>
+                <span style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;padding:4px 8px;border-radius:6px;background:{{ reco.diffBg }};color:{{ reco.diffInk }}">{{ reco.diff }}</span>
+              </div>
+            </div>
+          </div>
+          <div style="padding:12px 18px;display:flex;flex-direction:column;gap:2px">
+            <sc-for list="{{ reco.parts }}" as="rp" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(40px,80px) 60px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:12px">
+                <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-weight:500">{{ rp.k }}</span><span style="font-size:10.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ rp.why }}</span></span>
+                <span style="position:relative;height:6px;border-radius:3px;background:var(--line-soft)"><span style="position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--lo)"></span><span style="position:absolute;top:0;bottom:0;left:{{ rp.l }};width:{{ rp.w }};border-radius:3px;background:{{ rp.c }}"></span></span>
+                <span style="font-family:'Space Mono',monospace;font-size:11.5px;text-align:right;font-weight:{{ rp.weight }};color:{{ rp.ink }}">{{ rp.v }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:10px 18px 14px;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--muted)">Posición objetivo en el set</span><strong style="font-family:'Space Mono',monospace">P{{ target }}</strong></div>
+            <input type="range" min="25" max="90" step="5" value="{{ target }}" onChange="{{ onTarget }}" aria-label="Percentil objetivo" style="width:100%;accent-color:var(--ac)">
+            <div style="display:flex;gap:8px;margin-top:4px">
+              <button type="button" onClick="{{ copyReco }}" style="flex:1;height:34px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-size:12.5px;font-weight:600">Copiar tarifa</button>
+              <button type="button" onClick="{{ askReco }}" style="flex:1;height:34px;border:1px solid var(--border-soft);border-radius:8px;background:var(--card);font-size:12.5px;color:var(--ink)" style-hover="border-color:var(--ac);color:var(--ac)">Explicar con Copilot</button>
+            </div>
+            <span style="font-size:11px;line-height:1.45;color:var(--faint)">Basada en precios públicos de hace 38 días. No incluye ocupación, pickup ni restricciones propias.</span>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noOwn }}" hint-placeholder-val="{{ true }}">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Mercado · entrada {{ focusLabel }}</span>
+          <div style="display:flex;align-items:baseline;gap:6px"><strong style="font-size:40px;font-weight:700;letter-spacing:-.04em;line-height:1">{{ day.med }}</strong><span style="font-size:18px;color:var(--muted)">€ mediana</span></div>
+          <div style="position:relative;height:36px;margin-top:4px">
+            <div style="position:absolute;left:0;right:0;top:16px;height:4px;border-radius:2px;background:var(--line)"></div>
+            <div style="position:absolute;left:{{ day.q1L }};width:{{ day.iqrW }};top:12px;height:12px;border-radius:4px;background:var(--accent-soft);border:1px solid var(--mid)"></div>
+            <div style="position:absolute;left:{{ day.medL }};top:8px;width:2px;height:20px;background:var(--ac)"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint);margin-top:-6px"><span>{{ day.min }}</span><span>P25 {{ day.q1 }} · P75 {{ day.q3 }}</span><span>{{ day.max }}</span></div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ day.facts }}" as="df" hint-placeholder-count="4">
+              <button type="button" onClick="{{ df.open }}" style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border:0;border-top:1px solid var(--line-soft);background:transparent;font-size:12.5px;color:var(--ink);text-align:left" style-hover="color:var(--ac)"><span style="color:var(--muted);white-space:nowrap">{{ df.k }}</span><span style="text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500">{{ df.v }}</span></button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="background:var(--accent-soft);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+          <strong style="font-size:14px;font-weight:600">Tarifa sugerida</strong>
+          <span style="font-size:12.5px;line-height:1.5;color:var(--muted)">Elige tu hotel arriba y verás la tarifa recomendada para cada fecha, desglosada en mediana, posición objetivo, valor, escasez, movimiento y antelación.</span>
+          <select value="" onChange="{{ onOwn }}" style="height:34px;padding:0 10px;border:1px solid var(--ac);border-radius:8px;background:var(--card);font-size:12.5px;color:var(--ink);margin-top:4px">
+            <option value="">Elegir hotel propio…</option>
+            <sc-for list="{{ hotelOpts }}" as="o2" hint-placeholder-count="10"><option value="{{ o2.id }}">{{ o2.name }}</option></sc-for>
+          </select>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="flex:1 1 100%;background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px 16px;padding:14px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap">
+        <div style="min-width:220px;flex:1 1 220px">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Rate calendar · {{ horizonLabel }}</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Tarifa por hotel y fecha de entrada</h2>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;min-width:0">
+          <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--ink);min-width:0;max-width:560px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ calReadout }}</span>
+          <div style="display:flex;gap:8px;align-items:center;font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint);white-space:nowrap">
+            <span style="display:flex"><i style="width:14px;height:10px;background:rgba(31,122,82,.55)"></i><i style="width:14px;height:10px;background:rgba(31,122,82,.22)"></i><i style="width:14px;height:10px;background:var(--line-soft)"></i><i style="width:14px;height:10px;background:rgba(185,79,80,.22)"></i><i style="width:14px;height:10px;background:rgba(185,79,80,.55)"></i></span>
+            <span>vs mediana del día</span>
+            <i style="width:14px;height:10px;background:repeating-linear-gradient(135deg,var(--ink) 0 1.5px,transparent 1.5px 4px);opacity:.55"></i><span>cerrado</span>
+            <i style="width:14px;height:10px;background:var(--line-soft);box-shadow:inset 0 -3px 0 #c98a1e"></i><span>cupo bajo</span>
+          </div>
+        </div>
+      </div>
+      <div style="padding:10px 18px 14px">
+        <div onMouseOver="{{ calOver }}" onMouseLeave="{{ calLeave }}" onClick="{{ calClick }}" style="position:relative">
+          <div style="display:grid;grid-template-columns:{{ calCols }};gap:1px;height:18px;align-items:end;font-family:'Space Mono',monospace;font-size:9px;color:var(--faint)">
+            <span></span>
+            <sc-for list="{{ calHead }}" as="ch" hint-placeholder-count="90"><span style="text-align:center;overflow:visible;white-space:nowrap;color:{{ ch.ink }};font-weight:{{ ch.weight }}">{{ ch.t }}</span></sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:{{ calCols }};gap:1px;margin:4px 0 6px;align-items:center">
+            <span style="font-size:11.5px;font-weight:600;padding-right:10px">Mediana del set</span>
+            <sc-for list="{{ medRow }}" as="mr" hint-placeholder-count="90"><span data-d="{{ mr.d }}" style="height:22px;display:flex;align-items:flex-end;justify-content:center;cursor:pointer"><span style="width:100%;height:{{ mr.h }};border-radius:2px 2px 0 0;background:var(--mid);opacity:.7;pointer-events:none"></span></span></sc-for>
+          </div>
+          <sc-if value="{{ hasOwn }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:{{ calCols }};gap:1px;margin-bottom:6px;align-items:center">
+              <span style="font-size:11.5px;font-weight:600;color:var(--ac);padding-right:10px">Rank del hotel propio</span>
+              <sc-for list="{{ rankRow }}" as="rr" hint-placeholder-count="90"><span data-d="{{ rr.d }}" style="height:20px;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:8.5px;color:{{ rr.ink }};background:{{ rr.bg }};border-radius:2px;cursor:pointer">{{ rr.t }}</span></sc-for>
+            </div>
+          </sc-if>
+          <div style="max-height:560px;overflow-y:auto;overflow-x:hidden;border-top:1px solid var(--line);padding-top:4px">
+            <sc-for list="{{ calRows }}" as="row" hint-placeholder-count="14">
+              <div style="display:grid;grid-template-columns:{{ calCols }};gap:1px;align-items:center;margin-bottom:1px;background:{{ row.bg }}">
+                <button type="button" onClick="{{ row.open }}" style="display:flex;align-items:center;gap:8px;height:24px;padding:0 10px 0 0;border:0;background:transparent;font-size:12px;color:{{ row.ink }};font-weight:{{ row.weight }};text-align:left;min-width:0" style-hover="color:var(--ac)">
+                  <span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--fainter);width:18px;text-align:right;flex:0 0 18px">{{ row.rank }}</span>
+                  <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ row.name }}</span>
+                </button>
+                <sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="90">
+                  <span data-h="{{ row.id }}" data-d="{{ c.d }}" style="height:24px;border-radius:2px;background:{{ c.bg }};box-shadow:{{ c.sh }};display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:9.5px;color:{{ c.ink }};cursor:pointer;overflow:hidden">{{ c.t }}</span>
+                </sc-for>
+              </div>
+            </sc-for>
+            <sc-if value="{{ calEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:48px;text-align:center;font-size:13px;color:var(--muted)">Ningún hotel tiene tarifas con estos filtros. Prueba otro régimen o tipo de habitación.</div>
+            </sc-if>
+          </div>
+          <div style="position:absolute;top:0;bottom:0;left:{{ focusL }};width:{{ focusW }};border:1.5px solid var(--ac);border-radius:3px;pointer-events:none;box-shadow:0 0 0 3px rgba(47,85,212,.12)"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:11.5px;color:var(--faint)">
+          <span>Pulsa una fecha para recalcular mapa, KPIs, distribución y tarifa sugerida. Pulsa un hotel para abrir su ficha.</span>
+          <span style="font-family:'Space Mono',monospace;font-size:10.5px">{{ calFoot }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1 1 520px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px 10px;flex-wrap:wrap">
+        <div style="min-width:200px;flex:1 1 200px">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">{{ idx.kicker }}</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">{{ idx.title }}</h2>
+        </div>
+        <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);white-space:nowrap">{{ idx.summary }}</span>
+      </div>
+      <svg viewBox="0 0 800 210" width="100%" style="display:block;overflow:visible">
+        <line x1="40" x2="800" y1="10" y2="10" stroke="var(--line)"></line><line x1="40" x2="800" y1="95" y2="95" stroke="var(--line)"></line><line x1="40" x2="800" y1="180" y2="180" stroke="var(--line)"></line>
+        <text x="34" y="13" text-anchor="end" font-family="Space Mono" font-size="10" fill="var(--faint)">{{ idx.yMax }}</text>
+        <text x="34" y="98" text-anchor="end" font-family="Space Mono" font-size="10" fill="var(--faint)">{{ idx.yMid }}</text>
+        <text x="34" y="183" text-anchor="end" font-family="Space Mono" font-size="10" fill="var(--faint)">{{ idx.yMin }}</text>
+        <polygon points="{{ idx.band }}" fill="var(--accent-soft)" opacity=".9"></polygon>
+        <line x1="40" x2="800" y1="{{ idx.refY }}" y2="{{ idx.refY }}" stroke="var(--ink)" stroke-dasharray="4 4" opacity="{{ idx.refOp }}"></line>
+        <polyline points="{{ idx.line }}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linejoin="round"></polyline>
+        <line x1="{{ idx.fx }}" x2="{{ idx.fx }}" y1="6" y2="184" stroke="var(--ac)" stroke-width="1" opacity=".6"></line>
+        <sc-for list="{{ idx.xl }}" as="x"><text x="{{ x.x }}" y="202" text-anchor="middle" font-family="Space Mono" font-size="10" fill="var(--faint)">{{ x.t }}</text></sc-for>
+      </svg>
+      <div style="display:flex;gap:14px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)"><span style="display:flex;align-items:center;gap:5px"><i style="width:14px;height:2px;background:var(--ac)"></i>{{ idx.leg1 }}</span><span style="display:flex;align-items:center;gap:5px"><i style="width:14px;height:8px;background:var(--accent-soft)"></i>{{ idx.leg2 }}</span></div>
+    </div>
+
+    <div style="flex:1 1 520px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px 10px;flex-wrap:wrap">
+        <div style="min-width:200px;flex:1 1 200px">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Evolución por extracción</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Cómo se ha movido la tarifa del set</h2>
+        </div>
+        <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);white-space:nowrap">{{ evo.summary }}</span>
+      </div>
+      <svg viewBox="0 0 800 210" width="100%" style="display:block;overflow:visible">
+        <line x1="40" x2="800" y1="10" y2="10" stroke="var(--line)"></line><line x1="40" x2="800" y1="180" y2="180" stroke="var(--line)"></line>
+        <text x="34" y="13" text-anchor="end" font-family="Space Mono" font-size="10" fill="var(--faint)">{{ evo.yMax }}</text>
+        <text x="34" y="183" text-anchor="end" font-family="Space Mono" font-size="10" fill="var(--faint)">{{ evo.yMin }}</text>
+        <polygon points="{{ evo.band }}" fill="var(--accent-soft)" opacity=".9"></polygon>
+        <polyline points="{{ evo.med }}" fill="none" stroke="var(--mid)" stroke-width="2" stroke-linejoin="round"></polyline>
+        <polyline points="{{ evo.own }}" fill="none" stroke="var(--ac)" stroke-width="2.4" stroke-linejoin="round"></polyline>
+        <sc-for list="{{ evo.pts }}" as="ep"><circle cx="{{ ep.x }}" cy="{{ ep.y }}" r="3.5" fill="var(--card)" stroke="{{ ep.c }}" stroke-width="2"><title>{{ ep.t }}</title></circle></sc-for>
+        <sc-for list="{{ evo.xl }}" as="x"><text x="{{ x.x }}" y="202" text-anchor="middle" font-family="Space Mono" font-size="10" fill="var(--faint)">{{ x.t }}</text></sc-for>
+      </svg>
+      <div style="display:flex;gap:14px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)"><span style="display:flex;align-items:center;gap:5px"><i style="width:14px;height:2px;background:var(--mid)"></i>Mediana del set</span><span style="display:flex;align-items:center;gap:5px"><i style="width:14px;height:8px;background:var(--accent-soft)"></i>P25–P75</span><sc-if value="{{ hasOwn }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:5px"><i style="width:14px;height:2px;background:var(--ac)"></i>Hotel propio</span></sc-if></div>
+    </div>
+
+    <div style="flex:1 1 460px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px 10px;flex-wrap:wrap">
+        <div style="min-width:200px;flex:1 1 200px">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Distribución · entrada {{ focusLabel }}</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Rango de precios por grupo</h2>
+        </div>
+        <div style="display:flex;gap:2px;padding:3px;background:var(--bg);border-radius:8px">
+          <sc-for list="{{ boxModes }}" as="bm" hint-placeholder-count="3"><button type="button" onClick="{{ bm.pick }}" style="height:24px;padding:0 9px;border:0;border-radius:6px;background:{{ bm.bg }};color:{{ bm.ink }};box-shadow:{{ bm.sh }};font-size:11.5px;font-weight:500">{{ bm.label }}</button></sc-for>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <sc-for list="{{ boxes }}" as="b" hint-placeholder-count="8">
+          <button type="button" onClick="{{ b.pick }}" style="display:grid;grid-template-columns:minmax(90px,130px) minmax(160px,1fr) 54px;gap:12px;align-items:center;height:30px;padding:0 6px;border:0;border-radius:7px;background:{{ b.bg }};color:var(--ink);text-align:left" style-hover="background:var(--hover)">
+            <span style="font-size:12px;font-weight:{{ b.weight }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.name }} <span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">{{ b.n }}</span></span>
+            <span style="position:relative;height:16px">
+              <span style="position:absolute;left:{{ b.minL }};width:{{ b.whW }};top:7px;height:2px;background:var(--lo)"></span>
+              <span style="position:absolute;left:{{ b.q1L }};width:{{ b.boxW }};top:1px;height:14px;border-radius:3px;background:var(--accent-soft);border:1px solid var(--mid);box-sizing:border-box"></span>
+              <span style="position:absolute;left:{{ b.medL }};top:0;width:2px;height:16px;background:var(--ac)"></span>
+              <span style="position:absolute;left:{{ b.ownL }};top:3px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--ink);border:2px solid var(--card);opacity:{{ b.ownOp }}"></span>
+            </span>
+            <span style="font-family:'Space Mono',monospace;font-size:11px;text-align:right">{{ b.med }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="display:none;justify-content:space-between;margin-left:148px;margin-right:72px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)"><span>{{ boxMin }}</span><span>{{ boxMax }}</span></div>
+    </div>
+
+    <div style="flex:1.4 1 560px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px 10px;flex-wrap:wrap">
+        <div style="min-width:200px;flex:1 1 200px">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Reputación vs precio · value score</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Quién ofrece más por su precio</h2>
+        </div>
+        <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);white-space:nowrap">{{ scHover }}</span>
+      </div>
+      <div style="position:relative;height:300px;margin:4px 0 0 34px">
+        <div style="position:absolute;inset:0 0 22px 0;border-left:1px solid var(--line);border-bottom:1px solid var(--line)">
+          <div style="position:absolute;left:0;top:0;width:{{ sc.mx }};height:{{ sc.my }};background:rgba(31,122,82,.05)"></div>
+          <div style="position:absolute;left:{{ sc.mx }};top:0;bottom:0;width:1px;background:var(--lo);border-left:1px dashed var(--lo)"></div>
+          <div style="position:absolute;left:0;right:0;top:{{ sc.my }};height:1px;background:var(--lo)"></div>
+          <span style="position:absolute;left:8px;top:6px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--green)">Valor alto</span>
+          <span style="position:absolute;right:8px;top:6px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)">Premium justificado</span>
+          <span style="position:absolute;left:8px;bottom:6px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)">Económico</span>
+          <span style="position:absolute;right:8px;bottom:6px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--red)">Caro para su nota</span>
+          <sc-for list="{{ sc.dots }}" as="dt" hint-placeholder-count="38">
+            <button type="button" onClick="{{ dt.open }}" onMouseEnter="{{ dt.hover }}" onMouseLeave="{{ scLeave }}" aria-label="{{ dt.title }}" style="position:absolute;left:{{ dt.x }};bottom:{{ dt.y }};width:{{ dt.s }};height:{{ dt.s }};transform:translate(-50%,50%);padding:0;border-radius:50%;border:{{ dt.border }};background:{{ dt.c }};opacity:{{ dt.op }};z-index:{{ dt.z }};transition:transform 140ms ease" style-hover="transform:translate(-50%,50%) scale(1.3)"></button>
+          </sc-for>
+        </div>
+        <span style="position:absolute;left:-34px;top:-2px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)">{{ sc.yMax }}</span>
+        <span style="position:absolute;left:-34px;bottom:18px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)">{{ sc.yMin }}</span>
+        <div style="position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)"><span>{{ sc.xMin }}</span><span>precio por noche · nota Booking</span><span>{{ sc.xMax }}</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1 1 520px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px 10px;flex-wrap:wrap">
+        <div style="min-width:200px;flex:1 1 200px">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Alertas de competidores</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Movimientos entre la foto #17 y la #18</h2>
+        </div>
+        <div style="display:flex;gap:2px;padding:3px;background:var(--bg);border-radius:8px">
+          <sc-for list="{{ alertTabs }}" as="at" hint-placeholder-count="3"><button type="button" onClick="{{ at.pick }}" style="display:flex;gap:5px;align-items:center;height:24px;padding:0 9px;border:0;border-radius:6px;background:{{ at.bg }};color:{{ at.ink }};box-shadow:{{ at.sh }};font-size:11.5px;font-weight:500;white-space:nowrap">{{ at.label }}<span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">{{ at.n }}</span></button></sc-for>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;max-height:340px;overflow-y:auto">
+        <sc-for list="{{ alerts }}" as="al" hint-placeholder-count="8">
+          <button type="button" onClick="{{ al.open }}" style="display:grid;grid-template-columns:78px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 4px;border:0;border-top:1px solid var(--line-soft);background:transparent;color:var(--ink);text-align:left" style-hover="background:var(--hover)">
+            <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border-radius:5px;background:{{ al.tagBg }};color:{{ al.tagInk }};text-align:center;white-space:nowrap">{{ al.tag }}</span>
+            <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ al.name }}</span><span style="font-size:11px;color:var(--faint)">{{ al.text }}</span></span>
+            <strong style="font-family:'Space Mono',monospace;font-size:12px;color:{{ al.ink }};white-space:nowrap">{{ al.v }}</strong>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="flex:1 1 520px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px 10px;flex-wrap:wrap">
+        <div style="min-width:200px;flex:1 1 200px">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Disponibilidad y cierres · {{ horizonLabel }}</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Presión de ocupación en el set</h2>
+        </div>
+        <div style="display:flex;gap:12px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint);white-space:nowrap"><span style="display:flex;align-items:center;gap:5px"><i style="width:9px;height:9px;border-radius:2px;background:var(--red)"></i>cerrado</span><span style="display:flex;align-items:center;gap:5px"><i style="width:9px;height:9px;border-radius:2px;background:#c98a1e"></i>cupo bajo</span></div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:6px;height:130px;padding-top:6px">
+        <sc-for list="{{ availWeeks }}" as="aw" hint-placeholder-count="13">
+          <div title="{{ aw.title }}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:1px">
+            <span style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);text-align:center;margin-bottom:3px">{{ aw.pct }}</span>
+            <div style="height:{{ aw.lowH }};background:#c98a1e;opacity:.75;border-radius:3px 3px 0 0"></div>
+            <div style="height:{{ aw.closedH }};background:var(--red);border-radius:0 0 2px 2px"></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:-4px"><sc-for list="{{ availWeeks }}" as="aw2"><span style="flex:1;text-align:center;font-family:'Space Mono',monospace;font-size:9px;color:var(--faint)">{{ aw2.label }}</span></sc-for></div>
+      <div style="display:flex;flex-direction:column;border-top:1px solid var(--line);padding-top:6px">
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 80px 80px 90px;gap:10px;padding:4px 0;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)"><span>Hotel</span><span style="text-align:right">Cerrado</span><span style="text-align:right">Cupo bajo</span><span style="text-align:right">Hoy</span></div>
+        <sc-for list="{{ closers }}" as="cl" hint-placeholder-count="5">
+          <button type="button" onClick="{{ cl.open }}" style="display:grid;grid-template-columns:minmax(0,1fr) 80px 80px 90px;gap:10px;align-items:center;padding:7px 0;border:0;border-top:1px solid var(--line-soft);background:transparent;color:var(--ink);text-align:left;font-size:12.5px" style-hover="color:var(--ac)">
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ cl.name }}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:11.5px;text-align:right;color:var(--red)">{{ cl.closed }}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:11.5px;text-align:right;color:var(--warn-ink)">{{ cl.low }}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:10.5px;text-align:right;color:var(--muted)">{{ cl.now }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <sc-if value="{{ hasDrawer }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDrawer }}" style="position:fixed;inset:0;z-index:80;background:rgba(20,22,28,.28);animation:atFade 160ms ease both"></div>
+    <aside role="dialog" aria-label="{{ dr.name }}" style="position:fixed;top:0;right:0;bottom:0;width:500px;z-index:81;background:var(--card);border-left:1px solid var(--border);box-shadow:-20px 0 60px rgba(20,22,28,.18);display:flex;flex-direction:column;animation:atSlideL 260ms cubic-bezier(.22,1,.36,1) both">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 22px 16px;border-bottom:1px solid var(--line)">
+        <div style="min-width:0">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Ficha · puesto {{ dr.rank }} de {{ dr.total }}</span>
+          <h2 style="margin:5px 0 3px;font-size:19px;font-weight:600;letter-spacing:-.015em;line-height:1.25">{{ dr.name }}</h2>
+          <span style="font-size:12px;color:var(--faint)">{{ dr.sub }}</span>
+        </div>
+        <button type="button" onClick="{{ closeDrawer }}" aria-label="Cerrar" style="width:32px;height:32px;flex:0 0 32px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--muted);font-size:16px">×</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)">
+          <sc-for list="{{ dr.kpis }}" as="dk" hint-placeholder-count="6">
+            <div style="padding:12px 16px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);display:flex;flex-direction:column;gap:3px">
+              <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">{{ dk.k }}</span>
+              <strong style="font-family:'Space Mono',monospace;font-size:16px;color:{{ dk.c }}">{{ dk.v }}</strong>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:16px 22px;border-bottom:1px solid var(--line)">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Tarifa por extracción</span>
+          <svg viewBox="0 0 440 120" width="100%" style="display:block;margin-top:10px;overflow:visible">
+            <line x1="0" x2="440" y1="10" y2="10" stroke="var(--line)"></line><line x1="0" x2="440" y1="100" y2="100" stroke="var(--line)"></line>
+            <polyline points="{{ dr.setLine }}" fill="none" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="4 4"></polyline>
+            <polyline points="{{ dr.line }}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linejoin="round"></polyline>
+            <text x="0" y="118" font-family="Space Mono" font-size="9.5" fill="var(--faint)">#1</text><text x="440" y="118" text-anchor="end" font-family="Space Mono" font-size="9.5" fill="var(--faint)">#18</text>
+          </svg>
+          <div style="display:flex;gap:14px;margin-top:6px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)"><span>— hotel</span><span>- - mediana del set</span></div>
+        </div>
+        <div style="padding:16px 22px;border-bottom:1px solid var(--line)">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Calendario · {{ horizonLabel }}</span>
+          <div style="display:flex;gap:1px;margin-top:10px">
+            <sc-for list="{{ dr.cal }}" as="dc"><span title="{{ dc.title }}" style="flex:1;height:26px;border-radius:2px;background:{{ dc.bg }};box-shadow:{{ dc.sh }}"></span></sc-for>
+          </div>
+        </div>
+        <div style="padding:16px 22px;display:flex;flex-direction:column;gap:8px">
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Habitaciones y tarifas</span>
+          <sc-for list="{{ dr.rooms }}" as="rm" hint-placeholder-count="3">
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line-soft);font-size:12.5px">
+              <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ rm.name }}</span><span style="font-size:10.5px;color:var(--faint)">máx. {{ rm.occ }} pers. · {{ rm.n }}</span></span>
+              <span style="font-family:'Space Mono',monospace;font-size:9.5px;padding:2px 6px;border-radius:5px;background:{{ rm.tagBg }};color:{{ rm.tagInk }};white-space:nowrap">{{ rm.tag }}</span>
+              <strong style="font-family:'Space Mono',monospace;font-size:12px">{{ rm.from }}</strong>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:14px 22px;border-top:1px solid var(--line)">
+        <button type="button" onClick="{{ dr.setOwn }}" style="flex:1;height:38px;border:0;border-radius:9px;background:var(--ac);color:#fff;font-size:12.5px;font-weight:600">{{ dr.ownLabel }}</button>
+        <button type="button" onClick="{{ dr.sheet }}" style="flex:1;height:38px;border:1px solid var(--border-soft);border-radius:9px;background:var(--card);font-size:12.5px;color:var(--ink)" style-hover="border-color:var(--ac);color:var(--ac)">Ver en hoja de mercado</button>
+      </div>
+    </aside>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const STYLES = { claro: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json', oscuro: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json' };
+const eur = n => n == null ? '—' : Math.round(n).toLocaleString('es-ES') + ' €';
+const sgn = (n, d = 1) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toFixed(d).replace('.', ',');
+const rnd = n => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
+const q = (a, p) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y), i = (s.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i); return s[lo] + (s[hi] - s[lo]) * (i - lo); };
+const fam = n => /suite/i.test(n) ? 'Suite' : /familiar/i.test(n) ? 'Familiar' : /bungalow|villa/i.test(n) ? 'Bungalow / villa' : /apartamento/i.test(n) ? 'Apartamento' : 'Doble';
+const DAY0 = new Date(2026, 9, 1), N = 90, BASE_D = 5;
+const WD = ['D', 'L', 'M', 'X', 'J', 'V', 'S'], MON = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const dt = d => new Date(DAY0.getFullYear(), DAY0.getMonth(), DAY0.getDate() + d);
+const dLabel = d => { const x = dt(d); return String(x.getDate()).padStart(2, '0') + '/' + String(x.getMonth() + 1).padStart(2, '0'); };
+const dLong = d => { const x = dt(d); return ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][x.getDay()] + ' ' + dLabel(d); };
+const ZC = { 'Maspalomas': 1, 'Meloneras': 1, 'Playa del Inglés': 1, 'San Agustín': 1, 'Salobre': 1, 'Puerto Rico': 1, 'Amadores': 1, 'Taurito': 1, 'Mogán': 1 };
+
+class Component extends DCLogic {
+  mapRef = React.createRef();
+  ownRef = React.createRef();
+  constructor(p) {
+    super(p);
+    this.state = { own: localStorage.getItem('atlas.ownHotel') || '', horizon: 90, board: 'all', fam: 'all', zone: null, seg: null, chain: null, focus: BASE_D, hover: null, drawer: null, boxMode: 'zone', alertTab: 'all', target: 60, scHover: null, mapFailed: false };
+    this.cal = {};
+    (p.data?.hotels || []).forEach((h, i) => {
+      const raw = [], st = [];
+      for (let d = 0; d < N; d++) {
+        const x = dt(d), m = x.getMonth(), day = x.getDate(), wd = x.getDay();
+        let season = m === 9 ? 1 + d * .0012 : m === 10 ? 1.05 + (day / 30) * .04 : (day >= 20 ? 1.28 : 1.1);
+        if (wd === 5 || wd === 6) season *= 1.035;
+        raw.push(season * (0.95 + rnd(i * 131 + d) * .1));
+        const pc = (h.avail ? .07 : .02) + (d < 14 ? .03 : 0) + (d >= 80 ? .07 : 0);
+        const r1 = rnd(i * 977 + d * 7), r2 = rnd(i * 613 + d * 11);
+        st.push(d === BASE_D ? (h.avail ? 'low' : 'ok') : r1 < pc ? 'closed' : r2 < (h.avail ? .26 : .08) ? 'low' : 'ok');
+      }
+      const b = raw[BASE_D];
+      this.cal[h.id] = { m: raw.map(v => v / b), st };
+    });
+  }
+  componentDidMount() { this.initMap(); this.syncOwnSel(); }
+  syncOwnSel() { const el = this.ownRef.current; if (el && el.value !== this.state.own) el.value = this.state.own; }
+  componentWillUnmount() { this.map && this.map.remove(); }
+  componentDidUpdate(pp) {
+    if (pp.theme !== this.props.theme && this.map) this.map.setStyle(STYLES[this.props.theme] || STYLES.claro);
+    this.syncMarkers(); this.syncOwnSel();
+  }
+  initMap() {
+    let tries = 0;
+    const go = () => {
+      if (!this.mapRef.current) return;
+      if (!window.maplibregl) { if (++tries > 100) return this.setState({ mapFailed: true }); return setTimeout(go, 60); }
+      try {
+        const ml = window.maplibregl;
+        const m = new ml.Map({ container: this.mapRef.current, style: STYLES[this.props.theme] || STYLES.claro, center: [-15.66, 27.782], zoom: 10.8, attributionControl: { compact: true } });
+        m.scrollZoom.disable(); m.addControl(new ml.NavigationControl({ showCompass: false }), 'top-left');
+        this.map = m; this.mk = {};
+        (this.props.data?.hotels || []).forEach(h => {
+          const wrap = document.createElement('div'), el = document.createElement('button'), lab = document.createElement('span');
+          el.setAttribute('aria-label', h.name);
+          const s = Math.round(Math.min(24, 10 + Math.sqrt(h.reviews) / 5));
+          el.style.cssText = 'display:block;width:' + s + 'px;height:' + s + 'px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(20,22,28,.35);cursor:pointer;padding:0;transition:transform 160ms ease,opacity 160ms ease';
+          lab.style.cssText = 'position:absolute;left:50%;bottom:calc(100% + 4px);transform:translateX(-50%);padding:2px 6px;border-radius:5px;background:#14161c;color:#fff;font:700 10px "Space Mono",monospace;white-space:nowrap;pointer-events:none;display:none';
+          const inner = document.createElement('div'); inner.style.cssText = 'position:relative;display:flex;align-items:center;justify-content:center';
+          inner.appendChild(el); inner.appendChild(lab); wrap.appendChild(inner);
+          el.onclick = e => { e.stopPropagation(); this.setState({ drawer: h.id }); };
+          el.onmouseenter = () => { lab.style.display = 'block'; lab.textContent = h.name.split(' - ')[0] + ' · ' + (this._price?.[h.id] ? this._price[h.id] + ' €' : 'cerrado'); };
+          el.onmouseleave = () => { if (h.id !== this.state.own) lab.style.display = 'none'; };
+          new ml.Marker({ element: wrap }).setLngLat([h.lng, h.lat]).addTo(m);
+          this.mk[h.id] = { el, lab, h };
+        });
+        this.syncMarkers();
+      } catch (e) { this.setState({ mapFailed: true }); }
+    };
+    go();
+  }
+  syncMarkers() {
+    if (!this.mk) return;
+    const vis = this._visible || {}, px = this._price || {}, med = this._dayMed || 1;
+    Object.values(this.mk).forEach(({ el, lab, h }) => {
+      const v = vis[h.id], p = px[h.id], own = h.id === this.state.own;
+      el.style.display = v ? 'block' : 'none';
+      const r = p ? p / med : null;
+      el.style.background = r == null ? '#8b91a3' : r <= .85 ? '#1f7a52' : r < 1.15 ? '#c98a1e' : '#b94f50';
+      el.style.opacity = r == null ? .55 : 1;
+      el.style.boxShadow = own ? '0 0 0 3px #2f55d4, 0 2px 6px rgba(0,0,0,.35)' : '0 1px 4px rgba(20,22,28,.35)';
+      el.style.transform = own ? 'scale(1.25)' : '';
+      if (own && v) { lab.style.display = 'block'; lab.textContent = 'Tu hotel · ' + (p ? p + ' €' : 'cerrado'); lab.style.background = '#2f55d4'; } else if (!own) { lab.style.background = '#14161c'; }
+    });
+    const zk = (this.state.zone || '') + '|' + (this.state.seg || '') + '|' + (this.state.chain || '');
+    if (this.map && this._zk !== zk) {
+      this._zk = zk;
+      const pts = Object.values(this.mk).filter(o => vis[o.h.id]).map(o => [o.h.lng, o.h.lat]);
+      if (pts.length) { const b = pts.reduce((acc, c) => acc.extend(c), new window.maplibregl.LngLatBounds(pts[0], pts[0])); this.map.fitBounds(b, { padding: { top: 60, bottom: 40, left: 60, right: 290 }, maxZoom: 13.5, duration: 700 }); }
+    }
+  }
+  effBase(h) {
+    const s = this.state;
+    const rates = h.rooms.flatMap(g => g.rates.map(r => ({ ...r, f: fam(g.name) }))).filter(r => (s.board === 'all' || r.board === s.board) && (s.fam === 'all' || r.f === s.fam));
+    return rates.length ? Math.min(...rates.map(r => r.adr)) : null;
+  }
+  renderVals() {
+    const s = this.state, p = this.props, d = p.data || {}, all = d.hotels || [];
+    const H = s.horizon, seg3 = on => ({ bg: on ? 'var(--card)' : 'transparent', ink: on ? 'var(--ink)' : 'var(--muted)', sh: on ? '0 1px 2px rgba(20,22,28,.08)' : 'none' });
+    const focus = Math.min(s.focus, H - 1);
+    const base = {}; all.forEach(h => base[h.id] = this.effBase(h));
+    const inScope = h => base[h.id] != null && (!s.zone || h.zone === s.zone) && (!s.seg || (s.seg === 'Adults only') === h.adults) && (!s.chain || h.chain === s.chain);
+    const hs = all.filter(inScope);
+    const price = (h, dd) => { const c = this.cal[h.id]; if (!c || base[h.id] == null || c.st[dd] === 'closed') return null; return Math.round(base[h.id] * c.m[dd]); };
+    const dayMeds = [], dayQ1 = [], dayQ3 = [];
+    for (let dd = 0; dd < H; dd++) { const ps = hs.map(h => price(h, dd)).filter(v => v != null); dayMeds.push(q(ps, .5)); dayQ1.push(q(ps, .25)); dayQ3.push(q(ps, .75)); }
+    const fPrices = hs.map(h => ({ h, p: price(h, focus) })), open = fPrices.filter(x => x.p != null);
+    const fMed = dayMeds[focus] || 1;
+    this._visible = {}; hs.forEach(h => this._visible[h.id] = true); this._price = {}; fPrices.forEach(x => this._price[x.h.id] = x.p); this._dayMed = fMed;
+    const own = all.find(h => h.id === s.own), ownIn = own && base[own.id] != null;
+    const openH = id => () => this.setState({ drawer: id });
+    const mNota = q(hs.map(h => h.nota), .5);
+    const vscore = (h, pr) => pr ? Math.max(0, Math.min(100, Math.round(50 + ((h.nota - mNota) * 22) - ((pr / fMed - 1) * 60)))) : null;
+    const closedToday = fPrices.filter(x => x.p == null).length, lowToday = hs.filter(h => this.cal[h.id].st[focus] === 'low').length;
+    const ownP = ownIn ? price(own, focus) : null;
+    const rankAt = (h, dd) => { const ps = hs.map(x => ({ id: x.id, p: price(x, dd) })).filter(x => x.p != null).sort((a, b) => b.p - a.p); const i = ps.findIndex(x => x.id === h.id); return i < 0 ? null : { r: i + 1, n: ps.length }; };
+    const ownRank = ownIn ? rankAt(own, focus) : null;
+    const kpis = ownIn ? [
+      { label: 'Tu tarifa · ' + dLabel(focus), value: ownP ? ownP.toLocaleString('es-ES') : 'Cerrado', unit: ownP ? '€' : '', foot: ownRank ? 'puesto ' + ownRank.r + ' de ' + ownRank.n : 'sin disponibilidad', color: 'var(--ac)' },
+      { label: 'Índice de precio', value: ownP ? Math.round(ownP / fMed * 100) : '—', unit: '', foot: 'mediana del set = 100' },
+      { label: 'Mediana del set', value: Math.round(fMed), unit: '€', foot: open.length + ' hoteles con tarifa' },
+      { label: 'Value score', value: vscore(own, ownP) ?? '—', unit: '/100', foot: 'nota ' + own.nota.toFixed(1).replace('.', ',') + ' vs mediana ' + mNota.toFixed(1).replace('.', ',') },
+      { label: 'Competidores cerrados', value: closedToday, unit: '', foot: lowToday + ' con cupo bajo ese día' },
+      { label: 'Movimiento del set', value: '▲' + hs.filter(h => h.delta > 0).length + ' ▼' + hs.filter(h => h.delta < 0).length, unit: '', foot: 'foto #17 → #18' },
+    ] : [
+      { label: 'Mediana · ' + dLabel(focus), value: Math.round(fMed), unit: '€', foot: 'P25 ' + eur(dayQ1[focus]) + ' · P75 ' + eur(dayQ3[focus]) },
+      { label: 'Dispersión', value: Math.round((dayQ3[focus] / Math.max(1, dayQ1[focus]) - 1) * 100), unit: '%', foot: 'P75 sobre P25' },
+      { label: 'Hoteles en el alcance', value: hs.length, unit: '', foot: open.length + ' con tarifa ese día' },
+      { label: 'Cerrados ese día', value: closedToday, unit: '', foot: lowToday + ' con cupo bajo' },
+      { label: 'Mediana ' + H + ' días', value: Math.round(q(dayMeds, .5)), unit: '€', foot: 'rango ' + eur(Math.min(...dayMeds)) + '–' + eur(Math.max(...dayMeds)) },
+      { label: 'Movimiento del set', value: '▲' + hs.filter(h => h.delta > 0).length + ' ▼' + hs.filter(h => h.delta < 0).length, unit: '', foot: 'foto #17 → #18' },
+    ].map(k => ({ color: 'var(--ink)', ...k }));
+    // zones
+    const zoneNames = [...new Set(all.map(h => h.zone))];
+    const zones = zoneNames.map(z => { const zs = all.filter(h => h.zone === z && base[h.id] != null && (!s.seg || (s.seg === 'Adults only') === h.adults) && (!s.chain || h.chain === s.chain)); const ps = zs.map(h => price(h, focus)).filter(v => v != null); const m = q(ps, .5); const on = s.zone === z; return { name: z, n: zs.length, med: ps.length ? eur(m) : '—', m, dot: !ps.length ? 'var(--lo)' : m / fMed <= .85 ? '#1f7a52' : m / fMed < 1.15 ? '#c98a1e' : '#b94f50', bg: on ? 'var(--accent-soft)' : 'transparent', ink: on ? 'var(--ac)' : 'var(--ink)', weight: on ? 600 : 400, pick: () => this.setState({ zone: on ? null : z }) }; }).filter(z => z.n).sort((a, b) => b.m - a.m);
+    // recommendation
+    let reco = {};
+    if (ownIn) {
+      const ps = open.map(x => x.p), M = fMed, Pt = q(ps, s.target / 100);
+      const vs = vscore(own, ownP ?? base[own.id]) ?? 50;
+      const closedShare = (closedToday + lowToday * .5) / Math.max(1, hs.length);
+      const mov = hs.reduce((a, h) => a + (h.delta || 0), 0) / Math.max(1, hs.length) / 100;
+      const lead = 30 + focus;
+      const parts = [
+        { k: 'Mediana del set', why: open.length + ' hoteles con tarifa el ' + dLabel(focus), v: M, base: true },
+        { k: 'Posición objetivo P' + s.target, why: 'precio del percentil ' + s.target + ': ' + eur(Pt), v: Pt - M },
+        { k: 'Value score ' + vs, why: vs >= 50 ? 'tu nota permite cobrar más' : 'nota por debajo del set', v: (vs - 50) / 50 * .05 * M },
+        { k: 'Escasez de la competencia', why: closedToday + ' cerrados · ' + lowToday + ' con cupo bajo', v: Math.min(.08, closedShare * .35) * M },
+        { k: 'Movimiento reciente del set', why: 'media ' + sgn(mov * 100) + ' % entre fotos', v: mov * M },
+        { k: 'Antelación ' + lead + ' días', why: lead < 21 ? 'entrada cercana: margen al alza' : lead > 60 ? 'entrada lejana: prudencia' : 'ventana central', v: (lead < 21 ? .03 : lead > 60 ? -.02 : 0) * M },
+      ];
+      const sug = Math.round(parts.reduce((a, x) => a + x.v, 0));
+      const maxAbs = Math.max(...parts.filter(x => !x.base).map(x => Math.abs(x.v)), 1);
+      const cur = ownP ?? base[own.id];
+      const diff = (sug / cur - 1) * 100;
+      reco = { name: own.name, sug, cur: eur(cur) + (ownP ? '' : ' (cerrado)'), diff: sgn(diff) + ' %', diffBg: diff >= 0 ? 'var(--good-bg)' : 'var(--bad-bg)', diffInk: diff >= 0 ? 'var(--green)' : 'var(--red)',
+        parts: parts.map(x => x.base ? { k: x.k, why: x.why, v: eur(x.v), l: '50%', w: '0', c: 'transparent', ink: 'var(--ink)', weight: 700 } : (() => { const w = Math.abs(x.v) / maxAbs * 50; return { k: x.k, why: x.why, v: (x.v >= 0 ? '+' : '−') + Math.abs(Math.round(x.v)) + ' €', l: x.v >= 0 ? '50%' : (50 - w) + '%', w: w + '%', c: x.v >= 0 ? 'var(--green)' : 'var(--red)', ink: x.v >= 0 ? 'var(--green)' : 'var(--red)', weight: 500 }; })()), text: parts.map(x => x.k + ' ' + Math.round(x.v) + ' €').join('; ') };
+    }
+    const sortedOpen = [...open].sort((a, b) => a.p - b.p);
+    const X = v => ((v - (dayQ1[focus] ? Math.min(...open.map(x => x.p)) : 0)) / Math.max(1, (Math.max(...open.map(x => x.p), 1) - Math.min(...open.map(x => x.p), 0))) * 100);
+    const day = open.length ? { med: Math.round(fMed), min: eur(sortedOpen[0].p), max: eur(sortedOpen[sortedOpen.length - 1].p), q1: eur(dayQ1[focus]), q3: eur(dayQ3[focus]), q1L: X(dayQ1[focus]) + '%', iqrW: (X(dayQ3[focus]) - X(dayQ1[focus])) + '%', medL: X(fMed) + '%',
+      facts: [
+        { k: 'Más barato', v: sortedOpen[0].h.name.split(' - ')[0] + ' · ' + eur(sortedOpen[0].p), open: openH(sortedOpen[0].h.id) },
+        { k: 'Más caro', v: sortedOpen[sortedOpen.length - 1].h.name.split(' - ')[0] + ' · ' + eur(sortedOpen[sortedOpen.length - 1].p), open: openH(sortedOpen[sortedOpen.length - 1].h.id) },
+        { k: 'Mejor value score', v: (() => { const b = [...open].sort((a, c) => vscore(c.h, c.p) - vscore(a.h, a.p))[0]; return b.h.name.split(' - ')[0] + ' · ' + vscore(b.h, b.p); })(), open: openH([...open].sort((a, c) => vscore(c.h, c.p) - vscore(a.h, a.p))[0].h.id) },
+        { k: 'Cerrados', v: closedToday + ' hoteles · ' + lowToday + ' con cupo bajo', open: () => {} },
+      ] } : { med: '—', facts: [] };
+    // calendar
+    const colsW = H <= 30 ? 'minmax(0,1fr)' : 'minmax(0,1fr)';
+    const calCols = '270px repeat(' + H + ',' + colsW + ')';
+    const showT = H <= 30;
+    const calHead = Array.from({ length: H }, (_, i) => { const x = dt(i); const first = x.getDate() === 1 || i === 0; const near = [1, 2, -1, -2].some(k => { const y = dt(i + k); return y.getDate() === 1 && i + k >= 0 && i + k < H; }); const wk = x.getDay() === 1 && !near; return { t: H <= 30 ? (x.getDate() + '') : first ? MON[x.getMonth()].toUpperCase() : wk ? x.getDate() + '' : '', ink: i === focus ? 'var(--ac)' : first ? 'var(--ink)' : 'var(--faint)', weight: first || i === focus ? 700 : 400 }; });
+    const mMax = Math.max(...dayMeds, 1), mMin = Math.min(...dayMeds);
+    const medRow = dayMeds.map((m, i) => ({ d: i, h: (30 + (m - mMin) / Math.max(1, mMax - mMin) * 70) + '%' }));
+    const rankRow = ownIn ? Array.from({ length: H }, (_, i) => { const r = rankAt(own, i); const pct = r ? (r.r - 1) / Math.max(1, r.n - 1) : null; return { d: i, t: H <= 30 ? (r ? r.r : '×') : '', ink: r ? (pct < .34 ? '#fff' : 'var(--ink)') : 'var(--red)', bg: r ? (pct < .34 ? 'var(--ac)' : pct < .67 ? 'var(--accent-soft)' : 'var(--line-soft)') : 'var(--bad-bg)' }; }) : [];
+    const cellBg = (pr, m) => { if (pr == null) return 'repeating-linear-gradient(135deg,rgba(20,22,28,.45) 0 1.5px,transparent 1.5px 4px)'; const r = pr / m - 1; if (Math.abs(r) < .05) return 'var(--line-soft)'; const a = Math.min(.62, .14 + Math.abs(r) * .9); return r < 0 ? 'rgba(31,122,82,' + a.toFixed(2) + ')' : 'rgba(185,79,80,' + a.toFixed(2) + ')'; };
+    const rowsH = [...hs].sort((a, b) => (b.id === s.own) - (a.id === s.own) || (price(b, focus) ?? 0) - (price(a, focus) ?? 0));
+    const calRows = rowsH.map((h, ri) => ({ id: h.id, name: h.name, rank: ri + 1, bg: h.id === s.own ? 'var(--accent-soft)' : 'transparent', ink: h.id === s.own ? 'var(--ac)' : 'var(--ink)', weight: h.id === s.own ? 600 : 400, open: openH(h.id),
+      cells: Array.from({ length: H }, (_, i) => { const pr = price(h, i), st = this.cal[h.id].st[i]; const r = pr ? pr / dayMeds[i] - 1 : 0; return { d: i, bg: cellBg(pr, dayMeds[i]), sh: st === 'low' ? 'inset 0 -3px 0 #c98a1e' : 'none', t: showT && pr ? pr : '', ink: Math.abs(r) > .45 ? '#fff' : 'var(--ink)' }; }) }));
+    let calReadout = 'Pasa el cursor por el calendario';
+    if (s.hover) { const hh = all.find(x => x.id === s.hover.h), dd = s.hover.d; if (hh) { const pr = price(hh, dd); calReadout = hh.name.split(' - ')[0] + ' · ' + dLong(dd) + ' · ' + (pr ? eur(pr) + ' · ' + sgn((pr / dayMeds[dd] - 1) * 100, 0) + ' % vs mediana (' + eur(dayMeds[dd]) + ')' : 'cerrado') + (this.cal[hh.id].st[dd] === 'low' ? ' · cupo bajo' : ''); } else if (dd != null) calReadout = dLong(dd) + ' · mediana ' + eur(dayMeds[dd]) + ' · P25–P75 ' + eur(dayQ1[dd]) + '–' + eur(dayQ3[dd]); }
+    // index chart
+    const XI = i => 40 + i * (760 / Math.max(1, H - 1));
+    let idx;
+    if (ownIn) {
+      const vals = dayMeds.map((m, i) => { const pr = price(own, i); return pr ? pr / m * 100 : null; });
+      const b1 = dayQ1.map((v, i) => v / dayMeds[i] * 100), b3 = dayQ3.map((v, i) => v / dayMeds[i] * 100);
+      const all2 = [...vals.filter(v => v != null), ...b1, ...b3, 100]; const lo = Math.min(...all2) - 5, hi = Math.max(...all2) + 5;
+      const Y = v => 180 - (v - lo) / (hi - lo) * 170;
+      const pts = vals.map((v, i) => v == null ? null : XI(i).toFixed(1) + ',' + Y(v).toFixed(1)).filter(Boolean);
+      const avg = vals.filter(v => v != null); const mean = avg.reduce((a, v) => a + v, 0) / Math.max(1, avg.length);
+      idx = { kicker: 'Índice de precio (ARI) · ' + H + ' días', title: own.name.split(' - ')[0] + ' frente al set', summary: 'media ' + Math.round(mean) + ' · ' + vals.filter(v => v == null).length + ' días cerrado', line: pts.join(' '), band: [...b3.map((v, i) => XI(i) + ',' + Y(v)), ...b1.map((v, i) => XI(i) + ',' + Y(v)).reverse()].join(' '), refY: Y(100), refOp: .5, yMax: Math.round(hi), yMid: Math.round((hi + lo) / 2), yMin: Math.round(lo), leg1: 'Índice del hotel (100 = mediana)', leg2: 'Banda P25–P75 del set' };
+    } else {
+      const lo = Math.min(...dayQ1) - 10, hi = Math.max(...dayQ3) + 10, Y = v => 180 - (v - lo) / (hi - lo) * 170;
+      idx = { kicker: 'Índice de precio del mercado · ' + H + ' días', title: 'Mediana y banda central por fecha', summary: 'mín ' + eur(Math.min(...dayMeds)) + ' · máx ' + eur(Math.max(...dayMeds)), line: dayMeds.map((v, i) => XI(i).toFixed(1) + ',' + Y(v).toFixed(1)).join(' '), band: [...dayQ3.map((v, i) => XI(i) + ',' + Y(v)), ...dayQ1.map((v, i) => XI(i) + ',' + Y(v)).reverse()].join(' '), refY: 0, refOp: 0, yMax: Math.round(hi) + ' €', yMid: Math.round((hi + lo) / 2) + ' €', yMin: Math.round(lo) + ' €', leg1: 'Mediana del set', leg2: 'P25–P75' };
+    }
+    idx.fx = XI(focus); idx.xl = Array.from({ length: H }, (_, i) => i).filter(i => dt(i).getDate() === 1 || i === 0 || (H <= 30 && i % 7 === 0)).map(i => ({ x: XI(i), t: dLabel(i) }));
+    // evolution
+    const caps = d.captures || [];
+    const scale = h => base[h.id] / h.adr;
+    const em = caps.map((c, k) => { const ps = hs.map(h => h.history[k] != null ? h.history[k] * scale(h) : null).filter(v => v != null); return { m: q(ps, .5), a: q(ps, .25), b: q(ps, .75) }; });
+    const ownHist = ownIn ? own.history.map(v => v == null ? null : v * scale(own)) : [];
+    const evals = [...em.flatMap(e => [e.a, e.b]), ...ownHist.filter(v => v != null)]; const elo = Math.min(...evals) - 10, ehi = Math.max(...evals) + 10;
+    const EX = k => 40 + k * (760 / Math.max(1, caps.length - 1)), EY = v => 180 - (v - elo) / (ehi - elo) * 170;
+    const evo = { yMax: eur(ehi), yMin: eur(elo), med: em.map((e, k) => EX(k) + ',' + EY(e.m)).join(' '), band: [...em.map((e, k) => EX(k) + ',' + EY(e.b)), ...em.map((e, k) => EX(k) + ',' + EY(e.a)).reverse()].join(' '),
+      own: ownHist.map((v, k) => v == null ? null : EX(k) + ',' + EY(v)).filter(Boolean).join(' '),
+      pts: [...em.map((e, k) => ({ x: EX(k), y: EY(e.m), c: 'var(--mid)', t: 'Foto #' + caps[k].n + ' · mediana ' + eur(e.m) })), ...ownHist.map((v, k) => v == null ? null : ({ x: EX(k), y: EY(v), c: 'var(--ac)', t: 'Foto #' + caps[k].n + ' · ' + eur(v) })).filter(Boolean)],
+      xl: caps.map((c, k) => ({ x: EX(k), t: '#' + c.n })), summary: 'mediana ' + eur(em[0]?.m) + ' → ' + eur(em[em.length - 1]?.m) + ' · ' + sgn(((em[em.length - 1]?.m || 1) / (em[0]?.m || 1) - 1) * 100) + ' %' };
+    // box plot
+    const gKey = s.boxMode === 'zone' ? h => h.zone : s.boxMode === 'segment' ? h => h.adults ? 'Adults only' : 'Familiar y mixto' : h => h.chain;
+    const groups = {}; open.forEach(x => (groups[gKey(x.h)] = groups[gKey(x.h)] || []).push(x.p));
+    const bmin = open.length ? Math.min(...open.map(x => x.p)) : 0, bmax = open.length ? Math.max(...open.map(x => x.p)) : 1;
+    const BX = v => ((v - bmin) / Math.max(1, bmax - bmin) * 100);
+    const activeG = s.boxMode === 'zone' ? s.zone : s.boxMode === 'segment' ? s.seg : s.chain;
+    const boxes = Object.entries(groups).filter(([, a]) => s.boxMode !== 'chain' || a.length > 1).map(([g, a]) => { const mn = Math.min(...a), mx = Math.max(...a), q1 = q(a, .25), q3 = q(a, .75), md = q(a, .5); const on = activeG === g; const ownHere = ownIn && ownP && gKey(own) === g;
+      return { name: g, n: a.length, med: eur(md), m: md, minL: BX(mn) + '%', whW: (BX(mx) - BX(mn)) + '%', q1L: BX(q1) + '%', boxW: Math.max(.8, BX(q3) - BX(q1)) + '%', medL: BX(md) + '%', ownL: ownHere ? BX(ownP) + '%' : '0', ownOp: ownHere ? 1 : 0, bg: on ? 'var(--accent-soft)' : 'transparent', weight: on ? 600 : 500,
+        pick: () => this.setState(st => s.boxMode === 'zone' ? { zone: st.zone === g ? null : g } : s.boxMode === 'segment' ? { seg: st.seg === g ? null : g } : { chain: st.chain === g ? null : g }) }; }).sort((a, b) => b.m - a.m);
+    // scatter
+    const sx = open.map(x => x.p), sy = open.map(x => x.h.nota);
+    const xlo = Math.min(...sx, 100) * .92, xhi = Math.max(...sx, 200) * 1.04, ylo = Math.min(...sy, 7.5) - .15, yhi = Math.max(...sy, 9) + .1;
+    const SX = v => ((v - xlo) / (xhi - xlo) * 100), SY = v => ((v - ylo) / (yhi - ylo) * 100);
+    const sc = { mx: SX(fMed) + '%', my: (100 - SY(mNota)) + '%', xMin: eur(xlo), xMax: eur(xhi), yMax: yhi.toFixed(1).replace('.', ','), yMin: ylo.toFixed(1).replace('.', ','),
+      dots: open.map(x => { const isOwn = x.h.id === s.own, vs = vscore(x.h, x.p); const sz = Math.round(Math.min(22, 8 + Math.sqrt(x.h.reviews) / 5)); return { x: SX(x.p) + '%', y: SY(x.h.nota) + '%', s: sz + 'px', c: isOwn ? 'var(--ac)' : vs >= 60 ? '#1f7a52' : vs <= 40 ? '#b94f50' : 'var(--mid)', border: isOwn ? '3px solid var(--ink)' : '2px solid var(--card)', op: isOwn ? 1 : .85, z: isOwn ? 3 : 1, title: x.h.name, open: openH(x.h.id), hover: () => this.setState({ scHover: x.h.name.split(' - ')[0] + ' · ' + eur(x.p) + ' · nota ' + x.h.nota.toFixed(1).replace('.', ',') + ' · value ' + vs }) }; }) };
+    // alerts
+    const AL = [];
+    hs.forEach(h => {
+      if (h.isNew) AL.push({ type: 'mov', tag: 'Nuevo', name: h.name, text: 'Entra en el set con ' + eur(h.adr), v: eur(h.adr), tagBg: 'var(--accent-soft)', tagInk: 'var(--ac)', ink: 'var(--ac)', w: 50, id: h.id });
+      else if (h.delta <= -3) AL.push({ type: 'mov', tag: 'Bajada', name: h.name, text: eur(h.prev) + ' → ' + eur(h.adr), v: sgn(h.delta) + ' %', tagBg: 'var(--bad-bg)', tagInk: 'var(--red)', ink: 'var(--red)', w: 80 + Math.abs(h.delta), id: h.id });
+      else if (h.delta >= 5) AL.push({ type: 'mov', tag: 'Subida', name: h.name, text: eur(h.prev) + ' → ' + eur(h.adr), v: sgn(h.delta) + ' %', tagBg: 'var(--good-bg)', tagInk: 'var(--green)', ink: 'var(--green)', w: 60 + h.delta, id: h.id });
+      if (/Queda 1/.test(h.avail || '')) AL.push({ type: 'disp', tag: 'Queda 1', name: h.name, text: 'Última unidad en la estancia capturada', v: eur(h.adr), tagBg: 'var(--bad-bg)', tagInk: 'var(--red)', ink: 'var(--ink)', w: 70, id: h.id });
+      const c14 = this.cal[h.id].st.slice(0, 14).filter(x => x === 'closed').length;
+      if (c14 >= 2) AL.push({ type: 'disp', tag: 'Cierres', name: h.name, text: c14 + ' fechas cerradas en los próximos 14 días', v: c14 + ' d', tagBg: 'var(--warn-bg)', tagInk: 'var(--warn-ink)', ink: 'var(--warn-ink)', w: 40 + c14, id: h.id });
+    });
+    AL.sort((a, b) => b.w - a.w);
+    const alerts = AL.filter(a => s.alertTab === 'all' || a.type === s.alertTab).map(a => ({ ...a, open: openH(a.id) }));
+    const alertTabs = [['all', 'Todas'], ['mov', 'Precio'], ['disp', 'Disponibilidad']].map(([id, l]) => ({ label: l, n: AL.filter(a => id === 'all' || a.type === id).length, pick: () => this.setState({ alertTab: id }), ...seg3(s.alertTab === id) }));
+    // availability weeks
+    const weeks = Math.ceil(H / 7);
+    const availWeeks = Array.from({ length: weeks }, (_, w) => { let c = 0, l = 0, t = 0; for (let dd = w * 7; dd < Math.min(H, w * 7 + 7); dd++) hs.forEach(h => { t++; const st = this.cal[h.id].st[dd]; if (st === 'closed') c++; else if (st === 'low') l++; }); const pc = c / Math.max(1, t), pl = l / Math.max(1, t); return { closedH: (pc * 300) + '%', lowH: (pl * 300) + '%', pct: Math.round((pc + pl) * 100) + '%', label: dLabel(w * 7), title: 'Semana del ' + dLabel(w * 7) + ' · ' + Math.round(pc * 100) + ' % cerrado · ' + Math.round(pl * 100) + ' % cupo bajo' }; });
+    const closers = hs.map(h => { const st = this.cal[h.id].st.slice(0, H); return { h, c: st.filter(x => x === 'closed').length, l: st.filter(x => x === 'low').length }; }).sort((a, b) => (b.c * 2 + b.l) - (a.c * 2 + a.l)).slice(0, 6).map(x => ({ name: x.h.name, closed: x.c + ' d', low: x.l + ' d', now: this.cal[x.h.id].st[focus] === 'closed' ? 'cerrado' : this.cal[x.h.id].st[focus] === 'low' ? 'cupo bajo' : 'abierto', open: openH(x.h.id) }));
+    // drawer
+    const dh = all.find(h => h.id === s.drawer);
+    let dr = {};
+    if (dh) {
+      const pr = price(dh, focus), rk = rankAt(dh, focus), vs = vscore(dh, pr);
+      const hist = dh.history, hv = [...hist.filter(v => v != null), ...caps.map(c => c.adr)], lo = Math.min(...hv) - 10, hi = Math.max(...hv) + 10;
+      const DX = k => k * (440 / (caps.length - 1)), DY = v => 100 - (v - lo) / (hi - lo) * 90;
+      dr = { name: dh.name, sub: dh.chain + ' · ' + dh.zone + (dh.adults ? ' · Adults only' : '') + ' · playa a ' + dh.beach, rank: rk ? rk.r : '—', total: rk ? rk.n : hs.length,
+        kpis: [{ k: 'Tarifa ' + dLabel(focus), v: pr ? eur(pr) : 'Cerrado', c: 'var(--ac)' }, { k: 'Índice', v: pr ? Math.round(pr / fMed * 100) : '—' }, { k: 'Value score', v: vs ?? '—' }, { k: 'Nota', v: dh.nota.toFixed(1).replace('.', ',') + ' · ' + dh.reviews.toLocaleString('es-ES') }, { k: 'Δ foto', v: dh.isNew ? 'Nuevo' : sgn(dh.delta) + ' %', c: dh.delta > 0 ? 'var(--green)' : dh.delta < 0 ? 'var(--red)' : 'var(--ink)' }, { k: 'Genius', v: dh.genius ? dh.geniusLevel.replace('Genius ', '') : 'No' }].map(k => ({ c: 'var(--ink)', ...k })),
+        line: hist.map((v, k) => v == null ? null : DX(k) + ',' + DY(v)).filter(Boolean).join(' '), setLine: caps.map((c, k) => DX(k) + ',' + DY(c.adr)).join(' '),
+        cal: Array.from({ length: H }, (_, i) => { const pp = price(dh, i); return { bg: cellBg(pp, dayMeds[i]), sh: this.cal[dh.id].st[i] === 'low' ? 'inset 0 -3px 0 #c98a1e' : i === focus ? 'inset 0 0 0 1.5px var(--ac)' : 'none', title: dLong(i) + ' · ' + (pp ? eur(pp) : 'cerrado') }; }),
+        rooms: dh.rooms.map(g => { const mr = g.rates.reduce((a, b) => a.adr < b.adr ? a : b); const u = g.rates.map(t => t.units).filter(Boolean); const pg = g.rates.find(t => t.program); return { name: g.name, occ: g.maxOcc, n: g.rates.length + (g.rates.length === 1 ? ' tarifa' : ' tarifas'), from: 'desde ' + eur(mr.adr), tag: u.length ? (Math.min(...u) === 1 ? 'Queda 1' : 'Quedan ' + Math.min(...u)) : pg ? pg.program : 'Disponible', tagBg: u.length ? 'var(--warn-bg)' : pg ? 'var(--accent-soft)' : 'var(--bg)', tagInk: u.length ? 'var(--warn-ink)' : pg ? 'var(--ac)' : 'var(--muted)' }; }),
+        ownLabel: s.own === dh.id ? 'Es tu hotel propio' : 'Fijar como hotel propio',
+        setOwn: () => { localStorage.setItem('atlas.ownHotel', dh.id); this.setState({ own: dh.id, drawer: null }); p.notify && p.notify(dh.name + ' fijado como hotel propio', 'ok'); },
+        sheet: () => { this.setState({ drawer: null }); p.openSheet && p.openSheet(dh.name); } };
+    }
+    const chips = [];
+    if (s.zone) chips.push({ label: 'Zona: ' + s.zone, clear: () => this.setState({ zone: null }) });
+    if (s.seg) chips.push({ label: s.seg, clear: () => this.setState({ seg: null }) });
+    if (s.chain) chips.push({ label: 'Cadena: ' + s.chain, clear: () => this.setState({ chain: null }) });
+    if (focus !== BASE_D) chips.push({ label: 'Entrada ' + dLabel(focus), clear: () => this.setState({ focus: BASE_D }) });
+    const famSet = [...new Set(all.flatMap(h => h.rooms.map(g => fam(g.name))))].sort();
+    const setOwn = e => { localStorage.setItem('atlas.ownHotel', e.target.value); this.setState({ own: e.target.value }); };
+    return {
+      own: s.own, onOwn: setOwn, ownRef: this.ownRef, ownBorder: s.own ? 'var(--ac)' : 'var(--border-soft)', ownBg: s.own ? 'var(--accent-soft)' : 'var(--input)', ownWeight: s.own ? 600 : 400,
+      hotelOpts: [...all].sort((a, b) => a.name.localeCompare(b.name)).map(h => ({ id: h.id, name: h.name, sel: h.id === s.own })), noOwnSel: !s.own,
+      horizons: [14, 30, 60, 90].map(n => ({ label: n + ' días', pick: () => this.setState(st => ({ horizon: n, focus: Math.min(st.focus, n - 1) })), ...seg3(H === n) })),
+      board: s.board, onBoard: e => this.setState({ board: e.target.value }), fam: s.fam, onFam: e => this.setState({ fam: e.target.value }), famOpts: famSet.map(f => ({ v: f, l: f })),
+      activeChips: chips, hasChips: chips.length > 0, clearAll: () => this.setState({ zone: null, seg: null, chain: null, focus: BASE_D }),
+      scopeLabel: hs.length + ' de ' + all.length + ' hoteles', kpis, focusLabel: dLong(focus),
+      mapRef: this.mapRef, mapFailed: s.mapFailed, zones,
+      hasOwn: !!ownIn, noOwn: !ownIn, reco, target: s.target, onTarget: e => this.setState({ target: +e.target.value }),
+      copyReco: () => { try { navigator.clipboard.writeText(String(reco.sug)); } catch (e) {} p.notify && p.notify('Tarifa sugerida ' + reco.sug + ' € copiada · ' + dLabel(focus), 'ok'); },
+      askReco: () => p.ask && p.ask('Explica la tarifa sugerida de ' + (reco.sug || '') + ' € para ' + (own ? own.name : '') + ' el ' + dLabel(focus) + '. Componentes: ' + (reco.text || '')),
+      day, horizonLabel: 'entradas ' + dLabel(0) + ' – ' + dLabel(H - 1), calCols, calHead, medRow, rankRow, calRows, calEmpty: !calRows.length, calReadout,
+      calOver: e => { const t = e.target, h = t.dataset && t.dataset.h, dd = t.dataset && t.dataset.d; if (dd == null) return; const k = (h || '') + ':' + dd; if (this._hk === k) return; this._hk = k; this.setState({ hover: { h: h || null, d: +dd } }); },
+      calLeave: () => { this._hk = null; this.setState({ hover: null }); },
+      calClick: e => { const dd = e.target.dataset && e.target.dataset.d; if (dd != null) this.setState({ focus: +dd }); },
+      focusL: 'calc(270px + 1px + (100% - 271px) * ' + (focus / H) + ')', focusW: 'calc((100% - 271px) / ' + H + ')',
+      calFoot: 'entrada ' + dLabel(focus) + ' seleccionada · ' + open.length + ' con tarifa · ' + closedToday + ' cerrados',
+      idx, evo, boxes, boxMin: eur(bmin), boxMax: eur(bmax), boxModes: [['zone', 'Zona'], ['segment', 'Segmento'], ['chain', 'Cadena']].map(([id, l]) => ({ label: l, pick: () => this.setState({ boxMode: id }), ...seg3(s.boxMode === id) })),
+      sc, scHover: s.scHover || 'tamaño = reseñas · pulsa para abrir ficha', scLeave: () => this.setState({ scHover: null }),
+      alerts, alertTabs, availWeeks, closers,
+      hasDrawer: !!dh, dr, closeDrawer: () => this.setState({ drawer: null }),
+    };
+  }
+}
+</script>
+</body>
+</html>

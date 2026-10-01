@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>@keyframes atGrow{from{opacity:0;transform:scale(.25)}to{opacity:1;transform:none}}@keyframes atRing{0%{transform:scale(.5);opacity:1}100%{transform:scale(1.6);opacity:0}}</style>
+</helmet>
+<div style="padding:28px 32px 48px;display:flex;flex-direction:column;gap:16px;animation:atIn 420ms cubic-bezier(.22,1,.36,1) both">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px">
+    <div>
+      <h1 style="margin:0 0 6px;font-size:28px;font-weight:700;letter-spacing:-.025em">Lectura de mercado</h1>
+      <p style="margin:0;font-size:13.5px;color:var(--muted)">{{ market }} · 38 hoteles observados · foto #18</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint);white-space:nowrap">
+      <span>Extracción 23/08/2026, 14:41</span>
+      <sc-if value="{{ stale }}" hint-placeholder-val="{{ true }}">
+        <button type="button" onClick="{{ startCapture }}" style="height:32px;padding:0 12px;border:1px solid var(--border-soft);border-radius:8px;background:var(--card);font-family:Archivo,sans-serif;font-size:12.5px;color:var(--ink)" style-hover="border-color:var(--ac);color:var(--ac)">Actualizar datos</button>
+      </sc-if>
+    </div>
+  </div>
+
+  <section style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 16px 16px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="width:22px;height:22px;border-radius:6px;background:var(--accent-soft);color:var(--ac);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2"></path></svg></span>
+        <strong style="font-size:15px;font-weight:600;letter-spacing:-.01em">Señales de hoy</strong>
+        <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint)">3 requieren atención · 3 de lectura</span>
+      </div>
+      <button type="button" onClick="{{ toggleSignals }}" style="height:30px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:var(--ac);font-size:12.5px;font-weight:500" style-hover="background:var(--accent-soft)">{{ signalsToggle }}</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+      <sc-for list="{{ signals }}" as="sg" hint-placeholder-count="3">
+        <article style="display:flex;flex-direction:column;gap:8px;padding:14px 16px;border:1px solid var(--line);border-radius:11px;background:var(--input);animation:atIn 360ms cubic-bezier(.22,1,.36,1) both;animation-delay:{{ sg.delay }}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:{{ sg.chipBg }};color:{{ sg.chipInk }}">{{ sg.level }}</span>
+            <strong style="font-family:'Space Mono',monospace;font-size:15px;font-weight:700">{{ sg.value }}</strong>
+          </div>
+          <strong style="font-size:14px;font-weight:600">{{ sg.title }}</strong>
+          <p style="margin:0;font-size:12.5px;line-height:1.45;color:var(--muted);text-wrap:pretty;flex:1">{{ sg.text }}</p>
+          <div style="display:flex;gap:6px">
+            <sc-if value="{{ sg.hasHotel }}" hint-placeholder-val="{{ false }}">
+              <button type="button" onClick="{{ sg.open }}" style="height:28px;padding:0 10px;border:1px solid var(--border-soft);border-radius:7px;background:var(--card);font-size:12px;color:var(--ink);white-space:nowrap" style-hover="border-color:var(--ac);color:var(--ac)">Ver hotel</button>
+            </sc-if>
+            <button type="button" onClick="{{ sg.askIt }}" style="height:28px;padding:0 10px;border:0;border-radius:7px;background:transparent;font-size:12px;color:var(--muted);white-space:nowrap" style-hover="color:var(--ac)">Preguntar al Copilot →</button>
+          </div>
+        </article>
+      </sc-for>
+    </div>
+  </section>
+
+  <div style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px">
+    <div style="grid-column:span 3;grid-row:span 2;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+      <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">ADR mediano</span>
+      <div style="display:flex;align-items:baseline;gap:5px"><strong style="font-size:48px;font-weight:700;letter-spacing:-.04em;line-height:1">268</strong><span style="font-size:20px;font-weight:500;color:var(--muted)">€</span></div>
+      <span style="font-size:12px;color:var(--faint)">Tarifa pública · habitación/noche</span>
+      <div style="flex:1;min-height:90px;display:flex;align-items:flex-end;margin-top:6px">
+        <svg viewBox="0 0 300 90" width="100%" height="90" preserveAspectRatio="none" style="display:block;overflow:visible">
+          <polyline points="{{ sparkArea }}" fill="var(--accent-soft)" stroke="none"></polyline>
+          <polyline points="{{ spark }}" fill="none" stroke="var(--ac)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"></polyline>
+        </svg>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)"><span>foto #1</span><span>12 fotos</span><span>#18</span></div>
+    </div>
+    <div style="grid-column:span 3;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+      <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Hoteles con tarifa</span>
+      <div style="display:flex;align-items:baseline;gap:4px"><strong style="font-size:30px;font-weight:700;letter-spacing:-.035em;line-height:1">38</strong><span style="font-size:15px;color:var(--muted)">/ 38</span></div>
+      <div style="height:4px;border-radius:2px;background:var(--line);overflow:hidden"><div style="height:100%;width:100%;background:var(--green);transform-origin:left;animation:atWipe 900ms cubic-bezier(.22,1,.36,1) 200ms both"></div></div>
+      <span style="font-size:12px;color:var(--faint)">100 % con precio observable</span>
+    </div>
+    <div style="grid-column:span 6;grid-row:span 2;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:10px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Dispersión del set</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Dónde compite el mercado</h2>
+        </div>
+        <div style="display:flex;gap:12px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint);white-space:nowrap">
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:50%;background:var(--mid)"></i>&lt;210 €</span>
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:50%;background:var(--lo)"></i>210–349 €</span>
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:50%;background:var(--ac)"></i>&gt;349 €</span>
+        </div>
+      </div>
+      <div style="position:relative;flex:1;min-height:150px;margin-top:6px">
+        <div style="position:absolute;left:{{ bandL }};width:{{ bandW }};top:0;bottom:22px;background:var(--accent-soft);border-radius:6px;opacity:.7"></div>
+        <div style="position:absolute;left:{{ medL }};top:0;bottom:22px;width:1px;background:var(--ink);opacity:.55"></div>
+        <span style="position:absolute;left:{{ medL }};top:-2px;transform:translateX(6px);font-family:'Space Mono',monospace;font-size:10px;color:var(--ink)">mediana 268 €</span>
+        <sc-for list="{{ swarm }}" as="d" hint-placeholder-count="38">
+          <button type="button" onClick="{{ d.open }}" onMouseEnter="{{ d.hover }}" onMouseLeave="{{ unhover }}" aria-label="{{ d.title }}" style="position:absolute;left:{{ d.x }};bottom:{{ d.y }};width:12px;height:12px;margin-left:-6px;padding:0;border-radius:50%;border:2px solid var(--card);background:{{ d.color }};box-sizing:content-box;transform:scale({{ d.scale }});transition:transform 140ms ease;animation:atFade 400ms ease both;animation-delay:{{ d.delay }}"></button>
+        </sc-for>
+        <div style="position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)"><span>150 €</span><span>667 €</span></div>
+        <sc-if value="{{ hasHover }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:{{ hov.x }};bottom:{{ hov.y }};transform:translate(-50%,-14px);background:var(--dark);color:#fff;border-radius:7px;padding:6px 9px;font-size:11.5px;white-space:nowrap;pointer-events:none;z-index:4"><b style="font-weight:600">{{ hov.name }}</b> · {{ hov.adr }}</div>
+        </sc-if>
+      </div>
+    </div>
+    <div style="grid-column:span 3;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+      <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Movimiento ADR</span>
+      <strong style="font-size:30px;font-weight:700;letter-spacing:-.035em;line-height:1;color:var(--red)">+0,4 %</strong>
+      <span style="font-size:12px;color:var(--faint)">11 hoteles movidos · <span style="color:var(--green)">▲8</span> <span style="color:var(--red)">▼3</span></span>
+    </div>
+
+    <div style="grid-column:span 8;background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px">
+        <div>
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Mapa hotelero</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">Precio por ubicación</h2>
+        </div>
+        <div style="display:flex;gap:12px;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)">
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:50%;background:#1f7a52"></i>bajo</span>
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:50%;background:#c98a1e"></i>medio</span>
+          <span style="display:flex;align-items:center;gap:5px"><i style="width:8px;height:8px;border-radius:50%;background:#b94f50"></i>alto</span>
+        </div>
+      </div>
+      <div ref="{{ wrapRef }}" style="position:relative;height:600px;overflow:hidden;border-top:1px solid var(--line);background:repeating-linear-gradient(135deg,var(--line-soft) 0 10px,var(--card) 10px 20px)">
+        <div ref="{{ mapRef }}" style="position:absolute;inset:0"></div>
+        <sc-if value="{{ mapFailed }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:11px;color:var(--faint)">mapa · MapLibre + CARTO</div>
+        </sc-if>
+        <sc-if value="{{ hasMapSel }}" hint-placeholder-val="{{ false }}">
+          <span style="position:absolute;left:{{ pop.pxs }};top:{{ pop.pys }};width:36px;height:36px;margin:-18px 0 0 -18px;border-radius:50%;border:2px solid var(--ac);z-index:4;pointer-events:none;animation:atRing 1.8s ease-out infinite"></span>
+          <svg width="100%" height="100%" style="position:absolute;inset:0;z-index:4;pointer-events:none;overflow:visible"><line x1="{{ pop.px }}" y1="{{ pop.py }}" x2="{{ pop.ax }}" y2="{{ pop.ay }}" stroke="var(--ac)" stroke-width="1.5" stroke-dasharray="3 3"></line><circle cx="{{ pop.ax }}" cy="{{ pop.ay }}" r="3" fill="var(--ac)"></circle></svg>
+          <div role="dialog" aria-label="{{ ms.name }}" style="position:absolute;left:{{ pop.left }};top:{{ pop.top }};width:{{ pop.w }};z-index:5;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 18px 50px rgba(20,22,28,.24);overflow:hidden;transform-origin:{{ pop.origin }};animation:atGrow 280ms cubic-bezier(.22,1,.36,1) both">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:14px 16px 12px;border-bottom:1px solid var(--line)">
+              <div style="min-width:0">
+                <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Inspector de tarifa · puesto {{ ms.rank }} de 38</span>
+                <h3 style="margin:4px 0 2px;font-size:15.5px;font-weight:600;letter-spacing:-.01em;line-height:1.25">{{ ms.name }}</h3>
+                <span style="font-size:11.5px;color:var(--faint)">{{ ms.sub }}</span>
+              </div>
+              <button type="button" onClick="{{ closeMapSel }}" aria-label="Cerrar" style="width:28px;height:28px;flex:0 0 28px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--muted);font-size:15px;line-height:1">×</button>
+            </div>
+            <div style="display:grid;grid-template-columns:{{ pop.cols }}">
+              <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;border-right:1px solid var(--line);min-width:0">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                  <div style="display:flex;gap:2px;padding:3px;background:var(--bg);border-radius:8px">
+                    <sc-for list="{{ chartModes }}" as="cm" hint-placeholder-count="2">
+                      <button type="button" onClick="{{ cm.pick }}" style="height:24px;padding:0 9px;border:0;border-radius:6px;background:{{ cm.bg }};color:{{ cm.ink }};box-shadow:{{ cm.sh }};font-size:11.5px;font-weight:500;white-space:nowrap">{{ cm.label }}</button>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{ isHist }}" hint-placeholder-val="{{ true }}">
+                    <button type="button" onClick="{{ toggleCmp }}" style="display:flex;align-items:center;gap:6px;border:0;background:transparent;font-size:11.5px;color:var(--muted);padding:0;white-space:nowrap"><span style="width:12px;height:12px;border-radius:3px;border:1.5px solid {{ cmpBorder }};background:{{ cmpBg }}"></span>Media del set</button>
+                  </sc-if>
+                </div>
+                <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);height:14px">{{ readout }}</div>
+                <svg viewBox="0 0 400 170" width="100%" style="display:block;overflow:visible">
+                  <line x1="34" x2="396" y1="12" y2="12" stroke="var(--line)"></line><line x1="34" x2="396" y1="76" y2="76" stroke="var(--line)"></line><line x1="34" x2="396" y1="140" y2="140" stroke="var(--line)"></line>
+                  <text x="28" y="15" text-anchor="end" font-family="Space Mono" font-size="9" fill="var(--faint)">{{ ch.yMax }}</text>
+                  <text x="28" y="143" text-anchor="end" font-family="Space Mono" font-size="9" fill="var(--faint)">{{ ch.yMin }}</text>
+                  <polyline points="{{ ch.l2 }}" fill="none" stroke="{{ ch.c2 }}" stroke-width="1.6" stroke-dasharray="{{ ch.dash2 }}" stroke-linejoin="round"></polyline>
+                  <polyline points="{{ ch.area }}" fill="var(--accent-soft)" stroke="none" opacity=".7"></polyline>
+                  <polyline points="{{ ch.l1 }}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+                  <sc-for list="{{ ch.pts }}" as="pt" hint-placeholder-count="12">
+                    <circle cx="{{ pt.x }}" cy="{{ pt.y }}" r="{{ pt.r }}" fill="{{ pt.fill }}" stroke="{{ pt.stroke }}" stroke-width="2" onMouseEnter="{{ pt.hover }}" style="cursor:pointer"></circle>
+                  </sc-for>
+                  <sc-for list="{{ ch.xl }}" as="xl" hint-placeholder-count="6"><text x="{{ xl.x }}" y="160" text-anchor="middle" font-family="Space Mono" font-size="9" fill="var(--faint)">{{ xl.t }}</text></sc-for>
+                </svg>
+                <div style="display:flex;gap:14px;font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">
+                  <span style="display:flex;align-items:center;gap:5px"><i style="width:14px;height:2px;background:var(--ac)"></i>{{ ch.leg1 }}</span>
+                  <sc-if value="{{ ch.hasL2 }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:5px"><i style="width:14px;height:2px;background:{{ ch.c2 }}"></i>{{ ch.leg2 }}</span></sc-if>
+                </div>
+              </div>
+              <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">ADR hab/noche</span>
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px"><strong style="font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--ac)">{{ ms.adr }}</strong><span style="font-family:'Space Mono',monospace;font-size:10px;padding:3px 6px;border-radius:5px;background:{{ ms.vsBg }};color:{{ ms.vsInk }};white-space:nowrap">{{ ms.vs }}</span></div>
+                  <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:{{ ms.dInk }}">{{ ms.delta }}</span>
+                </div>
+                <div style="display:flex;flex-direction:column">
+                  <sc-for list="{{ ms.facts }}" as="f" hint-placeholder-count="7">
+                    <div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line-soft);font-size:11.5px"><span style="color:var(--faint);white-space:nowrap">{{ f.k }}</span><span style="text-align:right;color:{{ f.c }};font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.v }}</span></div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:var(--input)">
+              <button type="button" onClick="{{ ms.open }}" style="flex:1;height:34px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-size:12.5px;font-weight:600">Ver en la hoja de mercado</button>
+              <button type="button" onClick="{{ ms.askIt }}" style="flex:1;height:34px;border:1px solid var(--border-soft);border-radius:8px;background:var(--card);font-size:12.5px;color:var(--ink)" style-hover="border-color:var(--ac);color:var(--ac)">Preguntar al Copilot</button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+    <div style="grid-column:span 4;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 20px;display:flex;flex-direction:column;min-width:0">
+      <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Fuera del centro</span>
+      <h2 style="margin:4px 0 14px;font-size:16px;font-weight:600;letter-spacing:-.015em">Mayor distancia a la mediana</h2>
+      <div style="display:flex;flex-direction:column">
+        <sc-for list="{{ outliers }}" as="o" hint-placeholder-count="10">
+          <button type="button" onClick="{{ o.open }}" style="display:grid;grid-template-columns:minmax(0,1fr) 64px 90px;align-items:center;gap:12px;padding:10px 0;border:0;border-top:1px solid var(--line-soft);background:transparent;text-align:left;color:var(--ink)" style-hover="color:var(--ac)">
+            <span style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ o.name }}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;text-align:right">{{ o.adr }}</span>
+            <span style="display:flex;align-items:center;gap:6px">
+              <span style="position:relative;flex:1;height:4px;border-radius:2px;background:var(--line)"><span style="position:absolute;top:0;bottom:0;left:{{ o.l }};width:{{ o.w }};border-radius:2px;background:{{ o.c }}"></span></span>
+              <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);width:40px;text-align:right">{{ o.vs }}</span>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="grid-column:span 7;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Histórico de capturas</span>
+          <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">ADR medio por foto</h2>
+        </div>
+        <div style="display:flex;gap:18px;font-size:12px;color:var(--muted)">
+          <span>Sem. 10 ago <b style="font-family:'Space Mono',monospace;color:var(--ink)">279 €</b></span>
+          <span>Sem. 17 ago <b style="font-family:'Space Mono',monospace;color:var(--ink)">284 €</b></span>
+          <span style="font-family:'Space Mono',monospace;color:var(--green)">+2,0 %</span>
+        </div>
+      </div>
+      <svg viewBox="0 0 700 170" width="100%" style="display:block;overflow:visible">
+        <line x1="0" x2="700" y1="20" y2="20" stroke="var(--line)"></line>
+        <line x1="0" x2="700" y1="140" y2="140" stroke="var(--line)"></line>
+        <text x="0" y="14" font-family="Space Mono" font-size="10" fill="var(--faint)">300 €</text>
+        <text x="0" y="134" font-family="Space Mono" font-size="10" fill="var(--faint)">260 €</text>
+        <polyline points="{{ histLine }}" fill="none" stroke="var(--ac)" stroke-width="2" stroke-linejoin="round"></polyline>
+        <sc-for list="{{ hist }}" as="hp" hint-placeholder-count="12">
+          <circle cx="{{ hp.x }}" cy="{{ hp.y }}" r="4" fill="var(--card)" stroke="var(--ac)" stroke-width="2"><title>{{ hp.title }}</title></circle>
+          <text x="{{ hp.x }}" y="162" text-anchor="middle" font-family="Space Mono" font-size="10" fill="var(--faint)">{{ hp.n }}</text>
+        </sc-for>
+      </svg>
+    </div>
+    <div style="grid-column:span 5;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:0">
+      <div>
+        <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Curva de entrada</span>
+        <h2 style="margin:4px 0 0;font-size:16px;font-weight:600;letter-spacing:-.015em">ADR según días hasta la estancia</h2>
+      </div>
+      <sc-for list="{{ curve }}" as="cv" hint-placeholder-count="3">
+        <div style="display:grid;grid-template-columns:90px minmax(0,1fr) 64px;align-items:center;gap:12px">
+          <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted)">{{ cv.label }}</span>
+          <div style="height:22px;border-radius:6px;background:var(--line-soft);overflow:hidden"><div style="height:100%;width:{{ cv.w }};border-radius:6px;background:{{ cv.c }};transform-origin:left;animation:atWipe 800ms cubic-bezier(.22,1,.36,1) both"></div></div>
+          <span style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;text-align:right">{{ cv.v }}</span>
+        </div>
+      </sc-for>
+      <span style="font-size:11.5px;color:var(--faint);margin-top:auto">Observaciones agregadas por horizonte; no es una previsión.</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const eur = n => Math.round(n).toLocaleString('es-ES') + ' €';
+const pct = n => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toFixed(0) + ' %';
+const X = v => (v - 150) / (667 - 150) * 100;
+const STYLES = { claro: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json', oscuro: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json' };
+
+class Component extends DCLogic {
+  mapRef = React.createRef();
+  wrapRef = React.createRef();
+  state = { allSignals: false, hover: null, mapSel: null, mapFailed: false, pt: null, chart: 'hist', cmp: false, ptHover: null };
+  selectHotel(h) { const m = this.map; if (!m) return; const p = m.project([h.lng, h.lat]); this.setState({ mapSel: h.id, pt: { x: p.x, y: p.y }, ptHover: null }); (this.mk || []).forEach(o => { const on = o.id === h.id; o.el.style.transform = on ? 'scale(1.45)' : ''; o.el.style.boxShadow = on ? '0 0 0 3px #2f55d4, 0 2px 6px rgba(0,0,0,.35)' : '0 1px 4px rgba(20,22,28,.35)'; }); }
+  componentDidMount() {
+    let tries = 0;
+    const init = () => {
+      if (!this.mapRef.current) return;
+      if (!window.maplibregl) { if (++tries > 100) return this.setState({ mapFailed: true }); return setTimeout(init, 60); }
+      try {
+        const m = new window.maplibregl.Map({ container: this.mapRef.current, style: STYLES[this.props.theme] || STYLES.claro, center: [-15.655, 27.782], zoom: 10.7, attributionControl: { compact: true }, cooperativeGestures: false });
+        m.scrollZoom.disable();
+        m.addControl(new window.maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+        this.map = m; this.mk = [];
+        m.on('move', () => { const h = (this.props.data?.hotels || []).find(x => x.id === this.state.mapSel); if (h) { const p = m.project([h.lng, h.lat]); this.setState({ pt: { x: p.x, y: p.y } }); } });
+        (this.props.data?.hotels || []).forEach(h => {
+          const el = document.createElement('button');
+          const c = h.adr < 210 ? '#1f7a52' : h.adr <= 349 ? '#c98a1e' : '#b94f50';
+          el.setAttribute('aria-label', h.name);
+          el.style.cssText = 'width:14px;height:14px;border-radius:50%;border:2px solid #fff;background:' + c + ';box-shadow:0 1px 4px rgba(20,22,28,.35);cursor:pointer;padding:0';
+          el.onclick = e => { e.stopPropagation(); this.selectHotel(h); };
+          const inner = document.createElement('div'); inner.appendChild(el); el.style.transition = 'transform 160ms ease, box-shadow 160ms ease';
+          new window.maplibregl.Marker({ element: inner }).setLngLat([h.lng, h.lat]).addTo(m); this.mk.push({ id: h.id, el });
+        });
+      } catch (e) { this.setState({ mapFailed: true }); }
+    };
+    init();
+  }
+  componentDidUpdate(pp) { if (pp.theme !== this.props.theme && this.map) this.map.setStyle(STYLES[this.props.theme] || STYLES.claro); }
+  componentWillUnmount() { this.map && this.map.remove(); }
+  renderVals() {
+    const p = this.props, s = this.state, d = p.data || {}, hs = d.hotels || [];
+    const open = n => () => p.openHotel && p.openHotel(n);
+    const sigs = (d.signals || []).slice(0, s.allSignals ? 6 : 3).map((g, i) => ({
+      ...g, delay: i * 60 + 'ms', hasHotel: !!g.hotel, open: open(g.hotel),
+      chipBg: g.level === 'Atención' ? 'var(--warn-bg)' : 'var(--bg)', chipInk: g.level === 'Atención' ? 'var(--warn-ink)' : 'var(--muted)',
+      askIt: () => p.ask && p.ask(g.title + ': ' + g.text + ' ¿Qué hago?'),
+    }));
+    const caps = d.captures || [];
+    const vals = caps.map(c => c.adr), lo = 260, hi = 300;
+    const spark = caps.map((c, i) => (i / (caps.length - 1) * 300).toFixed(1) + ',' + (90 - (c.adr - lo) / (hi - lo) * 80).toFixed(1)).join(' ');
+    const hist = caps.map((c, i) => ({ n: c.n, x: 50 + i * (640 / (caps.length - 1)), y: 140 - (c.adr - lo) / (hi - lo) * 120, title: 'Foto #' + c.n + ' · ' + c.d + ' · ' + c.adr + ' €' }));
+    // beeswarm
+    const placed = [];
+    const swarm = [...hs].sort((a, b) => a.adr - b.adr).map((h, i) => {
+      const x = X(h.adr); let lvl = 0;
+      while (placed.some(q => q.l === lvl && Math.abs(q.x - x) < 1.9)) lvl++;
+      placed.push({ x, l: lvl });
+      const hov = s.hover === h.id;
+      return { id: h.id, x: x + '%', y: (26 + lvl * 17) + 'px', color: h.adr > 349 ? 'var(--ac)' : h.adr >= 210 ? 'var(--lo)' : 'var(--mid)', scale: hov ? 1.35 : 1, delay: i * 18 + 'ms', title: h.name + ' · ' + eur(h.adr), open: open(h.name), hover: () => this.setState({ hover: h.id }), _n: h.name, _a: h.adr };
+    });
+    const hv = swarm.find(w => w.id === s.hover);
+    const outliers = [...hs].sort((a, b) => Math.abs(b.vsMedian) - Math.abs(a.vsMedian)).slice(0, 11).map(h => {
+      const w = Math.min(50, Math.abs(h.vsMedian) / 150 * 50);
+      return { name: h.name, adr: eur(h.adr), vs: pct(h.vsMedian), l: h.vsMedian >= 0 ? '50%' : (50 - w) + '%', w: w + '%', c: h.vsMedian >= 0 ? 'var(--ac)' : 'var(--mid)', open: open(h.name) };
+    });
+    const ms = hs.find(h => h.id === s.mapSel);
+    let pop = {}, ch = {}, msv = {}, readout = '';
+    if (ms && s.pt) {
+      const W = this.wrapRef.current ? this.wrapRef.current.clientWidth : 1000, Hh = 600, cw = Math.min(680, W - 32), chh = cw < 560 ? 580 : 450;
+      const right = s.pt.x + 30 + cw <= W - 12;
+      const left = Math.max(12, right ? s.pt.x + 30 : s.pt.x - 30 - cw), top = Math.max(12, Math.min(Hh - chh - 12, s.pt.y - 150));
+      const ax = right ? left : left + cw, ay = Math.max(top + 24, Math.min(top + chh - 24, s.pt.y));
+      pop = { cols: cw < 560 ? 'minmax(0,1fr)' : 'minmax(0,1fr) 230px', left: left + 'px', top: top + 'px', w: cw + 'px', px: s.pt.x, py: s.pt.y, pxs: s.pt.x + 'px', pys: s.pt.y + 'px', ax, ay, origin: (s.pt.x - left) + 'px ' + (s.pt.y - top) + 'px' };
+      const caps = d.captures || [];
+      let s1, s2 = null, labels, leg1, leg2 = '';
+      if (s.chart === 'hist') { s1 = ms.history; if (s.cmp) s2 = caps.map(c => c.adr); labels = caps.map(c => '#' + c.n); leg1 = 'ADR del hotel por extracción'; leg2 = 'Media del set'; }
+      else { s1 = ms.byDate.map(x => x.cur); s2 = ms.byDate.map(x => x.prev); labels = ms.byDate.map(x => x.d); leg1 = 'Última captura · #18'; leg2 = 'Captura anterior · #17'; }
+      const vals = [...s1, ...(s2 || [])].filter(v => v != null);
+      let lo = Math.min(...vals), hi = Math.max(...vals); const pad = Math.max(6, (hi - lo) * .12); lo -= pad; hi += pad;
+      const n = s1.length, X = i => 34 + i * (362 / (n - 1)), Y = v => 140 - (v - lo) / (hi - lo) * 128;
+      const line = arr => arr.map((v, i) => v == null ? null : X(i).toFixed(1) + ',' + Y(v).toFixed(1)).filter(Boolean).join(' ');
+      const idx1 = s1.map((v, i) => v == null ? null : i).filter(i => i != null);
+      const l1 = line(s1);
+      ch = { l1, l2: s2 ? line(s2) : '', c2: s.chart === 'hist' ? 'var(--faint)' : 'var(--warn-ink)', dash2: s.chart === 'hist' ? '4 4' : '0', hasL2: !!s2, leg1, leg2,
+        area: idx1.length > 1 ? X(idx1[0]) + ',140 ' + l1 + ' ' + X(idx1[idx1.length - 1]) + ',140' : '',
+        yMax: Math.round(hi) + ' €', yMin: Math.round(lo) + ' €',
+        xl: labels.map((t, i) => ({ t, x: X(i) })).filter((_, i) => n <= 8 || i % 2 === 1 || i === n - 1),
+        pts: s1.map((v, i) => v == null ? null : ({ x: X(i), y: Y(v), r: s.ptHover === i ? 5.5 : 3.5, fill: s.ptHover === i ? 'var(--ac)' : 'var(--card)', stroke: 'var(--ac)', hover: () => this.setState({ ptHover: i }) })).filter(Boolean) };
+      if (s.ptHover != null && s1[s.ptHover] != null) {
+        readout = s.chart === 'hist' ? 'Foto ' + labels[s.ptHover] + ' · ' + caps[s.ptHover].d + ' · ' + s1[s.ptHover] + ' €' + (s.cmp ? ' · set ' + caps[s.ptHover].adr + ' €' : '') : 'Entrada ' + labels[s.ptHover] + ' · ' + s1[s.ptHover] + ' €' + (s2 && s2[s.ptHover] ? ' · antes ' + s2[s.ptHover] + ' €' : '');
+      } else readout = ms.isNew ? 'Nuevo en el set: solo aparece en la última extracción' : 'Pasa el cursor por los puntos';
+      const rank = [...hs].sort((a, b) => b.adr - a.adr).findIndex(x => x.id === ms.id) + 1;
+      msv = { name: ms.name, sub: ms.chain + ' · ' + ms.zone + (ms.adults ? ' · Adults only' : ''), rank, adr: eur(ms.adr), vs: pct(ms.vsMedian) + ' vs mediana', vsBg: ms.vsMedian >= 0 ? 'var(--accent-soft)' : 'var(--bg)', vsInk: ms.vsMedian >= 0 ? 'var(--ac)' : 'var(--muted)',
+        delta: ms.isNew ? 'Nuevo en el set' : ms.delta === 0 ? 'Sin cambio vs foto #17' : (ms.delta > 0 ? '▲ ' : '▼ ') + Math.abs(ms.delta).toFixed(1).replace('.', ',') + ' % vs foto #17 (' + eur(ms.prev) + ')', dInk: ms.delta > 0 ? 'var(--green)' : ms.delta < 0 ? 'var(--red)' : 'var(--faint)',
+        facts: [{ k: 'Nota', v: ms.nota.toFixed(1).replace('.', ',') + ' · ' + ms.reviews.toLocaleString('es-ES') + ' reseñas' }, { k: 'Régimen', v: 'Todo incluido' }, { k: 'Habitación', v: ms.room }, { k: 'Cancelación', v: ms.cancel ? 'Gratis' : 'No reembolsable', c: ms.cancel ? 'var(--green)' : 'var(--ink)' }, { k: 'Disponibilidad', v: ms.avail || 'Observable', c: ms.avail ? 'var(--warn-ink)' : 'var(--ink)' }, { k: 'Genius', v: ms.geniusLevel || 'No participa', c: ms.genius ? 'var(--ac)' : 'var(--ink)' }, { k: 'Distancia playa', v: ms.beach }].map(f => ({ c: 'var(--ink)', ...f })),
+        open: open(ms.name), askIt: () => p.ask && p.ask('¿Cómo ha evolucionado el precio de ' + ms.name + '?') };
+    }
+    const seg = on => ({ bg: on ? 'var(--card)' : 'transparent', ink: on ? 'var(--ink)' : 'var(--muted)', sh: on ? '0 1px 2px rgba(20,22,28,.08)' : 'none' });
+    return {
+      market: p.market || 'Gran Canaria (Sur)', stale: !p.fresh, startCapture: p.startCapture,
+      signals: sigs, signalsToggle: s.allSignals ? 'Ver menos' : 'Ver las 6 señales', toggleSignals: () => this.setState({ allSignals: !s.allSignals }),
+      spark, sparkArea: '0,90 ' + spark + ' 300,90', hist, histLine: hist.map(h => h.x + ',' + h.y).join(' '),
+      swarm, bandL: X(210) + '%', bandW: (X(349) - X(210)) + '%', medL: X(268) + '%', unhover: () => this.setState({ hover: null }),
+      hasHover: !!hv, hov: hv ? { x: hv.x, y: hv.y, name: hv._n, adr: eur(hv._a) } : {},
+      outliers, mapRef: this.mapRef, wrapRef: this.wrapRef, mapFailed: s.mapFailed, hasMapSel: !!(ms && s.pt), pop, ch, ms: msv, readout,
+      chartModes: [['hist', 'Por extracción'], ['dates', 'Por fecha de entrada']].map(([id, l]) => ({ label: l, pick: () => this.setState({ chart: id, ptHover: null }), ...seg(s.chart === id) })),
+      isHist: s.chart === 'hist', toggleCmp: () => this.setState({ cmp: !s.cmp }), cmpBorder: s.cmp ? 'var(--ac)' : 'var(--lo)', cmpBg: s.cmp ? 'var(--ac)' : 'transparent',
+      closeMapSel: () => { this.setState({ mapSel: null }); (this.mk || []).forEach(o => { o.el.style.transform = ''; o.el.style.boxShadow = '0 1px 4px rgba(20,22,28,.35)'; }); },
+      curve: [['≤ 21 días', 284, '3 puntos'], ['22–42 días', 276, '6 puntos'], ['> 42 días', 288, '3 puntos']].map(([l, v]) => ({ label: l, v: v + ' €', w: ((v - 250) / 45 * 100) + '%', c: v === 276 ? 'var(--mid)' : 'var(--ac)' })),
+    };
+  }
+}
+</script>
+</body>
+</html>

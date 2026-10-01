@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="display:flex;min-height:calc(100vh - 60px);animation:atFade 300ms ease both">
+  <aside style="width:300px;flex:0 0 300px;border-right:1px solid var(--border);background:var(--card);padding:24px 18px;display:flex;flex-direction:column;gap:14px">
+    <div>
+      <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Composición</span>
+      <h2 style="margin:4px 0 4px;font-size:16px;font-weight:600;letter-spacing:-.015em">Bloques</h2>
+      <p style="margin:0;font-size:12.5px;line-height:1.45;color:var(--muted)">Añade bloques al tablero. Los enlazados comparten el hotel seleccionado.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <sc-for list="{{ palette }}" as="pb" hint-placeholder-count="5">
+        <button type="button" onClick="{{ pb.add }}" style="display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);text-align:left;color:var(--ink)" style-hover="border-color:var(--ac)">
+          <span style="width:30px;height:24px;border-radius:6px;background:var(--accent-soft);color:var(--ac);display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700">{{ pb.tag }}</span>
+          <span style="flex:1;display:flex;flex-direction:column;gap:1px"><strong style="font-size:13px;font-weight:600">{{ pb.title }}</strong><span style="font-size:11.5px;color:var(--faint)">{{ pb.sub }}</span></span>
+          <span style="font-size:17px;color:var(--muted)">+</span>
+        </button>
+      </sc-for>
+    </div>
+  </aside>
+
+  <div style="flex:1;min-width:0;padding:24px 32px 48px;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px">
+      <div style="flex:1;min-width:240px">
+        <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);white-space:nowrap">Pizarra personal</span>
+        <input value="{{ title }}" onChange="{{ onTitle }}" aria-label="Nombre del tablero" style="display:block;width:100%;margin-top:4px;border:0;outline:0;background:transparent;font-size:28px;font-weight:700;letter-spacing:-.025em;color:var(--ink);padding:0">
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="display:flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:10.5px;color:{{ savedInk }}"><i style="width:6px;height:6px;border-radius:50%;background:currentColor"></i>{{ savedLabel }}</span>
+        <button type="button" onClick="{{ askIt }}" style="height:34px;padding:0 12px;border:1px solid var(--border-soft);border-radius:9px;background:var(--card);font-size:12.5px;color:var(--ink);white-space:nowrap" style-hover="border-color:var(--ac);color:var(--ac)">Preguntar al Copilot</button>
+        <button type="button" onClick="{{ save }}" style="height:34px;padding:0 14px;border:0;border-radius:9px;background:var(--ac);color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap">Guardar</button>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:14px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:11px;flex-wrap:wrap">
+      <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Contexto</span>
+      <select style="height:30px;padding:0 8px;border:1px solid var(--border-soft);border-radius:7px;background:var(--input);font-size:12px;color:var(--ink)"><option>Extracción 23/08/2026, 14:41 · #13–#18</option><option>Extracción 11/08/2026, 23:13 · #1–#6</option></select>
+      <select style="height:30px;padding:0 8px;border:1px solid var(--border-soft);border-radius:7px;background:var(--input);font-size:12px;color:var(--ink)"><option>Todas las entradas</option><option>06–13 oct</option></select>
+      <span style="font-size:12px;color:var(--muted)">222 observaciones comparables</span>
+      <div style="flex:1"></div>
+      <sc-if value="{{ hasLink }}" hint-placeholder-val="{{ false }}">
+        <span style="display:flex;align-items:center;gap:8px;font-size:12px"><span style="font-family:'Space Mono',monospace;font-size:9.5px;padding:3px 7px;border-radius:5px;background:var(--dark);color:#fff">Enlace A</span>{{ linkName }}<button type="button" onClick="{{ clearLink }}" aria-label="Quitar enlace" style="border:0;background:transparent;color:var(--faint);font-size:14px">×</button></span>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:420px;border:1.5px dashed var(--lo);border-radius:14px;text-align:center">
+        <strong style="font-size:16px;font-weight:600">Tablero vacío</strong>
+        <span style="font-size:13px;color:var(--muted)">Añade bloques desde la izquierda o restaura el tablero base.</span>
+        <button type="button" onClick="{{ restore }}" style="margin-top:6px;height:34px;padding:0 14px;border:1px solid var(--border-soft);border-radius:9px;background:var(--card);font-size:12.5px;color:var(--ink)">Restaurar tablero base</button>
+      </div>
+    </sc-if>
+
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+      <sc-for list="{{ blocks }}" as="b" hint-placeholder-count="4">
+        <section style="grid-column:{{ b.span }};background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px 18px;display:flex;flex-direction:column;gap:14px;animation:atIn 320ms cubic-bezier(.22,1,.36,1) both">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:30px;height:22px;border-radius:6px;background:var(--accent-soft);color:var(--ac);display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700">{{ b.tag }}</span>
+            <strong style="flex:1;font-size:14.5px;font-weight:600">{{ b.title }}</strong>
+            <sc-if value="{{ b.linked }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Space Mono',monospace;font-size:9.5px;padding:3px 7px;border-radius:5px;background:var(--dark);color:#fff">Enlace A</span></sc-if>
+            <div style="display:flex;gap:4px">
+              <button type="button" onClick="{{ b.up }}" aria-label="Subir" style="width:28px;height:28px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--muted);opacity:{{ b.upOp }}">↑</button>
+              <button type="button" onClick="{{ b.down }}" aria-label="Bajar" style="width:28px;height:28px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--muted);opacity:{{ b.downOp }}">↓</button>
+              <button type="button" onClick="{{ b.remove }}" aria-label="Quitar" style="width:28px;height:28px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--muted)" style-hover="color:var(--red);border-color:var(--red)">×</button>
+            </div>
+          </div>
+          <sc-if value="{{ b.isKpi }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+                <div style="padding:12px 14px;border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px">
+                  <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">{{ k.l }}</span>
+                  <strong style="font-size:22px;font-weight:700;letter-spacing:-.03em">{{ k.v }}</strong>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ b.isTab }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ topHotels }}" as="th" hint-placeholder-count="5">
+                <button type="button" onClick="{{ th.link }}" style="display:grid;grid-template-columns:minmax(0,1fr) 70px 70px;gap:12px;align-items:center;padding:10px 8px;border:0;border-top:1px solid var(--line-soft);border-radius:0;background:{{ th.bg }};text-align:left;color:var(--ink);font-size:13px" style-hover="background:var(--hover)">
+                  <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ th.name }}</span>
+                  <span style="font-family:'Space Mono',monospace;font-size:12px;text-align:right">{{ th.adr }}</span>
+                  <span style="font-family:'Space Mono',monospace;font-size:11.5px;text-align:right;color:var(--ac)">{{ th.vs }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ b.isLine }}" hint-placeholder-val="{{ false }}">
+            <svg viewBox="0 0 500 150" width="100%" style="display:block;overflow:visible">
+              <line x1="0" x2="500" y1="15" y2="15" stroke="var(--line)"></line><line x1="0" x2="500" y1="125" y2="125" stroke="var(--line)"></line>
+              <text x="0" y="10" font-family="Space Mono" font-size="10" fill="var(--faint)">300 €</text><text x="0" y="120" font-family="Space Mono" font-size="10" fill="var(--faint)">260 €</text>
+              <polyline points="{{ line }}" fill="none" stroke="var(--ac)" stroke-width="2" stroke-linejoin="round"></polyline>
+            </svg>
+            <span style="font-size:12px;color:var(--muted)">{{ lineNote }}</span>
+          </sc-if>
+          <sc-if value="{{ b.isAir }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ airTop }}" as="a" hint-placeholder-count="5">
+                <div style="display:grid;grid-template-columns:80px minmax(0,1fr) 50px;align-items:center;gap:10px;font-size:12px">
+                  <strong style="font-weight:600">{{ a.code }} → LPA</strong>
+                  <div style="height:6px;border-radius:3px;background:var(--line)"><div style="height:100%;width:{{ a.w }};border-radius:3px;background:var(--ac)"></div></div>
+                  <span style="font-family:'Space Mono',monospace;font-size:11px;text-align:right">{{ a.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ b.isQa }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+              <sc-for list="{{ qa }}" as="q" hint-placeholder-count="4">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:9px;background:var(--bg);font-size:12.5px"><span style="color:var(--muted)">{{ q.l }}</span><strong style="font-family:'Space Mono',monospace;font-size:12px;color:{{ q.c }}">{{ q.v }}</strong></div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const DEFS = {
+  kpi: { tag: 'KPI', title: 'KPIs certificados', sub: 'Mediana, rango y cobertura', span: '1 / -1' },
+  tab: { tag: 'TAB', title: 'Tabla hotelera', sub: 'Selecciona y enlaza', span: 'auto' },
+  line: { tag: 'LIN', title: 'Gráfica ADR', sub: 'Evolución del mercado', span: 'auto' },
+  air: { tag: 'AIR', title: 'Gráfica aérea', sub: 'Mínimo por ruta', span: 'auto' },
+  qa: { tag: 'QA', title: 'Calidad de datos', sub: 'Vigencia y límites', span: 'auto' },
+};
+const BASE = ['kpi', 'tab', 'line', 'air', 'qa'];
+const KEY = 'atlas.ws.v1';
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    let saved = null; try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+    this.state = { blocks: saved?.blocks || BASE.map((t, i) => ({ id: t + i, type: t })), title: saved?.title || 'Pulso de mercado', dirty: false, link: null };
+  }
+  mut = fn => this.setState(s => ({ blocks: fn([...s.blocks]), dirty: true }));
+  renderVals() {
+    const s = this.state, p = this.props, d = p.data || {}, hs = d.hotels || [];
+    const n = s.blocks.length;
+    const blocks = s.blocks.map((b, i) => ({
+      ...DEFS[b.type], isKpi: b.type === 'kpi', isTab: b.type === 'tab', isLine: b.type === 'line', isAir: b.type === 'air', isQa: b.type === 'qa',
+      linked: (b.type === 'tab' || b.type === 'line') && !!s.link, upOp: i === 0 ? .35 : 1, downOp: i === n - 1 ? .35 : 1,
+      up: () => i > 0 && this.mut(a => { [a[i - 1], a[i]] = [a[i], a[i - 1]]; return a; }),
+      down: () => i < n - 1 && this.mut(a => { [a[i + 1], a[i]] = [a[i], a[i + 1]]; return a; }),
+      remove: () => this.mut(a => a.filter((_, k) => k !== i)),
+    }));
+    const caps = d.captures || [];
+    const link = hs.find(h => h.id === s.link);
+    return {
+      palette: Object.entries(DEFS).map(([t, v]) => ({ ...v, add: () => this.mut(a => [...a, { id: t + Date.now(), type: t }]) })),
+      title: s.title, onTitle: e => this.setState({ title: e.target.value, dirty: true }),
+      savedLabel: s.dirty ? 'Cambios sin guardar' : 'Guardado', savedInk: s.dirty ? 'var(--warn-ink)' : 'var(--green)',
+      save: () => { localStorage.setItem(KEY, JSON.stringify({ blocks: s.blocks, title: s.title })); this.setState({ dirty: false }); p.notify && p.notify('Tablero guardado', 'ok'); },
+      askIt: () => p.ask && p.ask('Resume el tablero ' + s.title),
+      blocks, isEmpty: n === 0, restore: () => this.setState({ blocks: BASE.map((t, i) => ({ id: t + i, type: t })), dirty: true }),
+      kpis: [{ l: 'ADR mediano', v: '265 €' }, { l: 'Rango ADR', v: '122 — 667 €' }, { l: 'Cobertura', v: '100 %' }, { l: 'Comparables', v: '222' }],
+      topHotels: hs.slice(0, 5).map(h => ({ name: h.name, adr: Math.round(h.adr) + ' €', vs: '+' + h.vsMedian.toFixed(1).replace('.', ',') + ' %', bg: s.link === h.id ? 'var(--accent-soft)' : 'transparent', link: () => this.setState({ link: s.link === h.id ? null : h.id }) })),
+      line: caps.map((c, i) => (40 + i * (450 / (caps.length - 1))) + ',' + (125 - (c.adr - 260) / 40 * 110)).join(' '),
+      lineNote: link ? link.name + ': ' + (link.prev || link.adr) + ' € → ' + link.adr + ' € entre fotos #17 y #18' : 'Selecciona un hotel en la tabla enlazada para compararlo entre fotos.',
+      hasLink: !!link, linkName: link ? link.name : '', clearLink: () => this.setState({ link: null }),
+      airTop: (d.routes || []).slice(0, 6).map(r => ({ code: r.code, v: r.min + ' €', w: r.min / 720 * 100 + '%' })),
+      qa: [{ l: 'Filas', v: '38', c: 'var(--ink)' }, { l: 'Con precio', v: '38', c: 'var(--ink)' }, { l: 'Vigencia', v: 'Caducado · 38 d', c: 'var(--warn-ink)' }, { l: 'Sin coordenadas', v: '0', c: 'var(--green)' }],
+    };
+  }
+}
+</script>
+</body>
+</html>

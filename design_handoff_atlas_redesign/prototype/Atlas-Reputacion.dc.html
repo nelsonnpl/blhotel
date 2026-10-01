@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="padding:28px 32px 96px;display:flex;flex-direction:column;gap:16px;animation:atIn 420ms cubic-bezier(.22,1,.36,1) both">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px">
+    <div>
+      <h1 style="margin:0 0 6px;font-size:28px;font-weight:700;letter-spacing:-.025em">Inventario y reputación</h1>
+      <p style="margin:0;font-size:13.5px;color:var(--muted)">Ficha de hotel, cobertura de fuentes y reseñas</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button type="button" onClick="{{ openConfig }}" style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border:1px solid var(--border-soft);border-radius:9px;background:var(--card);font-size:12.5px;font-weight:500;color:var(--ink);white-space:nowrap" style-hover="border-color:var(--ac);color:var(--ac)">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>Configurar captura
+      </button>
+      <button type="button" onClick="{{ captureAll }}" style="height:34px;padding:0 14px;border:0;border-radius:9px;background:var(--ac);color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap">Capturar inventario</button>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="5">
+      <div style="padding:14px 18px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:6px">
+        <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">{{ k.label }}</span>
+        <strong style="font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1">{{ k.value }}</strong>
+        <span style="font-size:11.5px;color:var(--faint)">{{ k.foot }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ showEmpty }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:center;gap:16px;padding:16px 20px;border:1px dashed var(--lo);border-radius:12px;background:var(--card)">
+      <div style="width:40px;height:40px;flex:0 0 40px;border-radius:11px;background:var(--accent-soft);color:var(--ac);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3.5 14.6 9l6.1.8-4.4 4.3 1.1 6.1L12 17.3l-5.4 2.9 1-6.1-4.4-4.3L9.3 9z"></path></svg></div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:3px">
+        <strong style="font-size:14px;font-weight:600">Todavía no hay reseñas capturadas</strong>
+        <span style="font-size:12.5px;color:var(--muted)">Selecciona hoteles en la tabla o captura todo el inventario con la configuración actual: Google Hotels y Booking, hasta 1.000 reseñas por hotel.</span>
+      </div>
+      <button type="button" onClick="{{ dismissEmpty }}" style="height:30px;padding:0 10px;border:0;background:transparent;color:var(--muted);font-size:12.5px" style-hover="color:var(--ink)">Entendido</button>
+    </div>
+  </sc-if>
+
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)">
+      <div style="display:flex;gap:2px;padding:3px;background:var(--bg);border-radius:9px">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+          <button type="button" onClick="{{ t.pick }}" style="display:flex;gap:6px;align-items:center;height:28px;padding:0 11px;border:0;border-radius:7px;background:{{ t.bg }};color:{{ t.ink }};box-shadow:{{ t.sh }};font-size:12.5px;font-weight:{{ t.weight }};white-space:nowrap">{{ t.label }}<span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">{{ t.count }}</span></button>
+        </sc-for>
+      </div>
+      <div style="flex:1"></div>
+      <label style="display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;width:300px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);color:var(--faint)">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+        <input value="{{ q }}" onChange="{{ onQ }}" placeholder="Nombre, dirección o ciudad" style="flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:12.5px;color:var(--ink)">
+      </label>
+    </div>
+    <div style="overflow-x:auto">
+      <div style="min-width:1100px">
+        <div style="display:grid;grid-template-columns:52px minmax(300px,2.2fr) 110px 110px 150px 120px 120px 96px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--border)">
+          <label style="height:38px;display:flex;align-items:center;justify-content:center"><input type="checkbox" checked="{{ allOn }}" onChange="{{ toggleAll }}" aria-label="Seleccionar visibles" style="width:15px;height:15px;accent-color:var(--ac)"></label>
+          <span style="height:38px;display:flex;align-items:center;padding:0 12px">Hotel</span>
+          <span style="height:38px;display:flex;align-items:center;justify-content:flex-end;padding:0 12px">Google</span>
+          <span style="height:38px;display:flex;align-items:center;justify-content:flex-end;padding:0 12px">Booking</span>
+          <span style="height:38px;display:flex;align-items:center;padding:0 12px">Google Maps</span>
+          <span style="height:38px;display:flex;align-items:center;padding:0 12px">Último Maps</span>
+          <span style="height:38px;display:flex;align-items:center;padding:0 12px">Último Booking</span>
+          <span style="height:38px;display:flex;align-items:center;justify-content:flex-end;padding:0 16px">Ficha</span>
+        </div>
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="10">
+          <div style="display:grid;grid-template-columns:52px minmax(300px,2.2fr) 110px 110px 150px 120px 120px 96px;align-items:center;border-bottom:1px solid var(--line-soft);background:{{ r.bg }};font-size:13px;transition:background 120ms ease" style-hover="background:var(--hover)">
+            <label style="display:flex;align-items:center;justify-content:center;padding:var(--rp) 0"><input type="checkbox" checked="{{ r.on }}" onChange="{{ r.toggle }}" aria-label="{{ r.name }}" style="width:15px;height:15px;accent-color:var(--ac)"></label>
+            <div style="padding:var(--rp) 12px;display:flex;flex-direction:column;gap:2px;min-width:0">
+              <span style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+              <span style="font-size:11px;color:var(--faint)">{{ r.addr }}</span>
+            </div>
+            <span style="padding:0 12px;text-align:right;font-family:'Space Mono',monospace;color:var(--fainter)">{{ r.google }}</span>
+            <span style="padding:0 12px;text-align:right;font-family:'Space Mono',monospace;color:var(--fainter)">{{ r.booking }}</span>
+            <span style="padding:0 12px"><span style="font-family:'Space Mono',monospace;font-size:10.5px;padding:3px 7px;border-radius:5px;background:{{ r.mapsBg }};color:{{ r.mapsInk }}">{{ r.maps }}</span></span>
+            <span style="padding:0 12px;font-size:12px;color:var(--faint)">Sin captura</span>
+            <span style="padding:0 12px;font-size:12px;color:var(--faint)">Disponible</span>
+            <span style="padding:0 16px 0 12px;display:flex;justify-content:flex-end"><button type="button" onClick="{{ r.openCard }}" style="height:28px;padding:0 10px;border:1px solid var(--border-soft);border-radius:7px;background:var(--card);font-size:12px;color:var(--ink);white-space:nowrap" style-hover="border-color:var(--ac);color:var(--ac)">Abrir</button></span>
+          </div>
+        </sc-for>
+        <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:60px 20px;text-align:center;display:flex;flex-direction:column;gap:6px;align-items:center">
+            <strong style="font-size:14px">Ningún hotel coincide</strong>
+            <span style="font-size:12.5px;color:var(--muted)">Revisa la búsqueda o cambia de pestaña.</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--line);font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint)">
+      <span>{{ foot }}</span>
+      <button type="button" onClick="{{ more }}" style="border:0;background:transparent;font:inherit;color:var(--ac)">Cargar más</button>
+    </div>
+  </div>
+
+  <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:calc(var(--sw) + (100vw - var(--sw)) / 2);bottom:24px;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:6px;padding:6px 6px 6px 16px;background:var(--dark);color:#fff;border-radius:12px;box-shadow:0 14px 40px rgba(20,22,28,.3);animation:atIn 220ms cubic-bezier(.22,1,.36,1) both">
+      <span style="font-size:13px;margin-right:8px;white-space:nowrap"><b>{{ selCount }}</b> seleccionados</span>
+      <button type="button" onClick="{{ compare }}" style="height:32px;padding:0 12px;border:1px solid rgba(255,255,255,.18);border-radius:8px;background:transparent;color:#fff;font-size:12.5px;white-space:nowrap">Comparar</button>
+      <button type="button" onClick="{{ captureSel }}" style="height:32px;padding:0 12px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap">Capturar reseñas</button>
+      <button type="button" onClick="{{ clearSel }}" aria-label="Quitar selección" style="width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:rgba(255,255,255,.7);font-size:16px">×</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ configOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeConfig }}" style="position:fixed;inset:0;z-index:80;background:rgba(20,22,28,.28);animation:atFade 160ms ease both"></div>
+    <aside role="dialog" aria-label="Configurar captura de reseñas" style="position:fixed;top:0;right:0;bottom:0;width:460px;z-index:81;background:var(--card);border-left:1px solid var(--border);box-shadow:-20px 0 60px rgba(20,22,28,.18);display:flex;flex-direction:column;animation:atSlideL 260ms cubic-bezier(.22,1,.36,1) both">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:22px 24px 18px;border-bottom:1px solid var(--line)">
+        <div>
+          <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Captura de reseñas</span>
+          <h2 style="margin:4px 0 0;font-size:18px;font-weight:600;letter-spacing:-.015em">Configuración</h2>
+        </div>
+        <button type="button" onClick="{{ closeConfig }}" aria-label="Cerrar" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--muted);font-size:16px">×</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:22px">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <strong style="font-size:13px;font-weight:600">Fuentes</strong>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <sc-for list="{{ sources }}" as="src" hint-placeholder-count="3">
+              <button type="button" onClick="{{ src.toggle }}" aria-pressed="{{ src.on }}" style="display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border:1px solid {{ src.border }};border-radius:9px;background:{{ src.bg }};color:{{ src.ink }};font-size:13px">
+                <span style="width:14px;height:14px;border-radius:4px;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:10px;line-height:1">{{ src.mark }}</span>{{ src.label }}
+              </button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <strong style="font-size:13px;font-weight:600">Límites por hotel</strong>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:var(--muted)">Máx. reseñas</span><input type="number" value="{{ maxReviews }}" onChange="{{ onMax }}" disabled="{{ exhaust }}" style="height:36px;padding:0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);font-size:13px;opacity:{{ maxOp }}"></label>
+            <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:var(--muted)">Decisiones máx.</span><input type="number" value="{{ decisions }}" onChange="{{ onDec }}" style="height:36px;padding:0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);font-size:13px"></label>
+          </div>
+          <button type="button" onClick="{{ toggleExhaust }}" style="display:flex;align-items:center;gap:10px;padding:0;border:0;background:transparent;color:var(--ink);font-size:13px;text-align:left">
+            <span style="width:34px;height:20px;border-radius:10px;background:{{ exBg }};position:relative;transition:background 160ms ease;flex:0 0 34px"><span style="position:absolute;top:2px;left:{{ exLeft }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left 160ms ease"></span></span>
+            Hasta agotar recorrido
+          </button>
+          <span style="font-size:11.5px;line-height:1.45;color:var(--faint)">Quita el tope numérico. Se mantiene un límite técnico de 400 desplazamientos en Maps y 500 páginas en Booking.</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <strong style="font-size:13px;font-weight:600">Coste de navegación asistida</strong>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:var(--muted)">Tope Jev (USD)</span><input value="{{ cap }}" onChange="{{ onCap }}" placeholder="Por lote" style="height:36px;padding:0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);font-size:13px"></label>
+            <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:var(--muted)">USD por decisión</span><input value="{{ cost }}" onChange="{{ onCost }}" placeholder="0,002" style="height:36px;padding:0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);font-size:13px"></label>
+          </div>
+          <span style="font-size:11.5px;line-height:1.45;color:var(--faint)">Solo aplica a Google Maps. Si el proveedor informa del coste real, prevalece sobre la estimación.</span>
+        </div>
+        <div style="padding:14px 16px;border-radius:10px;background:var(--bg);display:flex;justify-content:space-between;align-items:baseline">
+          <span style="font-size:12.5px;color:var(--muted)">Estimación para {{ estHotels }} hoteles</span>
+          <strong style="font-family:'Space Mono',monospace;font-size:15px">{{ estimate }}</strong>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:16px 24px;border-top:1px solid var(--line)">
+        <button type="button" onClick="{{ closeConfig }}" style="flex:1;height:38px;border:1px solid var(--border-soft);border-radius:9px;background:var(--card);font-size:13px;color:var(--ink)">Cancelar</button>
+        <button type="button" onClick="{{ saveConfig }}" style="flex:1;height:38px;border:0;border-radius:9px;background:var(--ac);color:#fff;font-size:13px;font-weight:600">Guardar configuración</button>
+      </div>
+    </aside>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { sel: {}, tab: 'all', q: '', configOpen: false, emptyDismissed: false, sources: { maps: false, hotels: true, booking: true }, maxReviews: 1000, decisions: 24, exhaust: false, cap: '', cost: '' };
+  renderVals() {
+    const s = this.state, p = this.props, inv = p.data?.inventory || [];
+    const T = [{ id: 'all', label: 'Todos', f: () => true }, { id: 'none', label: 'Sin captura', f: r => !r.google && !r.booking }, { id: 'maps', label: 'Maps por revisar', f: r => r.maps === 'Por revisar' }];
+    const seg = on => ({ bg: on ? 'var(--card)' : 'transparent', ink: on ? 'var(--ink)' : 'var(--muted)', sh: on ? '0 1px 2px rgba(20,22,28,.08)' : 'none', weight: on ? 600 : 500 });
+    const q = s.q.trim().toLowerCase();
+    const list = inv.filter(T.find(t => t.id === s.tab).f).filter(r => !q || (r.name + ' ' + r.addr).toLowerCase().includes(q));
+    const selCount = Object.values(s.sel).filter(Boolean).length;
+    const allOn = list.length > 0 && list.every(r => s.sel[r.id]);
+    const n = selCount || 49;
+    const src = [['maps', 'Google Maps'], ['hotels', 'Google Hotels'], ['booking', 'Booking']];
+    const costN = parseFloat((s.cost || '0.002').replace(',', '.')) || 0;
+    return {
+      kpis: [
+        { label: 'Inventario', value: '49', foot: 'hoteles en el mercado' }, { label: 'Reseñas Google', value: '0', foot: 'sin captura' },
+        { label: 'Reseñas Booking', value: '0', foot: 'sin captura' }, { label: 'Maps verificados', value: inv.filter(r => r.maps === 'Verificado').length + '/49', foot: 'fichas revisadas' },
+        { label: 'Última captura', value: '—', foot: 'ninguna todavía' },
+      ],
+      showEmpty: !s.emptyDismissed, dismissEmpty: () => this.setState({ emptyDismissed: true }),
+      tabs: T.map(t => ({ label: t.label, count: inv.filter(t.f).length, pick: () => this.setState({ tab: t.id }), ...seg(s.tab === t.id) })),
+      q: s.q, onQ: e => this.setState({ q: e.target.value }),
+      rows: list.map(r => ({
+        name: r.name, addr: r.addr, google: r.google, booking: r.booking, maps: 'Maps · ' + r.maps.toLowerCase(),
+        mapsBg: r.maps === 'Verificado' ? 'var(--good-bg)' : 'var(--bg)', mapsInk: r.maps === 'Verificado' ? 'var(--green)' : 'var(--muted)',
+        on: !!s.sel[r.id], bg: s.sel[r.id] ? 'var(--accent-soft)' : 'var(--card)',
+        toggle: () => this.setState(st => ({ sel: { ...st.sel, [r.id]: !st.sel[r.id] } })),
+        openCard: () => p.notify && p.notify('Ficha de ' + r.name),
+      })),
+      empty: !list.length, allOn,
+      toggleAll: () => this.setState(st => { const sel = { ...st.sel }; list.forEach(r => sel[r.id] = !allOn); return { sel }; }),
+      foot: list.length + ' de 49 hoteles', more: () => p.notify && p.notify('Se muestran los hoteles de la demo'),
+      hasSel: selCount > 0, selCount, clearSel: () => this.setState({ sel: {} }),
+      compare: () => p.notify && p.notify('Comparando ' + selCount + ' hoteles'),
+      captureSel: () => { p.notify && p.notify('Captura de reseñas en cola · ' + selCount + ' hoteles'); this.setState({ sel: {} }); },
+      captureAll: () => p.notify && p.notify('Captura de reseñas en cola · 49 hoteles'),
+      configOpen: s.configOpen, openConfig: () => this.setState({ configOpen: true }), closeConfig: () => this.setState({ configOpen: false }),
+      saveConfig: () => { this.setState({ configOpen: false }); p.notify && p.notify('Configuración guardada', 'ok'); },
+      sources: src.map(([id, label]) => { const on = s.sources[id]; return { label, on: on + '', mark: on ? '✓' : '', border: on ? 'var(--ac)' : 'var(--border-soft)', bg: on ? 'var(--accent-soft)' : 'var(--card)', ink: on ? 'var(--ac)' : 'var(--ink)', toggle: () => this.setState(st => ({ sources: { ...st.sources, [id]: !st.sources[id] } })) }; }),
+      maxReviews: s.maxReviews, onMax: e => this.setState({ maxReviews: e.target.value }), decisions: s.decisions, onDec: e => this.setState({ decisions: e.target.value }),
+      exhaust: s.exhaust, maxOp: s.exhaust ? .45 : 1, toggleExhaust: () => this.setState({ exhaust: !s.exhaust }), exBg: s.exhaust ? 'var(--ac)' : 'var(--lo)', exLeft: s.exhaust ? '16px' : '2px',
+      cap: s.cap, onCap: e => this.setState({ cap: e.target.value }), cost: s.cost, onCost: e => this.setState({ cost: e.target.value }),
+      estHotels: n, estimate: s.sources.maps ? (n * (parseInt(s.decisions) || 0) * costN).toFixed(2).replace('.', ',') + ' USD' : '0 USD · sin Maps',
+    };
+  }
+}
+</script>
+</body>
+</html>

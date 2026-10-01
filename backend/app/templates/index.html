@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f6f9" />
+    <title>Atlas · Rate Intelligence</title>
+    <meta name="description" content="Inteligencia de tarifas hoteleras y conectividad aérea para equipos de Revenue." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='atlas.css', v='atlas-146') }}" />
+    <script defer src="{{ url_for('static', filename='atlas.js', v='atlas-146') }}"></script>
+  </head>
+  <body data-density="equilibrada" data-view="dashboard">
+    <a class="skip-link" href="#main">Saltar al contenido</a>
+
+    <div class="atlas-root">
+      <!-- ============ SIDEBAR ============ -->
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <div class="brand__mark"><div class="brand__ring"></div></div>
+          <div class="brand__name">
+            <strong>Atlas</strong>
+            <span class="eyebrow">Rate intelligence</span>
+          </div>
+        </div>
+
+        <div class="market-switch">
+          <button type="button" class="market-switch__btn" id="marketBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="marketMenu" title="Cambiar de mercado">
+            <span class="market-switch__dot" aria-hidden="true"><i></i></span>
+            <span class="market-switch__text">
+              <span class="eyebrow">Mercado</span>
+              <strong id="marketName">Cargando…</strong>
+            </span>
+            <svg class="market-switch__chev" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m7 10 5 5 5-5"></path></svg>
+          </button>
+          <div class="market-menu" id="marketMenu" role="menu" aria-label="Mercados" hidden></div>
+        </div>
+
+        <div class="nav-wrap">
+          <div class="nav-label"><span class="nav-label__full">Análisis</span><span class="nav-label__short" aria-hidden="true">·</span></div>
+          <nav class="nav" id="nav" aria-label="Navegación principal">
+            <button type="button" class="nav__item is-active" data-view="dashboard" title="Dashboard">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
+              <span>Dashboard</span>
+              <span class="nav__badge" id="navBadgeDashboard" hidden></span>
+            </button>
+            <button type="button" class="nav__item" id="hotelTableTab" data-view="hotels" aria-controls="view-hotels" title="Hoteles">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 21V5a2 2 0 0 1 2-2h8v18M14 9h4a2 2 0 0 1 2 2v10"></path><path d="M8 7h2M8 11h2M8 15h2M16 14h2M16 18h2"></path></svg>
+              <span>Hoteles</span>
+            </button>
+            <button type="button" class="nav__item" id="hotelReviewTab" data-view="reputation" aria-controls="view-reputation" title="Reputación">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3.5 14.6 9l6.1.8-4.4 4.3 1.1 6.1L12 17.3l-5.4 2.9 1-6.1-4.4-4.3L9.3 9z"></path></svg>
+              <span>Reputación</span>
+            </button>
+            <button type="button" class="nav__item" id="airTableTab" data-view="flights" aria-controls="view-flights" title="Vuelos">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 16.5 13.5 13V6.5a1.5 1.5 0 0 0-3 0V13L2 16.5V19l8.5-2v3.5l-2 1V23h7v-1.5l-2-1V17l8.5 2z"></path></svg>
+              <span>Vuelos</span>
+            </button>
+          </nav>
+          <div class="nav-label"><span class="nav-label__full">Herramientas</span><span class="nav-label__short" aria-hidden="true">·</span></div>
+          <nav class="nav" aria-label="Herramientas">
+            <button type="button" class="nav__item" data-view="copilot" title="Copilot">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5z"></path><path d="M8 8h8M8 12h5"></path></svg>
+              <span>Copilot</span>
+            </button>
+            <button type="button" class="nav__item" data-view="workspace" title="Espacio de trabajo">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"></path></svg>
+              <span>Espacio de trabajo</span>
+            </button>
+            <button type="button" class="nav__item" data-view="captures" title="Capturas">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16v16H4z"></path><path d="M7 9h10M8 13h3M8 17h5"></path></svg>
+              <span>Capturas</span>
+            </button>
+          </nav>
+        </div>
+
+        <div class="sidebar__foot">
+          <div class="sidebar__user">
+            <div class="avatar" aria-hidden="true">RC</div>
+            <div class="who">
+              <strong>Revenue · Canarias</strong>
+              <span id="sessionMeta">sesión activa</span>
+            </div>
+          </div>
+          <div class="sidebar__tools">
+            <button type="button" class="tool-btn" id="themeBtn" aria-label="Cambiar tema" title="Cambiar tema">
+              <span id="themeIcon" class="tool-btn__icon" aria-hidden="true"></span>
+              <span class="tool-btn__label" id="themeLabel">Tema oscuro</span>
+            </button>
+            <button type="button" class="tool-btn tool-btn--icon tool-btn__collapse" id="collapseBtn" aria-label="Contraer barra lateral" aria-expanded="true" title="Contraer barra lateral">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5"></rect><path d="M9 4v16"></path><path d="m15 10-2 2 2 2"></path></svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ============ MAIN ============ -->
+      <main class="main" id="main">
+        <header class="topbar">
+          <div class="crumb"><span>Atlas</span><span class="crumb__sep">/</span><b id="crumbView">Dashboard</b></div>
+          <div class="topbar__sep"></div>
+          <div class="ticker-mask" title="Movimientos del set · pasa el cursor para pausar"><div class="ticker" id="ticker"></div></div>
+          <div class="topbar__right">
+            <button type="button" class="data-age" id="dataAge" hidden></button>
+            <button type="button" class="search-btn" id="paletteBtn" aria-haspopup="dialog" aria-label="Buscar hotel, vista o acción">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+              <span>Buscar hotel, vista o acción</span>
+              <kbd>⌘K</kbd>
+            </button>
+            <div class="topbar__actions">
+              <button type="button" class="btn" data-nav="copilot">Copilot</button>
+              <button type="button" class="btn btn--primary btn--capture" id="captureTop"><i class="btn__fill" id="captureFill"></i><span id="captureLabel">Capturar</span></button>
+            </div>
+          </div>
+        </header>
+
+        <section class="view is-visible" id="view-dashboard" aria-label="Métrica del mapa"></section>
+        <section class="view" id="view-hotels" role="tabpanel" aria-labelledby="hotelTableTab"></section>
+        <section class="view" id="view-reputation" aria-label="Inventario y reseñas hoteleras"></section>
+        <section class="view" id="view-flights" role="tabpanel" aria-labelledby="airTableTab"></section>
+        <section class="view" id="view-copilot"></section>
+        <section class="view" id="view-workspace"></section>
+        <section class="view" id="view-captures"></section>
+      </main>
+    </div>
+
+    <table class="sr-only"><caption class="sr-only">Histórico de tarifas hoteleras por captura</caption></table>
+
+    <!-- ============ PALETA ⌘K ============ -->
+    <div class="overlay" id="palette" hidden>
+      <div class="palette" role="dialog" aria-modal="true" aria-label="Buscar hotel, vista o acción">
+        <div class="palette__bar">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+          <input type="text" id="paletteInput" placeholder="Buscar hotel, vista o acción…" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="paletteList" aria-autocomplete="list" aria-label="Buscar hotel, vista o acción" />
+          <kbd>ESC</kbd>
+        </div>
+        <div class="palette__list" id="paletteList" role="listbox"></div>
+        <div class="palette__foot" aria-hidden="true"><span>↑↓ navegar</span><span>↵ abrir</span><span>⌘K cerrar</span></div>
+      </div>
+    </div>
+
+    <!-- ============ CONFIRMAR CAPTURA ============ -->
+    <div class="overlay" id="captureDialog" hidden>
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="captureDialogTitle">
+        <h2 id="captureDialogTitle">Capturar mercado</h2>
+        <p id="captureDialogText"></p>
+        <dl id="captureDialogParams"></dl>
+        <div class="dialog__actions">
+          <button type="button" class="btn" id="captureCancel">Cancelar</button>
+          <button type="button" class="btn btn--primary" id="captureConfirm">Capturar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+
+    <!-- ============ LOCK ============ -->
+    <div class="lock" id="lock" role="dialog" aria-modal="true" aria-labelledby="lockTitle" aria-describedby="lockDescription" aria-hidden="true">
+      <div class="lock__box">
+        <div class="lock__brand">
+          <div class="m"><i></i></div>
+          <div><strong>Atlas</strong><span class="eyebrow">Rate intelligence</span></div>
+        </div>
+        <h1 id="lockTitle">Sesión bloqueada</h1>
+        <p id="lockDescription">Introduce la contraseña configurada para este entorno.</p>
+        <label>
+          <span>Contraseña</span>
+          <input type="password" id="lockPass" autocomplete="current-password" />
+        </label>
+        <button type="button" class="lock__btn" id="unlockBtn">Entrar</button>
+        <p class="lock__error" id="lockError" role="alert" aria-live="assertive" hidden></p>
+        <p class="lock__foot">SYS: ONLINE · PORTFOLIO: Canarias<br />/api/health público · cookie Secure tras HTTPS</p>
+      </div>
+    </div>
+  </body>
+</html>

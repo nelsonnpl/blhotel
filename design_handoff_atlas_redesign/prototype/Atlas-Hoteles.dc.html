@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="padding:28px 32px 48px;display:flex;flex-direction:column;gap:16px;animation:atIn 420ms cubic-bezier(.22,1,.36,1) both">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px">
+    <div>
+      <h1 style="margin:0 0 6px;font-size:28px;font-weight:700;letter-spacing:-.025em">Hoteles</h1>
+      <p style="margin:0;font-size:13.5px;color:var(--muted)">Tarifas y condiciones del set competitivo · {{ market }}</p>
+    </div>
+    <sc-if value="{{ isSheet }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:flex;align-items:center;gap:8px;padding:3px 3px 3px 10px;border:1px dashed var(--lo);border-radius:10px">
+        <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Variante</span>
+        <div style="display:flex;gap:2px;padding:2px;background:var(--bg);border-radius:7px">
+          <button type="button" onClick="{{ setA }}" style="height:26px;padding:0 10px;border:0;border-radius:5px;background:{{ aBg }};color:{{ aInk }};font-size:12px;font-weight:600;white-space:nowrap;box-shadow:{{ aSh }}">A · Tabla</button>
+          <button type="button" onClick="{{ setB }}" style="height:26px;padding:0 10px;border:0;border-radius:5px;background:{{ bBg }};color:{{ bInk }};font-size:12px;font-weight:600;white-space:nowrap;box-shadow:{{ bSh }}">B · Tabla + detalle</button>
+        </div>
+      </div>
+      <button type="button" onClick="{{ exportCsv }}" style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border:1px solid var(--border-soft);border-radius:9px;background:var(--card);font-size:12.5px;font-weight:500;color:var(--ink);white-space:nowrap" style-hover="border-color:var(--ac);color:var(--ac)">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"></path></svg>Exportar CSV
+      </button>
+    </div>
+    </sc-if>
+  </div>
+
+  <div role="tablist" aria-label="Secciones de hoteles" style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-top:-4px">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="2">
+      <button type="button" role="tab" onClick="{{ t.pick }}" style="display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border:0;border-bottom:2px solid {{ t.line }};margin-bottom:-1px;background:transparent;color:{{ t.ink }};font-size:13px;font-weight:{{ t.weight }}">{{ t.label }}<span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">{{ t.hint }}</span></button>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ isSheet }}" hint-placeholder-val="{{ true }}">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="7">
+      <div style="padding:14px 18px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:6px;min-width:0">
+        <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);white-space:nowrap">{{ k.label }}</span>
+        <div style="display:flex;align-items:baseline;gap:4px">
+          <strong style="font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1;white-space:nowrap;color:{{ k.color }}">{{ k.value }}</strong>
+          <span style="font-size:13px;font-weight:500;color:var(--muted)">{{ k.unit }}</span>
+        </div>
+        <span style="font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.foot }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display:flex;gap:16px;align-items:flex-start">
+    <div style="flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap">
+        <div role="tablist" aria-label="Vistas guardadas" style="display:flex;gap:2px;padding:3px;background:var(--bg);border-radius:9px">
+          <sc-for list="{{ views }}" as="v" hint-placeholder-count="5">
+            <button type="button" role="tab" onClick="{{ v.pick }}" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:0;border-radius:7px;background:{{ v.bg }};color:{{ v.ink }};font-size:12.5px;font-weight:{{ v.weight }};box-shadow:{{ v.sh }};white-space:nowrap;transition:background 140ms ease">
+              {{ v.label }}<span style="font-family:'Space Mono',monospace;font-size:9.5px;color:var(--faint)">{{ v.count }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="width:1px;height:22px;background:var(--line)"></div>
+        <div style="display:flex;gap:6px">
+          <sc-for list="{{ chips }}" as="c" hint-placeholder-count="3">
+            <button type="button" onClick="{{ c.toggle }}" aria-pressed="{{ c.on }}" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid {{ c.border }};border-radius:999px;background:{{ c.bg }};color:{{ c.ink }};font-size:12px;white-space:nowrap;transition:all 140ms ease">
+              {{ c.label }}<span style="font-family:'Space Mono',monospace;font-size:9.5px;opacity:.75">{{ c.count }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="flex:1"></div>
+        <label style="display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;width:260px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);color:var(--faint)">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+          <input value="{{ search }}" onChange="{{ onSearch }}" placeholder="Hotel, cadena o zona" style="flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:12.5px;color:var(--ink)">
+          <sc-if value="{{ hasSearch }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ clearSearch }}" aria-label="Borrar búsqueda" style="border:0;background:transparent;color:var(--faint);font-size:14px;padding:0 2px">×</button></sc-if>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">
+          Agrupar
+          <select value="{{ group }}" onChange="{{ onGroup }}" style="height:32px;padding:0 8px;border:1px solid var(--border-soft);border-radius:8px;background:var(--input);font-family:Archivo,sans-serif;font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--ink)">
+            <option value="none">Sin agrupar</option>
+            <option value="chain">Cadena</option>
+            <option value="zone">Zona</option>
+            <option value="segment">Segmento</option>
+            <option value="tier">Tramo de precio</option>
+          </select>
+        </label>
+        <div title="Densidad de filas" style="display:flex;gap:2px;padding:3px;background:var(--bg);border-radius:8px">
+          <sc-for list="{{ densities }}" as="dn" hint-placeholder-count="3">
+            <button type="button" onClick="{{ dn.pick }}" title="{{ dn.label }}" aria-label="{{ dn.label }}" style="width:28px;height:26px;border:0;border-radius:6px;background:{{ dn.bg }};color:{{ dn.ink }};box-shadow:{{ dn.sh }};display:flex;align-items:center;justify-content:center" dangerouslySetInnerHTML="{{ dn.icon }}"></button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="overflow:auto;max-height:calc(100vh - 318px);min-height:420px">
+        <div style="min-width:{{ minW }};font-size:13px">
+          <div style="display:grid;grid-template-columns:{{ cols }};position:sticky;top:0;z-index:3;background:var(--card);border-bottom:1px solid var(--border);font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">
+            <sc-for list="{{ headers }}" as="hd" hint-placeholder-count="10">
+              <button type="button" onClick="{{ hd.sort }}" style="height:38px;padding:0 12px;border:0;background:var(--card);font:inherit;color:{{ hd.ink }};text-align:{{ hd.align }};display:flex;align-items:center;justify-content:{{ hd.justify }};gap:4px;white-space:nowrap;position:{{ hd.pos }};left:{{ hd.left }};z-index:{{ hd.z }};cursor:{{ hd.cursor }}">{{ hd.label }}<span style="color:var(--ac)">{{ hd.arrow }}</span></button>
+            </sc-for>
+          </div>
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="12">
+            <sc-if value="{{ r.isGroup }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;background:var(--bg);border-bottom:1px solid var(--line);position:sticky;left:0">
+                <strong style="font-size:12.5px;font-weight:600">{{ r.label }}</strong>
+                <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint)">{{ r.count }} hoteles · mediana {{ r.median }}</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ r.isRow }}" hint-placeholder-val="{{ true }}">
+              <div onClick="{{ r.click }}" style="display:grid;grid-template-columns:{{ cols }};align-items:center;border-bottom:1px solid var(--line-soft);background:{{ r.bg }};cursor:pointer;transition:background 120ms ease" style-hover="background:var(--hover)">
+                <div style="padding:var(--rp) 0 var(--rp) 16px;display:flex;align-items:center;gap:10px;position:sticky;left:0;z-index:1;background:{{ r.stickyBg }};height:100%">
+                  <span onClick="{{ r.toggleOpen }}" title="Tipos de habitación" style="width:22px;height:22px;margin:-3px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--faint);transform:{{ r.chevRot }};transition:transform 180ms ease;opacity:{{ r.chevOp }}" style-hover="color:var(--ac);background:var(--accent-soft)"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M9 6l7 6-7 6z"></path></svg></span>
+                  <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--fainter);width:20px;text-align:right">{{ r.rank }}</span>
+                </div>
+                <div style="padding:var(--rp) 12px;display:flex;flex-direction:column;gap:2px;min-width:0;position:sticky;left:{{ nameLeft }};z-index:1;background:{{ r.stickyBg }};height:100%;justify-content:center;border-right:1px solid var(--line-soft)">
+                  <span style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+                  <span style="font-size:11px;color:var(--faint);white-space:nowrap">{{ r.sub }}</span>
+                </div>
+                <div style="padding:var(--rp) 12px;text-align:right;font-family:'Space Mono',monospace;font-weight:700;font-size:13px">{{ r.adr }}</div>
+                <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><div style="padding:var(--rp) 12px;text-align:right;font-family:'Space Mono',monospace;color:var(--muted);font-size:12px">{{ r.pers }}</div></sc-if>
+                <div style="padding:var(--rp) 12px;display:flex;align-items:center;gap:8px">
+                  <div style="position:relative;flex:1;height:6px;border-radius:3px;background:var(--line)">
+                    <span style="position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--lo)"></span>
+                    <span style="position:absolute;top:0;bottom:0;left:{{ r.barLeft }};width:{{ r.barW }};border-radius:3px;background:{{ r.barColor }};transform-origin:{{ r.barOrigin }};animation:atWipe 700ms cubic-bezier(.22,1,.36,1) both"></span>
+                  </div>
+                  <span style="width:58px;text-align:right;font-family:'Space Mono',monospace;font-size:11px;color:{{ r.vsColor }}">{{ r.vs }}</span>
+                </div>
+                <div style="padding:var(--rp) 12px;text-align:right;font-family:'Space Mono',monospace;font-size:12px;color:{{ r.deltaColor }}">
+                  <span style="padding:2px 6px;border-radius:5px;background:{{ r.deltaBg }}">{{ r.delta }}</span>
+                </div>
+                <div style="padding:var(--rp) 12px;text-align:right"><span style="font-family:'Space Mono',monospace;font-size:11px;padding:2px 6px;border-radius:5px;background:{{ r.stabBg }};color:{{ r.stabInk }}">{{ r.stab }}</span></div>
+                <div style="padding:var(--rp) 12px;text-align:right;font-family:'Space Mono',monospace;font-size:12px">{{ r.nota }}</div>
+                <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><div style="padding:var(--rp) 12px;text-align:right;font-family:'Space Mono',monospace;font-size:12px;color:var(--muted)">{{ r.reviews }}</div></sc-if>
+                <div style="padding:var(--rp) 12px;font-size:12px;color:{{ r.cancelInk }}">{{ r.cancel }}</div>
+                <div style="padding:var(--rp) 16px var(--rp) 12px;text-align:right"><span style="font-family:'Space Mono',monospace;font-size:10.5px;padding:3px 7px;border-radius:5px;background:{{ r.availBg }};color:{{ r.availInk }};white-space:nowrap">{{ r.avail }}</span></div>
+              </div>
+              <sc-if value="{{ r.open }}" hint-placeholder-val="{{ false }}">
+                <div style="position:sticky;left:0;width:{{ expW }};padding:16px 20px 20px 52px;background:var(--hover);border-bottom:1px solid var(--line);animation:atFade 200ms ease both;display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+                    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+                      <strong style="font-size:13.5px;font-weight:600">Tarifas por habitación</strong>
+                      <span style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint)">{{ r.roomSummary }}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:16px;font-size:12px;color:var(--muted);flex-wrap:wrap">
+                      <span><b style="color:var(--ink);font-weight:600">Estancia</b> 06/10 → 13/10 · 7 noches · 2 adultos</span>
+                      <span><b style="color:var(--ink);font-weight:600">Cancelación gratuita</b> {{ r.freeCount }}</span>
+                      <sc-if value="{{ r.genius }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Space Mono',monospace;font-size:10px;padding:3px 7px;border-radius:5px;background:var(--accent-soft);color:var(--ac)">Participa en {{ r.geniusLevel }}</span></sc-if>
+                      <button type="button" onClick="{{ r.askIt }}" style="height:28px;padding:0 10px;border:1px solid var(--border-soft);border-radius:7px;background:var(--card);font-size:12px;color:var(--ink);white-space:nowrap" style-hover="border-color:var(--ac);color:var(--ac)">Preguntar al Copilot</button>
+                    </div>
+                  </div>
+                  <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+                    <div style="display:grid;grid-template-columns:minmax(150px,1.2fr) 110px minmax(170px,1.4fr) 110px minmax(150px,1.2fr) 130px 100px;gap:0;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)">
+                      <span style="padding:9px 14px">Régimen</span><span style="padding:9px 10px">Ocupación máx.</span><span style="padding:9px 10px">Cancelación · pago</span><span style="padding:9px 10px">Cupo</span><span style="padding:9px 10px">Programa / descuento</span><span style="padding:9px 10px;text-align:right">Total estancia</span><span style="padding:9px 14px 9px 10px;text-align:right">Por noche</span>
+                    </div>
+                    <sc-for list="{{ r.rooms }}" as="g" hint-placeholder-count="2">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px;background:var(--bg);border-bottom:1px solid var(--line-soft)">
+                        <strong style="font-size:12.5px;font-weight:600">{{ g.name }}</strong>
+                        <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)">{{ g.count }}</span>
+                      </div>
+                      <sc-for list="{{ g.rates }}" as="rt" hint-placeholder-count="2">
+                        <div style="display:grid;grid-template-columns:minmax(150px,1.2fr) 110px minmax(170px,1.4fr) 110px minmax(150px,1.2fr) 130px 100px;align-items:center;border-bottom:1px solid var(--line-soft);font-size:12px">
+                          <span style="padding:10px 14px">{{ rt.board }}</span>
+                          <span style="padding:10px;display:flex;align-items:center;gap:4px;color:var(--muted)"><span style="font-family:'Space Mono',monospace;color:var(--ink)">{{ rt.occ }}</span> personas</span>
+                          <span style="padding:10px;display:flex;flex-direction:column;gap:2px"><span style="color:{{ rt.cancelInk }};font-weight:500">{{ rt.cancel }}</span><span style="font-size:10.5px;color:var(--faint)">{{ rt.cancelText }} · {{ rt.pay }}</span></span>
+                          <span style="padding:10px"><span style="font-family:'Space Mono',monospace;font-size:10.5px;padding:3px 7px;border-radius:5px;background:{{ rt.unitsBg }};color:{{ rt.unitsInk }};white-space:nowrap">{{ rt.units }}</span></span>
+                          <span style="padding:10px;display:flex;flex-direction:column;gap:2px"><span style="font-size:11.5px;color:{{ rt.progInk }}">{{ rt.program }}</span><span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--green)">{{ rt.saving }}</span></span>
+                          <span style="padding:10px;text-align:right;display:flex;flex-direction:column;gap:1px;align-items:flex-end"><strong style="font-family:'Space Mono',monospace;font-size:12.5px">{{ rt.total }}</strong><s style="font-family:'Space Mono',monospace;font-size:10px;color:var(--faint)">{{ rt.original }}</s></span>
+                          <span style="padding:10px 14px 10px 10px;text-align:right;font-family:'Space Mono',monospace;font-size:12.5px;font-weight:700;color:{{ rt.adrInk }}">{{ rt.adr }}</span>
+                        </div>
+                      </sc-for>
+                    </sc-for>
+                  </div>
+                  <span style="font-size:11px;color:var(--faint)">Capturado el 23/08/2026, 14:41 · Genius es una señal de participación del hotel; solo se muestra como descuento cuando la oferta lo declara.</span>
+                </div>
+              </sc-if>
+            </sc-if>
+          </sc-for>
+          <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:72px 20px;text-align:center;position:sticky;left:0;max-width:100%">
+              <div style="width:40px;height:40px;border-radius:11px;background:var(--bg);color:var(--faint);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg></div>
+              <strong style="font-size:15px;font-weight:600">Ningún hotel coincide</strong>
+              <span style="font-size:12.5px;color:var(--muted)">Prueba con otro nombre o quita algún filtro.</span>
+              <button type="button" onClick="{{ reset }}" style="margin-top:4px;height:32px;padding:0 14px;border:1px solid var(--border-soft);border-radius:8px;background:var(--card);font-size:12.5px;color:var(--ink)">Restablecer filtros</button>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-top:1px solid var(--line);font-family:'Space Mono',monospace;font-size:10.5px;color:var(--faint)">
+        <span>{{ footLeft }}</span>
+        <span>Booking · GraphQL · foto #18 · 23/08/2026 14:41</span>
+      </div>
+    </div>
+
+    <sc-if value="{{ isB }}" hint-placeholder-val="{{ false }}">
+      <aside style="width:400px;flex:0 0 400px;position:sticky;top:76px;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;animation:atSlideL 280ms cubic-bezier(.22,1,.36,1) both">
+        <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:18px 20px 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Posición {{ sel.rank }} de {{ total }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:10px;padding:3px 7px;border-radius:5px;background:{{ sel.vsBg }};color:{{ sel.vsColor }}">{{ sel.vs }} vs mediana</span>
+            </div>
+            <h2 style="margin:6px 0 0;font-size:18px;font-weight:600;letter-spacing:-.015em;line-height:1.25;text-wrap:pretty">{{ sel.name }}</h2>
+            <span style="font-size:12px;color:var(--faint)">{{ sel.sub }}</span>
+          </div>
+          <div style="padding:18px 20px;display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--line)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">ADR hab/noche</span>
+              <strong style="font-size:36px;font-weight:700;letter-spacing:-.035em;line-height:1;color:var(--ac)">{{ sel.adrNum }}<span style="font-size:18px;color:var(--muted);font-weight:500"> €</span></strong>
+            </div>
+            <div style="text-align:right;font-family:'Space Mono',monospace;font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:3px">
+              <span>antes {{ sel.prev }}</span>
+              <span style="color:{{ sel.deltaColor }}">{{ sel.delta }}</span>
+            </div>
+          </div>
+          <div style="padding:16px 20px;border-bottom:1px solid var(--line)">
+            <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:12px">Lugar en el set</div>
+            <div style="position:relative;height:34px">
+              <div style="position:absolute;left:0;right:0;top:16px;height:2px;background:var(--line)"></div>
+              <sc-for list="{{ strip }}" as="p" hint-placeholder-count="20">
+                <span title="{{ p.title }}" style="position:absolute;left:{{ p.left }};top:{{ p.top }};width:{{ p.size }};height:{{ p.size }};margin-left:{{ p.off }};border-radius:50%;background:{{ p.color }};border:2px solid var(--card);box-sizing:content-box;z-index:{{ p.z }}"></span>
+              </sc-for>
+              <span style="position:absolute;left:{{ medLeft }};top:4px;bottom:4px;width:1px;background:var(--ink);opacity:.5"></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10px;color:var(--faint);margin-top:6px"><span>150 €</span><span>mediana 268 €</span><span>667 €</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)">
+            <sc-for list="{{ sel.facts }}" as="f" hint-placeholder-count="8">
+              <div style="padding:12px 20px;border-bottom:1px solid var(--line-soft);display:flex;flex-direction:column;gap:3px">
+                <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">{{ f.k }}</span>
+                <span style="font-size:13px;font-weight:500;color:{{ f.color }}">{{ f.v }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:14px 20px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">Tipos de habitación</span><button type="button" onClick="{{ sel.openRooms }}" style="border:0;background:transparent;padding:0;font-size:12px;color:var(--ac)">Ver tarifas</button></div>
+            <sc-for list="{{ sel.rooms }}" as="sr" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;font-size:12.5px">
+                <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sr.name }}</span><span style="font-size:10.5px;color:var(--faint)">máx. {{ sr.occ }} pers. · {{ sr.n }}</span></span>
+                <span style="font-family:'Space Mono',monospace;font-size:9.5px;padding:2px 6px;border-radius:5px;background:{{ sr.tagBg }};color:{{ sr.tagInk }};white-space:nowrap">{{ sr.tag }}</span>
+                <strong style="font-family:'Space Mono',monospace;font-size:12px">{{ sr.from }}</strong>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:14px 20px;display:flex;gap:8px">
+            <button type="button" onClick="{{ sel.askIt }}" style="flex:1;height:36px;border:0;border-radius:9px;background:var(--ac);color:#fff;font-size:12.5px;font-weight:600">Preguntar al Copilot</button>
+            <button type="button" onClick="{{ sel.compare }}" style="flex:1;height:36px;border:1px solid var(--border-soft);border-radius:9px;background:var(--card);font-size:12.5px;color:var(--ink)" style-hover="border-color:var(--ac);color:var(--ac)">Fijar para comparar</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noSel }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:64px 28px;text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center">
+            <strong style="font-size:14px">Selecciona un hotel</strong>
+            <span style="font-size:12.5px;color:var(--muted)">Verás su posición en el set y el cambio entre fotos.</span>
+          </div>
+        </sc-if>
+      </aside>
+    </sc-if>
+  </div>
+  </sc-if>
+  <sc-if value="{{ isBi }}" hint-placeholder-val="{{ false }}">
+    <dc-import name="Atlas-HotelesBI" data="{{ data }}" theme="{{ theme }}" ask="{{ ask }}" notify="{{ notify }}" open-sheet="{{ openSheet }}" hint-size="100%,2400px"></dc-import>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const eur = n => n == null ? '—' : Math.round(n).toLocaleString('es-ES') + ' €';
+const pct = (n, d = 1) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toFixed(d).replace('.', ',') + ' %';
+const MED = 268;
+const VIEWS = [
+  { id: 'mercado', label: 'Mercado', f: () => true },
+  { id: 'alta', label: 'Tarifa alta', f: h => h.vsMedian >= 30 },
+  { id: 'flex', label: 'Cancelación flexible', f: h => h.cancel },
+  { id: 'escasez', label: 'Escasez', f: h => !!h.avail },
+  { id: 'inestables', label: 'Menos estables', f: h => h.stab < 90 },
+];
+const CHIPS = [
+  { id: 'adults', label: 'Adults only', f: h => h.adults },
+  { id: 'moved', label: 'Con movimiento', f: h => !!h.delta },
+  { id: 'new', label: 'Nuevos', f: h => h.isNew },
+];
+const DENS = [
+  { id: 'compacta', label: 'Compacta', icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 6h14M5 10h14M5 14h14M5 18h14"/></svg>' },
+  { id: 'equilibrada', label: 'Equilibrada', icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 7h14M5 12h14M5 17h14"/></svg>' },
+  { id: 'espaciosa', label: 'Espaciosa', icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 8h14M5 16h14"/></svg>' },
+];
+const median = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const tier = h => h.adr >= 349 ? 'Alto · más de 349 €' : h.adr >= 210 ? 'Central · 210–349 €' : 'Bajo · menos de 210 €';
+
+class Component extends DCLogic {
+  state = { tab: this.props.search ? 'sheet' : (localStorage.getItem('atlas.hotelTab') || 'bi'), view: 'mercado', chips: [], search: this.props.search || '', sort: { key: 'adr', dir: -1 }, group: 'none', open: {}, sel: null, pinned: null };
+  componentDidUpdate(pp) {
+    if (pp.search !== this.props.search && this.props.search != null) this.setState({ tab: 'sheet', search: this.props.search, view: 'mercado', chips: [] });
+  }
+  componentDidMount() {
+    const h = (this.props.data?.hotels || []).find(x => x.name === this.props.search);
+    if (h) this.setState({ sel: h.id, open: { [h.id]: true } });
+  }
+  filtered() {
+    const hs = this.props.data?.hotels || [];
+    const v = VIEWS.find(x => x.id === this.state.view);
+    const q = this.state.search.trim().toLowerCase();
+    let r = hs.filter(v.f).filter(h => this.state.chips.every(c => CHIPS.find(x => x.id === c).f(h)));
+    if (q) r = r.filter(h => (h.name + ' ' + h.chain + ' ' + h.zone).toLowerCase().includes(q));
+    const { key, dir } = this.state.sort;
+    const val = h => key === 'name' ? h.name : key === 'delta' ? (h.delta ?? -999) : key === 'avail' ? (h.avail ? parseInt(h.avail.replace(/\D/g, '')) : 99) : key === 'cancel' ? +h.cancel : h[key];
+    r.sort((a, b) => { const x = val(a), y = val(b); return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir; });
+    return r;
+  }
+  exportCsv = () => {
+    const r = this.filtered();
+    const head = ['Hotel', 'Cadena', 'Zona', 'ADR hab', 'ADR pers', 'Delta %', 'vs mediana %', 'Estabilidad', 'Nota', 'Reseñas', 'Cancelación gratis', 'Disponibilidad'];
+    const lines = r.map(h => [h.name, h.chain, h.zone, h.adr, h.pers, h.delta ?? '', h.vsMedian.toFixed(1), h.stab, h.nota, h.reviews, h.cancel ? 'Sí' : 'No', h.avail || ''].map(x => '"' + String(x).replace(/"/g, '""') + '"').join(';'));
+    const blob = new Blob(['\ufeff' + [head.join(';'), ...lines].join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'hoja-de-mercado.csv'; a.click();
+    this.props.notify && this.props.notify('CSV exportado · ' + r.length + ' hoteles', 'ok');
+  };
+  renderVals() {
+    const s = this.state, p = this.props, hs = p.data?.hotels || [];
+    const isB = (p.variant || 'A') === 'B', wide = !isB;
+    const list = this.filtered();
+    const rankMap = {}; [...hs].sort((a, b) => b.adr - a.adr).forEach((h, i) => rankMap[h.id] = i + 1);
+    const cols = isB ? '64px minmax(260px,1.8fr) 96px 170px 96px 76px 64px 84px 112px' : '64px minmax(300px,2fr) 100px 96px 190px 100px 80px 70px 90px 90px 120px';
+    const H = [
+      { k: null, l: '#', a: 'left', sticky: 0 }, { k: 'name', l: 'Hotel', a: 'left', sticky: 64 }, { k: 'adr', l: 'ADR/hab', a: 'right' },
+      ...(wide ? [{ k: 'pers', l: 'ADR/pers', a: 'right' }] : []), { k: 'vsMedian', l: 'vs mediana', a: 'left' }, { k: 'delta', l: 'Δ foto', a: 'right' },
+      { k: 'stab', l: 'Estab.', a: 'right' }, { k: 'nota', l: 'Nota', a: 'right' }, ...(wide ? [{ k: 'reviews', l: 'Reseñas', a: 'right' }] : []),
+      { k: 'cancel', l: 'Cancel.', a: 'left' }, { k: 'avail', l: 'Disponib.', a: 'right' },
+    ];
+    const headers = H.map(h => ({
+      label: h.l, align: h.a, justify: h.a === 'right' ? 'flex-end' : 'flex-start', cursor: h.k ? 'pointer' : 'default',
+      arrow: s.sort.key === h.k ? (s.sort.dir < 0 ? '↓' : '↑') : '', ink: s.sort.key === h.k ? 'var(--ink)' : 'var(--faint)',
+      pos: h.sticky != null ? 'sticky' : 'static', left: h.sticky != null ? h.sticky + 'px' : 'auto', z: h.sticky != null ? 4 : 'auto',
+      sort: () => h.k && this.setState(st => ({ sort: { key: h.k, dir: st.sort.key === h.k ? -st.sort.dir : (h.k === 'name' ? 1 : -1) } })),
+    }));
+    const selId = isB ? (s.sel || list[0]?.id) : null;
+    const mkRow = h => {
+      const vs = h.vsMedian, w = Math.min(50, Math.abs(vs) / 150 * 50);
+      const open = !!s.open[h.id], on = isB && selId === h.id;
+      const stabBg = h.stab >= 95 ? 'var(--good-bg)' : h.stab < 85 ? 'var(--warn-bg)' : 'var(--bg)';
+      const stabInk = h.stab >= 95 ? 'var(--green)' : h.stab < 85 ? 'var(--warn-ink)' : 'var(--muted)';
+      return {
+        isRow: true, isGroup: false, id: h.id, rank: rankMap[h.id], name: h.name, sub: h.chain + ' · ' + h.zone + (h.adults ? ' · Adults only' : ''),
+        adr: eur(h.adr), pers: eur(h.pers), vs: pct(vs, 0), vsColor: vs > 0 ? 'var(--ink)' : 'var(--muted)',
+        barLeft: vs >= 0 ? '50%' : (50 - w) + '%', barW: w + '%', barColor: vs >= 0 ? 'var(--ac)' : 'var(--mid)', barOrigin: vs >= 0 ? 'left' : 'right',
+        delta: h.isNew ? 'Nuevo' : h.delta === 0 ? '0,0 %' : (h.delta > 0 ? '▲ ' : '▼ ') + Math.abs(h.delta).toFixed(1).replace('.', ',') + ' %',
+        deltaColor: h.isNew ? 'var(--ac)' : h.delta > 0 ? 'var(--green)' : h.delta < 0 ? 'var(--red)' : 'var(--faint)',
+        deltaBg: h.isNew ? 'var(--accent-soft)' : Math.abs(h.delta) >= 8 ? (h.delta > 0 ? 'var(--good-bg)' : 'var(--bad-bg)') : 'transparent',
+        stab: h.stab, stabBg, stabInk, nota: h.nota.toFixed(1).replace('.', ','), reviews: h.reviews.toLocaleString('es-ES'),
+        cancel: h.cancel ? 'Gratis' : 'No', cancelInk: h.cancel ? 'var(--green)' : 'var(--faint)',
+        avail: h.avail || '—', availBg: h.avail ? (/Queda 1/.test(h.avail) ? 'var(--bad-bg)' : 'var(--warn-bg)') : 'transparent', availInk: h.avail ? (/Queda 1/.test(h.avail) ? 'var(--red)' : 'var(--warn-ink)') : 'var(--fainter)',
+        bg: on ? 'var(--accent-soft)' : open ? 'var(--hover)' : 'var(--card)', stickyBg: on ? 'var(--accent-soft)' : open ? 'var(--hover)' : 'var(--card)',
+        chevRot: open ? 'rotate(90deg)' : 'none', chevOp: 1, open, room: h.room, prev: eur(h.prev), total: eur(h.adr * 7),
+        toggleOpen: e => { e.stopPropagation(); this.setState(st => ({ open: { ...st.open, [h.id]: !st.open[h.id] } })); },
+        genius: h.genius, geniusLevel: h.geniusLevel || '',
+        roomSummary: open ? (h.rooms.length + ' tipos de habitación · ' + h.rooms.reduce((x, g) => x + g.rates.length, 0) + ' tarifas') : '',
+        freeCount: open ? (h.rooms.flatMap(g => g.rates).filter(t => t.cancel).length + ' de ' + h.rooms.reduce((x, g) => x + g.rates.length, 0) + ' tarifas') : '',
+        rooms: open ? h.rooms.map(g => ({ name: g.name, count: g.rates.length + (g.rates.length === 1 ? ' tarifa' : ' tarifas') + ' · máx. ' + g.maxOcc + ' personas', rates: g.rates.map(t => ({
+          board: t.board, occ: t.maxOcc, cancel: t.cancel ? 'Gratuita' : 'No gratuita', cancelInk: t.cancel ? 'var(--green)' : 'var(--muted)', cancelText: t.cancelText, pay: t.pay,
+          units: t.units ? (t.units === 1 ? 'Queda 1' : 'Quedan ' + t.units) : 'Sin aviso', unitsBg: t.units ? (t.units === 1 ? 'var(--bad-bg)' : 'var(--warn-bg)') : 'transparent', unitsInk: t.units ? (t.units === 1 ? 'var(--red)' : 'var(--warn-ink)') : 'var(--faint)',
+          program: t.program || 'Sin programa', progInk: t.program ? 'var(--ac)' : 'var(--faint)', saving: t.discount ? '−' + t.discount + ' % · ahorro ' + eur(t.original - t.total) : '',
+          total: eur(t.total), original: t.original ? eur(t.original) : '', adr: eur(t.adr), adrInk: t.adr === h.adr ? 'var(--ac)' : 'var(--ink)' })) })) : [],
+        click: () => isB ? this.setState({ sel: h.id }) : this.setState(st => ({ open: { ...st.open, [h.id]: !st.open[h.id] } })),
+        askIt: e => { e && e.stopPropagation(); p.ask && p.ask('¿Cómo se posiciona ' + h.name + ' frente al set?'); },
+      };
+    };
+    let rows = [];
+    if (s.group === 'none') rows = list.map(mkRow);
+    else {
+      const key = s.group === 'chain' ? h => h.chain : s.group === 'zone' ? h => h.zone : s.group === 'segment' ? h => h.adults ? 'Adults only' : 'Familiar y mixto' : tier;
+      const groups = {}; list.forEach(h => (groups[key(h)] = groups[key(h)] || []).push(h));
+      Object.entries(groups).sort((a, b) => b[1].length - a[1].length).forEach(([g, arr]) => {
+        rows.push({ isGroup: true, isRow: false, label: g, count: arr.length, median: eur(median(arr.map(x => x.adr))) });
+        arr.forEach(h => rows.push(mkRow(h)));
+      });
+    }
+    const up = hs.filter(h => h.delta > 0).length, down = hs.filter(h => h.delta < 0).length;
+    const kpis = [
+      { label: 'En mercado', value: hs.length, unit: '', foot: 'con régimen detectado' },
+      { label: 'ADR hab/noche', value: '289', unit: '€', foot: 'mediana 268 € · pers. 145 €' },
+      { label: 'Todo incluido', value: '100', unit: '%', foot: hs.length + '/' + hs.length + ' hoteles' },
+      { label: 'Rating medio', value: '8,3', unit: '', foot: '35.320 reseñas' },
+      { label: 'Cancel. gratis', value: '82', unit: '%', foot: '31/38 la ofrecen' },
+      { label: 'Con escasez', value: hs.filter(h => h.avail).length, unit: '', foot: '0 sold-out' },
+      { label: 'Movimiento', value: '▲13 ▼4', unit: '', foot: 'entre foto #17 y #18', color: 'var(--ink)' },
+    ].map(k => ({ color: 'var(--ink)', ...k }));
+    const seg = on => ({ bg: on ? 'var(--card)' : 'transparent', ink: on ? 'var(--ink)' : 'var(--muted)', sh: on ? '0 1px 2px rgba(20,22,28,.08)' : 'none', weight: on ? 600 : 500 });
+    const views = VIEWS.map(v => ({ label: v.label, count: hs.filter(v.f).length, pick: () => this.setState({ view: v.id }), ...seg(s.view === v.id) }));
+    const chips = CHIPS.map(c => { const on = s.chips.includes(c.id); return { label: c.label, count: hs.filter(c.f).length, on: on + '', border: on ? 'var(--ac)' : 'var(--border-soft)', bg: on ? 'var(--accent-soft)' : 'var(--card)', ink: on ? 'var(--ac)' : 'var(--ink)', toggle: () => this.setState(st => ({ chips: on ? st.chips.filter(x => x !== c.id) : [...st.chips, c.id] })) }; });
+    const densities = DENS.map(d => ({ label: d.label, icon: { __html: d.icon }, pick: () => p.setDensity && p.setDensity(d.id), ...seg((p.density || 'equilibrada') === d.id) }));
+    const selH = hs.find(h => h.id === selId);
+    let sel = {};
+    if (selH) {
+      const r = mkRow(selH);
+      sel = {
+        name: selH.name, sub: r.sub, rank: rankMap[selH.id], adrNum: selH.adr, prev: eur(selH.prev), delta: selH.isNew ? 'Nuevo en el set' : pct(selH.delta), deltaColor: r.deltaColor,
+        vs: pct(selH.vsMedian, 0), vsBg: selH.vsMedian >= 0 ? 'var(--accent-soft)' : 'var(--bg)', vsColor: selH.vsMedian >= 0 ? 'var(--ac)' : 'var(--muted)',
+        facts: [
+          { k: 'ADR/pers', v: eur(selH.pers) }, { k: 'Total 7 noches', v: eur(selH.adr * 7) }, { k: 'Estabilidad', v: selH.stab + '/100' },
+          { k: 'Nota', v: r.nota + ' · ' + r.reviews + ' reseñas' }, { k: 'Cancelación', v: selH.cancel ? 'Gratis' : 'Sin cancelación', color: selH.cancel ? 'var(--green)' : 'var(--ink)' },
+          { k: 'Disponibilidad', v: selH.avail || 'Sin aviso', color: selH.avail ? 'var(--warn-ink)' : 'var(--ink)' }, { k: 'Genius', v: selH.geniusLevel || 'No participa', color: selH.genius ? 'var(--ac)' : 'var(--ink)' }, { k: 'Distancia playa', v: selH.beach },
+        ].map(f => ({ color: 'var(--ink)', ...f })),
+        askIt: () => p.ask && p.ask('¿Cómo se posiciona ' + selH.name + ' frente al set?'),
+        compare: () => p.notify && p.notify(selH.name + ' fijado para comparar'),
+        openRooms: () => this.setState(st => ({ open: { ...st.open, [selH.id]: true } })),
+        rooms: selH.rooms.map(g => { const minR = g.rates.reduce((a, b) => a.adr < b.adr ? a : b); const u = g.rates.map(t => t.units).filter(Boolean); const prog = g.rates.find(t => t.program);
+          return { name: g.name, occ: g.maxOcc, n: g.rates.length + (g.rates.length === 1 ? ' tarifa' : ' tarifas'), from: 'desde ' + eur(minR.adr),
+            tag: u.length ? (Math.min(...u) === 1 ? 'Queda 1' : 'Quedan ' + Math.min(...u)) : prog ? (prog.program.startsWith('Genius') ? 'Genius' : 'Oferta') : 'Disponible',
+            tagBg: u.length ? 'var(--warn-bg)' : prog ? 'var(--accent-soft)' : 'var(--bg)', tagInk: u.length ? 'var(--warn-ink)' : prog ? 'var(--ac)' : 'var(--muted)' }; }),
+      };
+    }
+    const X = v => ((v - 150) / (667 - 150) * 100);
+    const strip = selH ? hs.map(h => { const me = h.id === selH.id; return { left: X(h.adr) + '%', size: me ? '10px' : '6px', off: me ? '-7px' : '-5px', top: me ? '10px' : '12px', color: me ? 'var(--ac)' : 'var(--lo)', z: me ? 2 : 1, title: h.name + ' · ' + eur(h.adr) }; }) : [];
+    const segAB = on => ({ bg: on ? 'var(--card)' : 'transparent', ink: on ? 'var(--ink)' : 'var(--muted)', sh: on ? '0 1px 2px rgba(20,22,28,.1)' : 'none' });
+    const A = segAB(!isB), B = segAB(isB);
+    return {
+      tabs: [['sheet', 'Hoja de mercado', hs.length + ' hoteles'], ['bi', 'Panel de análisis', 'BI · rate shopping']].map(([id, label, hint]) => ({ label, hint, line: s.tab === id ? 'var(--ac)' : 'transparent', ink: s.tab === id ? 'var(--ink)' : 'var(--muted)', weight: s.tab === id ? 600 : 500, pick: () => { localStorage.setItem('atlas.hotelTab', id); this.setState({ tab: id }); } })),
+      isSheet: s.tab === 'sheet', isBi: s.tab === 'bi', data: p.data, theme: p.theme, ask: p.ask, notify: p.notify,
+      openSheet: name => { localStorage.setItem('atlas.hotelTab', 'sheet'); const f = hs.find(x => x.name === name); this.setState({ tab: 'sheet', search: name || '', view: 'mercado', chips: [], sel: f ? f.id : s.sel, open: f ? { ...s.open, [f.id]: true } : s.open }); },
+      market: p.market || 'Gran Canaria (Sur)', kpis, views, chips, densities, search: s.search, hasSearch: !!s.search,
+      onSearch: e => this.setState({ search: e.target.value }), clearSearch: () => this.setState({ search: '' }),
+      group: s.group, onGroup: e => this.setState({ group: e.target.value }), headers, rows, cols, expW: isB ? 'calc(100vw - var(--sw) - 482px)' : 'calc(100vw - var(--sw) - 66px)', minW: isB ? '1040px' : '1290px', nameLeft: '64px', wide,
+      empty: list.length === 0, reset: () => this.setState({ view: 'mercado', chips: [], search: '' }),
+      footLeft: list.length + ' de ' + hs.length + ' hoteles · mediana ' + (list.length === hs.length ? '268 €' : eur(median(list.map(h => h.adr)))),
+      exportCsv: this.exportCsv, isB, hasSel: !!selH, noSel: isB && !selH, sel, total: hs.length, strip, medLeft: X(MED) + '%',
+      setA: () => p.setVariant && p.setVariant('A'), setB: () => p.setVariant && p.setVariant('B'),
+      aBg: A.bg, aInk: A.ink, aSh: A.sh, bBg: B.bg, bInk: B.ink, bSh: B.sh,
+    };
+  }
+}
+</script>
+</body>
+</html>
