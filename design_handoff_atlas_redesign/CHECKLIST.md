@@ -148,12 +148,12 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 - [x] §5 · Operación aérea · ordenación por cabecera (Origen, Fecha, Duración, Precio, AAI) y paginación de 50 · hecho · js:`setAirSort` · backend: nuevas ordenaciones `origin-*` y `date-desc`
 
 ## 6 Copilot
-- [ ] §6 · barra lateral de conversaciones (280 px, ocultable, «+», buscador, descargo al pie) · parcial · js:`renderCopilot`
-- [ ] §6 · cabecera con botón de lista, título, mercado, chip de antigüedad y select de modelo · parcial · js:`renderCopilot`
-- [ ] §6 · mensajes: burbuja de usuario y tarjeta del Copilot (título, confianza, texto, barras, SIGUIENTE, límite, trazabilidad desplegable) · parcial · js:`renderMsg`
-- [ ] §6 · estado «respondiendo» (avatar que late, barra, «consultando foto #N…») · parcial · js:`sendChat`
-- [ ] §6 · chips de sugerencias, área de 2 filas con sombra, envío 38 px, Enter / Shift+Enter · parcial · js:`copilotPanelHTML`
-- [ ] §6 · abrir con pregunta escrita desde otras vistas (crea conversación nueva y envía) · parcial · js:`askCopilot`
+- [x] §6 · barra lateral de conversaciones (280 px, ocultable, «+», buscador, descargo al pie) · hecho · js:`renderCopilot` · se conserva el botón ‹ de plegar y el bloque «Diagnóstico técnico»
+- [x] §6 · cabecera con botón de lista, título, mercado, chip de antigüedad y select de modelo · hecho · js:`copilotAgeChipHTML` · select → modos del backend `auto`/`quick`/`analysis`; se mantiene «Resultados»
+- [x] §6 · mensajes: burbuja de usuario y tarjeta del Copilot (título, confianza, texto, barras, SIGUIENTE, límite, trazabilidad desplegable) · hecho · js:`copilotReplyHTML`/`copilotSections` · el título es «Lectura» o el de la gráfica (no se inventa un titular); Evidencia va dentro de la trazabilidad
+- [x] §6 · estado «respondiendo» (avatar que late, barra, «consultando foto #N…») · hecho · js:`copilotPendingHTML`
+- [x] §6 · chips de sugerencias, área de 2 filas con sombra, envío 38 px, Enter / Shift+Enter · hecho · js:`copilotSuggestionsHTML` · el 4.º chip («¿Cómo está X?») solo aparece si hay hotel propio fijado en el panel
+- [x] §6 · abrir con pregunta escrita desde otras vistas (crea conversación nueva y envía) · hecho · js:`askCopilot`/`renderCopilot`
 
 ## 7 Espacio de trabajo
 - [ ] §7 · paleta de bloques (300 px) con etiquetas KPI / TAB / LIN / AIR / QA y «+» · parcial · js:`renderWorkspace`

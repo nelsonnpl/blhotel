@@ -4198,24 +4198,20 @@ async function renderCopilot() {
       <div class="note-box">Respuestas basadas en capturas de Booking y vuelos. No sustituye pickup ni ocupación del PMS.</div>
     </aside>
     <section class="copilot__main">
-      <div class="copilot__head"><div class="copilot-head-title"><button type="button" class="copilot-history-toggle icon-btn" id="toggleCopilotHistoryMain" aria-label="Mostrar u ocultar historial" aria-expanded="${State.copilotHistoryOpen}">☰</button><div><h1>Copilot</h1><p id="copilotCtx">${esc(activeTarget() ? activeTarget().name : 'Mercado')} · asistente de revenue${esc(workspaceScopeLabel)}</p></div></div><div class="copilot__scope"><span class="copilot-auto-status" aria-label="Selección automática de modelo">Selección automática</span><button type="button" class="btn btn--quiet copilot-panel-toggle" id="toggleCopilotPanel" aria-expanded="false">Resultados</button></div></div>
+      <div class="copilot__head"><div class="copilot-head-title"><button type="button" class="copilot-history-toggle icon-btn" id="toggleCopilotHistoryMain" aria-label="Mostrar u ocultar historial" aria-expanded="${State.copilotHistoryOpen}">☰</button><div><h1>Copilot</h1><p id="copilotCtx">${esc(activeTarget() ? activeTarget().name : 'Mercado')} · asistente de revenue${esc(workspaceScopeLabel)}</p></div></div><div class="copilot__scope">${copilotAgeChipHTML()}<label class="sr-only" for="copilotMode">Modelo</label><select id="copilotMode" class="copilot-mode">${[['auto', 'Modelo automático'], ['quick', 'Rápido'], ['analysis', 'Razonamiento']].map(([v, l]) => `<option value="${v}"${State.copilotMode === v ? ' selected' : ''}>${l}</option>`).join('')}</select><button type="button" class="btn btn--quiet copilot-panel-toggle" id="toggleCopilotPanel" aria-expanded="false">Resultados</button></div></div>
       <div class="thread" id="thread" role="log" aria-live="polite" aria-relevant="additions text"></div>
       <div class="composer">
         <div class="suggest" id="chatSuggestions">
           ${workspaceScope ? '<button type="button" data-ask="Explica el contexto BI seleccionado, sus tarifas y sus límites de interpretación.">Explicar este contexto BI</button>' : ''}
-          <button type="button" data-ask="¿Dónde tengo margen frente a la mediana esta semana?">Lectura del ADR frente al mercado</button>
-          <button type="button" data-ask="¿Qué hoteles ofrecen mejor relación precio-valoración?">Hoteles con mejor valor</button>
-          <button type="button" data-ask="Muéstrame la distribución de precios del set">Gráfica de precios del set</button>
-          <button type="button" data-ask="¿Qué rutas aéreas tienen más margen?">Oportunidades aéreas</button>
+          ${copilotSuggestionsHTML()}
         </div>
-        <button type="button" class="copilot-examples" id="toggleCopilotExamples" hidden aria-expanded="false">Ejemplos</button>
         <div class="copilot-attachments" id="copilotAttachments" aria-live="polite"></div>
         <div class="composer__row">
           <button type="button" class="attach-btn" id="chatAttach" aria-label="Adjuntar archivo" title="Adjuntar CSV, XLSX, PDF o imagen">＋</button>
           <input type="file" id="chatFile" accept=".csv,.xlsx,.pdf,.png,.jpg,.jpeg" hidden />
-          <textarea id="chatInput" rows="2" placeholder="Pregunta, compara o pide una gráfica…" aria-label="Mensaje para Copilot" autocomplete="off"></textarea>
+          <textarea id="chatInput" rows="2" placeholder="Pregunta, compara o pide una gráfica…" aria-label="Mensaje para Copilot (Enter envía, Mayús+Enter salto de línea)" autocomplete="off"></textarea>
           <button type="button" class="send-btn" id="chatSend" aria-label="Enviar">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h13M12 5l7 7-7 7"></path></svg>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h13M12 5l7 7-7 7"></path></svg>
           </button>
         </div>
       </div>
@@ -4321,18 +4317,13 @@ function copilotPanelHTML(tab = 'result', focusOrigin = null) {
 function greetThread() {
   const thread = $('#thread'); if (!thread) return;
   setCopilotSuggestionsState(true);
-  thread.innerHTML = `<div class="msg-bot"><div class="msg-bot__who"><div class="m"><i></i></div><span>Copilot</span></div>
-    <div class="msg-bot__body"><p>Hola. Puedo leer el mercado activo (${esc(activeTarget() ? activeTarget().name : '—')}), comparar hoteles y rutas, y calcular gráficas sobre tus capturas. Pregúntame o usa una sugerencia.</p></div></div>`;
+  thread.innerHTML = `<div class="msg-bot">${COPILOT_AVATAR}<article class="msg-card"><div class="msg-bot__body"><p>Hola. Puedo leer el mercado activo (${esc(activeTarget() ? activeTarget().name : '—')}), comparar hoteles y rutas, y calcular gráficas sobre tus capturas. Pregúntame o usa una sugerencia.</p></div></article></div>`;
 }
 
-function setCopilotSuggestionsState(emptyConversation, expanded = false) {
+/* Las sugerencias quedan siempre a la vista, como en el prototipo. */
+function setCopilotSuggestionsState() {
   const suggestions = $('#chatSuggestions');
-  const examples = $('#toggleCopilotExamples');
-  if (!suggestions || !examples) return;
-  suggestions.hidden = !emptyConversation && !expanded;
-  examples.hidden = emptyConversation;
-  examples.textContent = expanded ? 'Ocultar ejemplos' : 'Ejemplos';
-  examples.setAttribute('aria-expanded', String(expanded));
+  if (suggestions) suggestions.hidden = false;
 }
 
 async function loadSession(id) {
@@ -4360,8 +4351,72 @@ function restoreCopilotDraftIntoInput() { const input = $('#chatInput'); if (inp
 function renderMsg(m) {
   if (m.role !== 'user') State.copilotLastResult = m;
   if (m.role === 'user') return `<div class="msg-user">${esc(m.content)}</div>`;
-  return `<div class="msg-bot"><div class="msg-bot__who"><div class="m"><i></i></div><span>Copilot</span></div>
-    <div class="msg-bot__body">${md(m.content)}${copilotVisualizationHTML(m.visualization)}</div>${copilotTraceHTML(m.dataMeta)}</div>`;
+  return `<div class="msg-bot">${copilotReplyHTML(m.content, m.visualization, m.dataMeta)}</div>`;
+}
+
+const COPILOT_AVATAR = '<span class="msg-bot__avatar" aria-hidden="true"><i></i></span>';
+const COPILOT_SECTIONS = { lectura: 'reading', evidencia: 'evidence', 'acción siguiente': 'next', 'siguiente acción': 'next', 'límite de confianza': 'limit' };
+
+/* Divide la respuesta en Lectura / Evidencia / Acción siguiente / Límite de confianza (la
+   estructura que ya devuelve el asistente). Si no la trae, se muestra entera como lectura. */
+function copilotSections(text) {
+  const out = { lead: [], reading: [], evidence: [], next: [], limit: [] };
+  let current = 'lead', found = false;
+  String(text || '').replace(/\r/g, '').split('\n').forEach((line) => {
+    const h = line.match(/^\s*(?:#{1,6}\s*)?\**\s*(Lectura|Evidencia|Acci[oó]n siguiente|Siguiente acci[oó]n|L[ií]mite de confianza)\s*\**\s*:?\s*\**\s*(.*)$/i);
+    const key = h && COPILOT_SECTIONS[h[1].toLowerCase().replace('accion', 'acción').replace('limite', 'límite')];
+    if (key) { current = key; found = true; if (h[2].trim()) out[key].push(h[2]); return; }
+    out[current].push(line);
+  });
+  const join = (lines) => lines.join('\n').trim();
+  return { found, lead: join(out.lead), reading: join(out.reading), evidence: join(out.evidence), next: join(out.next), limit: join(out.limit) };
+}
+
+function copilotConfidence(text) {
+  const m = String(text || '').match(/confianza\s+\**\s*(media-alta|media-baja|alta|media|baja)\b/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
+function copilotTraceSummary(meta) {
+  const refs = [...(Array.isArray(meta?.toolEvidence) ? meta.toolEvidence : []), ...(Array.isArray(meta?.references) ? meta.references : [])];
+  const snapshot = refs.map((ref) => ref && ref.snapshotId).find((id) => id != null);
+  const tools = (meta?.toolNames || []).join(' ');
+  const sources = [];
+  if (snapshot != null || /hotel|market|booking|snapshot/i.test(tools)) sources.push('Booking');
+  if (/air|flight|vuelo/i.test(tools)) sources.push('Vuelos');
+  return [...sources, snapshot != null ? `foto #${snapshot}` : ''].filter(Boolean).join(' · ');
+}
+
+function copilotReplyHTML(content, visualization, meta) {
+  const sec = copilotSections(content);
+  const confidence = copilotConfidence(sec.limit || content);
+  const main = sec.found ? [sec.lead, sec.reading].filter(Boolean).join('\n\n') : String(content || '');
+  const title = visualization?.title || (sec.found ? 'Lectura' : '');
+  const head = title || confidence ? `<div class="msg-card__head">${title ? `<strong>${esc(title)}</strong>` : '<span></span>'}${confidence ? `<span class="msg-card__conf msg-card__conf--${confidence.replace(/[^a-z-]/g, '')}">Confianza ${esc(confidence)}</span>` : ''}</div>` : '';
+  const next = sec.next ? `<div class="msg-card__next"><span>Siguiente</span><div>${md(sec.next)}</div></div>` : '';
+  const limit = sec.limit ? `<div class="msg-card__limit">${md(sec.limit)}</div>` : '';
+  return `${COPILOT_AVATAR}<article class="msg-card"><div class="msg-bot__body">${head}<div class="msg-card__text">${md(main)}</div>${copilotVisualizationHTML(visualization)}${next}${limit}</div>${copilotTraceHTML(meta, sec.evidence)}</article>`;
+}
+
+function copilotPendingHTML() {
+  const snap = State.lastSnapshotId;
+  return `${COPILOT_AVATAR.replace('msg-bot__avatar', 'msg-bot__avatar is-busy')}<article class="msg-card msg-card--busy"><div class="msg-bot__body"><div class="msg-card__loader" aria-hidden="true"><i></i></div><p class="msg-card__status">${snap ? `consultando foto #${esc(String(snap))}…` : 'consultando las capturas…'}</p></div></article>`;
+}
+
+function copilotAgeChipHTML() {
+  const days = dataAgeDays(State.lastExtractionAt);
+  if (days == null) return '<span class="copilot-age" id="copilotAge" hidden></span>';
+  const label = days === 0 ? 'Datos de hoy' : `Datos de hace ${days} ${days === 1 ? 'día' : 'días'}`;
+  return `<span class="copilot-age${days >= 2 ? ' is-stale' : ''}" id="copilotAge" title="Última extracción ${esc(fmtStamp(State.lastExtractionAt))}">${label}</span>`;
+}
+
+function copilotSuggestionsHTML() {
+  const asks = [['¿Quién ha bajado precio frente a la captura anterior?', '¿Quién ha bajado precio?'], ['¿Qué hoteles muestran escasez o cierres en las fechas capturadas?', 'Hoteles con escasez'], ['Compara el precio medio por cadena hotelera en el set.', 'Compara cadenas']];
+  let own = null;
+  try { own = localStorage.getItem(`atlas.ownHotel.${State.targetId}`); } catch (_) { /* sin almacenamiento */ }
+  const ownName = own && (State.bi?.data?.hotels || []).find((h) => h.key === own)?.name;
+  if (ownName) asks.push([`¿Cómo está ${ownName} frente al mercado?`, `¿Cómo está ${ownName}?`]);
+  return asks.map(([q, label]) => `<button type="button" data-ask="${esc(q)}">${esc(label)}</button>`).join('');
 }
 
 function copilotVisualizationHTML(visualization) {
@@ -4390,13 +4445,13 @@ function copilotModelLabel(model) {
   return known[model] || model || 'Sin modelo';
 }
 
-function copilotTraceHTML(meta) {
-  if (!meta || typeof meta !== 'object') return '';
+function copilotTraceHTML(meta, evidence = '') {
+  if (!meta || typeof meta !== 'object') return evidence ? `<details class="copilot-trace"><summary><span>Trazabilidad</span><span class="copilot-trace__status is-neutral">Sin comprobación</span></summary><div class="copilot-trace__evidence">${md(evidence)}</div></details>` : '';
   const routing = meta.routing || {};
   const moa = meta.moa || {};
   const quality = meta.responseQuality || {};
   const hasTrace = meta.model || routing.strategy || moa.executed || meta.airFallback || quality.status || meta.toolCalls || (meta.toolEvidenceIds && meta.toolEvidenceIds.length);
-  if (!hasTrace) return '';
+  if (!hasTrace && !evidence) return '';
   const route = {
     direct: 'Consulta directa',
     single_call_synthesis: 'Análisis especializado',
@@ -4437,7 +4492,8 @@ function copilotTraceHTML(meta) {
   const qualityLabel = quality.status === 'ok' ? 'Formato comprobado' : quality.status ? 'Revisar respuesta' : 'Sin comprobación';
   const qualityState = quality.status === 'ok' ? 'is-ok' : quality.status ? 'is-warning' : 'is-neutral';
   const sources = Array.isArray(meta.toolEvidenceIds) && meta.toolEvidenceIds.length ? `<button type="button" class="trace-sources" data-open-copilot-sources>Ver ${meta.toolEvidenceIds.length} fuentes</button>` : '';
-  return `<details class="copilot-trace"><summary><span>Trazabilidad</span><span class="copilot-trace__status ${qualityState}">${qualityLabel}</span></summary><dl>${rows.join('')}</dl>${sources}</details>`;
+  const summary = copilotTraceSummary(meta);
+  return `<details class="copilot-trace"><summary><span>Trazabilidad${summary ? ` · ${esc(summary)}` : ''}</span><span class="copilot-trace__status ${qualityState}">${qualityLabel}</span></summary>${evidence ? `<div class="copilot-trace__evidence"><strong>Evidencia</strong>${md(evidence)}</div>` : ''}<dl>${rows.join('')}</dl>${sources}</details>`;
 }
 function paras(text) {
   return String(text || '').split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
@@ -4496,14 +4552,14 @@ async function sendChat(text) {
   thread.insertAdjacentHTML('beforeend', `<div class="msg-user">${esc(text)}</div>`);
   const pend = document.createElement('div');
   pend.className = 'msg-bot';
-  pend.innerHTML = `<div class="msg-bot__who"><div class="m"><i></i></div><span>Copilot</span></div><div class="msg-bot__body"><p style="color:var(--faint);">Analizando el mercado<span class="caret">▊</span></p></div>`;
+  pend.innerHTML = copilotPendingHTML();
   thread.appendChild(pend);
   thread.scrollTop = thread.scrollHeight;
   const input = $('#chatInput'); if (input) { input.value = ''; saveCopilotDraft(''); }
   try {
     const wantsVisualization = /gr[aá]fica|visualiza|distribuci[oó]n|evoluci[oó]n|tendencia/i.test(text);
     const requestId = (window.crypto?.randomUUID ? window.crypto.randomUUID() : `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-    const requestBody = { message: text, requestId, targetId: State.targetId, sessionId: State.activeSession, mode: 'auto', visualize: wantsVisualization, attachmentIds: State.copilotAttachments.map((item) => item.id), workspaceContext: State.copilotWorkspaceContext?.targetId === State.targetId ? { snapshotId: State.copilotWorkspaceContext.snapshotId, checkIn: State.copilotWorkspaceContext.checkIn || null } : null };
+    const requestBody = { message: text, requestId, targetId: State.targetId, sessionId: State.activeSession, mode: State.copilotMode || 'auto', visualize: wantsVisualization, attachmentIds: State.copilotAttachments.map((item) => item.id), workspaceContext: State.copilotWorkspaceContext?.targetId === State.targetId ? { snapshotId: State.copilotWorkspaceContext.snapshotId, checkIn: State.copilotWorkspaceContext.checkIn || null } : null };
     // Documents, decision requests and long analyses run in the persistent
     // queue so the browser can reconnect, show progress and cancel safely.
     const useBackgroundJob = State.copilotAttachments.length > 0 || text.length > 900 || State.copilotMode === 'decision';
@@ -4522,8 +4578,7 @@ async function sendChat(text) {
     const responseFresh = requestSessionId === State.activeSession && requestTargetId === State.targetId && pend.isConnected;
     if (responseFresh) State.copilotLastResult = r;
     if (responseFresh) {
-      pend.querySelector('.msg-bot__body').innerHTML = md(r.reply) + copilotVisualizationHTML(r.visualization);
-      const trace = copilotTraceHTML(r.dataMeta); if (trace) pend.insertAdjacentHTML('beforeend', trace);
+      pend.innerHTML = copilotReplyHTML(r.reply, r.visualization, r.dataMeta);
     }
     if (r.session && requestSessionId === State.activeSession) {
       State.activeSession = r.session.id;
@@ -4545,9 +4600,7 @@ async function sendChat(text) {
 function applyAssistantResponse(response, pend, requestTargetId = State.targetId) {
   const isActive = (!response._requestSessionId || response._requestSessionId === State.activeSession) && requestTargetId === State.targetId;
   if (isActive && pend?.isConnected) State.copilotLastResult = response;
-  const body = pend?.isConnected ? pend.querySelector('.msg-bot__body') : null;
-  if (body && isActive) body.innerHTML = md(response.reply || '') + copilotVisualizationHTML(response.visualization);
-  const trace = copilotTraceHTML(response.dataMeta); if (trace && pend?.isConnected && isActive) pend.insertAdjacentHTML('beforeend', trace);
+  if (pend?.isConnected && isActive) pend.innerHTML = copilotReplyHTML(response.reply || '', response.visualization, response.dataMeta);
   if (response.session && (!response._requestSessionId || response._requestSessionId === State.activeSession)) {
     State.activeSession = response.session.id;
     const exists = State.sessions.find((s) => s.id === response.session.id);
@@ -5237,6 +5290,8 @@ function renderDataAge(metrics) {
   const snapshot = metrics && metrics.latestSnapshot;
   const at = (snapshot && snapshot.scrapedAt) || null;
   State.lastExtractionAt = at;
+  State.lastSnapshotId = snapshot ? snapshot.id : null;
+  const copilotAge = $('#copilotAge'); if (copilotAge) copilotAge.outerHTML = copilotAgeChipHTML();
   const days = dataAgeDays(at);
   const fresh = days === 0 && State.freshCaptureTargetId === State.targetId;
   const label = fresh ? 'Actualizado · ahora' : days == null ? 'Sin capturas' : days === 0 ? 'Datos de hoy' : `Datos de hace ${days} ${days === 1 ? 'día' : 'días'}`;
@@ -5596,7 +5651,6 @@ function wireEvents() {
     if (e.target.closest('#lockBtn')) { void lockSession(); return; }
     if (e.target.closest('#unlockBtn')) { void unlockSession(); return; }
     if (e.target.closest('#chatSend')) { sendChat($('#chatInput').value); return; }
-    if (e.target.closest('#toggleCopilotExamples')) { const suggestions = $('#chatSuggestions'); setCopilotSuggestionsState(false, suggestions?.hidden); return; }
     if (e.target.closest('#toggleCopilotHistory') || e.target.closest('#toggleCopilotHistoryMain')) { updateCopilotHistory(!State.copilotHistoryOpen); return; }
     const copilotPanelToggle = e.target.closest('#toggleCopilotPanel');
     if (copilotPanelToggle) { copilotPanelHTML(State.copilotPanel || 'result', copilotPanelToggle); return; }
