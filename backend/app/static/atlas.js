@@ -94,118 +94,6 @@ function runCounters(root) {
 }
 
 /* --------------------------------------------------------------- charts */
-function polar(cx, cy, r, deg) {
-  const a = (deg * Math.PI) / 180;
-  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-}
-function arc(cx, cy, r, startDeg, endDeg) {
-  const [x0, y0] = polar(cx, cy, r, startDeg);
-  const [x1, y1] = polar(cx, cy, r, endDeg);
-  const large = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
-  const sweep = endDeg > startDeg ? 1 : 0;
-  return `M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${r} ${r} 0 ${large} ${sweep} ${x1.toFixed(1)} ${y1.toFixed(1)}`;
-}
-
-/* Beeswarm de tarifas */
-function beeswarmSVG(prices, med, p75) {
-  const W = 760, x0 = 8, x1 = 752, baseY = 75, r = 4.6, step = 10;
-  const vals = prices.filter((p) => p > 0);
-  if (!vals.length) return emptyChart(178);
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const scale = (p) => x0 + (max > min ? (p - min) / (max - min) : 0.5) * (x1 - x0);
-  const sorted = [...vals].sort((a, b) => a - b);
-  const placed = [];
-  const circles = sorted.map((p) => {
-    const x = scale(p);
-    const used = new Set(placed.filter((q) => Math.abs(q.x - x) < r * 1.9).map((q) => q.level));
-    let level = 0;
-    for (let m = 0; ; m++) {
-      if (m === 0) { if (!used.has(0)) { level = 0; break; } continue; }
-      if (!used.has(m)) { level = m; break; }
-      if (!used.has(-m)) { level = -m; break; }
-    }
-    placed.push({ x, level });
-    const y = baseY + level * step;
-    const fill = p < med ? 'var(--lo)' : p < p75 ? 'var(--mid)' : 'var(--hi)';
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${fill}" opacity="0.9"></circle>`;
-  }).join('');
-  const mx = scale(med);
-  const ax = [min, med, p75, max];
-  const labels = ax.map((v, i) => {
-    const x = scale(v);
-    const anchor = i === 0 ? 'start' : i === ax.length - 1 ? 'end' : 'middle';
-    const tx = i === 0 ? x0 : i === ax.length - 1 ? x1 : x;
-    return `<text x="${tx.toFixed(1)}" y="156" text-anchor="${anchor}">${nEs(v)}${i === ax.length - 1 ? ' €' : ''}</text>`;
-  }).join('');
-  return `<svg viewBox="0 0 ${W} 178" width="100%" height="178" class="svg-block">
-    <line x1="${mx.toFixed(1)}" y1="8" x2="${mx.toFixed(1)}" y2="132" stroke="var(--ac)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"></line>
-    <text x="${(mx + 5).toFixed(1)}" y="16" font-family="'Space Mono',monospace" font-size="9.5" fill="var(--ac)">mediana ${nEs(med)} €</text>
-    <g style="animation:atFade 700ms ease 300ms both;">${circles}</g>
-    <line x1="8" y1="140" x2="752" y2="140" stroke="var(--border)" stroke-width="1"></line>
-    <g font-family="'Space Mono',monospace" font-size="10" fill="var(--faint)">${labels}</g>
-  </svg>`;
-}
-
-/* Gauge radial de percentil (0..100) */
-function gaugeSVG(pct) {
-  const cx = 110, cy = 110, r = 86, start = 135, span = 270;
-  const f = Math.max(0, Math.min(100, pct)) / 100;
-  const bg = arc(cx, cy, r, start, start + span);
-  const val = arc(cx, cy, r, start, start + span * f);
-  return `<svg viewBox="0 0 220 200" width="100%" height="182" class="svg-block" style="margin:auto;">
-    <path d="${bg}" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="13" stroke-linecap="round"></path>
-    <path d="${val}" fill="none" stroke="var(--ac)" stroke-width="13" stroke-linecap="round" stroke-dasharray="1400" style="animation:atDraw 1400ms cubic-bezier(.22,1,.36,1) 420ms both;"></path>
-    <text x="110" y="112" text-anchor="middle" font-family="Archivo,sans-serif" font-size="42" font-weight="700" fill="#fff" letter-spacing="-0.03em">${nEs(pct)}</text>
-    <text x="110" y="132" text-anchor="middle" font-family="'Space Mono',monospace" font-size="10" fill="var(--faint)">PERCENTIL</text>
-  </svg>`;
-}
-
-/* Densidad tipo ridgeline por mercado */
-function ridgelineSVG(rows) {
-  // rows: [{name, prices:[], median}]
-  const all = rows.flatMap((r) => r.prices).filter((p) => p > 0);
-  if (!all.length) return emptyChart(200);
-  const dmin = Math.min(...all), dmax = Math.max(...all);
-  const x0 = 150, x1 = 600, rowH = 48, top = 10, bw = 54;
-  const N = 61;
-  const bandwidth = (dmax - dmin) / 12 || 1;
-  const kde = (prices) => {
-    const xs = [], ys = [];
-    let maxy = 0;
-    for (let i = 0; i < N; i++) {
-      const x = dmin + (i / (N - 1)) * (dmax - dmin);
-      let s = 0;
-      for (const p of prices) { const u = (x - p) / bandwidth; s += Math.exp(-0.5 * u * u); }
-      xs.push(x); ys.push(s); if (s > maxy) maxy = s;
-    }
-    return { xs, ys, maxy };
-  };
-  let body = '';
-  const colors = ['#2f55d4', '#4d74f0', '#7f93c9', '#a3aec9', '#c3cbdd'];
-  const fills = ['rgba(47,85,212,0.16)', 'rgba(47,85,212,0.13)', 'rgba(47,85,212,0.10)', 'rgba(47,85,212,0.08)', 'rgba(47,85,212,0.06)'];
-  rows.forEach((rw, ri) => {
-    const { xs, ys, maxy } = kde(rw.prices);
-    const sx = (v) => x0 + (v - dmin) / (dmax - dmin || 1) * (x1 - x0);
-    const sy = (v) => bw - (maxy ? (v / maxy) * bw : 0);
-    let d = `M ${sx(xs[0]).toFixed(1)} ${sy(ys[0]).toFixed(1)}`;
-    for (let i = 1; i < N; i++) d += ` L ${sx(xs[i]).toFixed(1)} ${sy(ys[i]).toFixed(1)}`;
-    d += ` L ${x1} ${bw} L ${x0} ${bw} Z`;
-    body += `<g transform="translate(0,${top + ri * rowH})">
-      <text x="140" y="44" text-anchor="end" font-family="Archivo,sans-serif" font-size="12" font-weight="500" fill="var(--ink)">${esc(rw.name)}</text>
-      <path d="${d}" fill="${fills[ri % fills.length]}" stroke="${colors[ri % colors.length]}" stroke-width="1.6"></path>
-      <text x="612" y="52" font-family="'Space Mono',monospace" font-size="11" fill="var(--ink)">${nEs(rw.median)}</text>
-    </g>`;
-  });
-  const h = top + rows.length * rowH + 40;
-  return `<svg viewBox="0 0 640 ${h}" width="100%" height="${h}" class="svg-block">
-    <g style="animation:atFade 600ms ease 420ms both;">${body}</g>
-    <g font-family="'Space Mono',monospace" font-size="10" fill="var(--faint)">
-      <text x="150" y="${h - 6}">${nEs(dmin)} €</text>
-      <text x="375" y="${h - 6}" text-anchor="middle">${nEs((dmin + dmax) / 2)} €</text>
-      <text x="600" y="${h - 6}" text-anchor="end">${nEs(dmax)} €</text>
-    </g>
-  </svg>`;
-}
 
 /* Slope de movimiento entre dos fotos */
 function dumbbellSVG(routes) {
@@ -479,9 +367,7 @@ const State = {
   targetId: null,
   metrics: {},   // cache por targetId
   snapshots: {}, // cache por targetId
-  heatmaps: {},  // cache por targetId
   demandCurves: {}, // cache por targetId
-  externalObservations: {}, // caché global de fuentes públicas normalizadas
   hotelStability: {}, // cache por targetId
   photoHistories: {}, // cache por targetId
   captureHistories: {}, // cache por targetId; una extracción puede reunir varios cortes semanales
@@ -494,17 +380,13 @@ const State = {
   captureHotelSearch: '',
   dashboardMap: null,
   dashboardMapMarkers: [],
-  dashboardMapRows: {},
   dashboardMapResizeObserver: null,
-  dashboardMapResizeFrame: null,
-  dashboardDrawerFocusOrigin: null,
-  dashboardView: 'market',
-  dashboardViewRestored: false,
-  dashboardExplorerSnapshotId: null,
-  dashboardExplorerResult: null,
-  dashboardExplorerResultKey: null,
-  dashboardExplorerSearch: '',
-  dashboardExplorerSort: 'adr-desc',
+  dashboard: {                  // Dashboard: señales, ventana del mapa y su gráfica
+    allSignals: false, sel: null, chart: 'hist', cmp: false, ptHover: null,
+    model: null, photos: [], signals: [], previousSnapshotId: null, returnFocus: null,
+  },
+  biMap: null,
+  flightMap: null,
   workspaceDraft: null,
   workspaceDraftTargetId: null,
   workspaceDirty: false,
@@ -579,209 +461,6 @@ const LABELS = { dashboard: 'Dashboard', hotels: 'Hoteles', reputation: 'Reputac
 function mount(view) { return $(`#view-${view}`); }
 function activeTarget() { return State.targets.find((t) => t.id === State.targetId) || null; }
 
-function restoreDashboardView() {
-  if (State.dashboardViewRestored) return State.dashboardView;
-  State.dashboardViewRestored = true;
-  try {
-    const saved = localStorage.getItem('atlas.dashboard.view.v1');
-    if (saved === 'market' || saved === 'charts' || saved === 'explorer') State.dashboardView = saved;
-  } catch (_) { /* la preferencia local no debe bloquear el dashboard */ }
-  return State.dashboardView;
-}
-
-function persistDashboardView() {
-  try { localStorage.setItem('atlas.dashboard.view.v1', State.dashboardView); }
-  catch (_) { /* la vista sigue funcionando aunque no haya almacenamiento local */ }
-}
-
-function activateDashboardView(view) {
-  const next = ['market', 'charts', 'explorer'].includes(view) ? view : 'market';
-  if (next === State.dashboardView) return;
-  State.dashboardView = next;
-  persistDashboardView();
-  document.querySelectorAll('[data-dashboard-view]').forEach((button) => {
-    const selected = button.dataset.dashboardView === next;
-    button.setAttribute('aria-selected', String(selected));
-    button.tabIndex = selected ? 0 : -1;
-  });
-  document.querySelectorAll('.dashboard-view-panel').forEach((panel) => {
-    panel.getAnimations().forEach((animation) => animation.cancel());
-    panel.hidden = panel.id !== `dashboard-panel-${next}`;
-    if (!panel.hidden && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      panel.animate([{ opacity: 0, transform: 'translateY(5px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 190, easing: 'ease-out' });
-    }
-  });
-  if (next === 'market') {
-    if (State.dashboardMap) State.dashboardMap.resize();
-    else {
-      const rows = State.snapshots[State.targetId]?.latest?.rows || [];
-      void renderDashboardHotelMap(rows.filter((row) => row.latitude != null && row.longitude != null && row.pricePerNight > 0), rows);
-    }
-  }
-}
-
-function dashboardViewSwitcherHTML(view) {
-  const active = ['market', 'charts', 'explorer'].includes(view) ? view : 'market';
-  const selected = (key) => active === key ? 'true' : 'false';
-  return `<div class="dashboard-view-switcher mb12" aria-label="Vista principal del dashboard">
-    <div class="dashboard-view-tabs flight-tabs" role="tablist" aria-label="Bloques del dashboard">
-      <button type="button" role="tab" id="dashboard-view-tab-market" tabindex="${active === 'market' ? 0 : -1}" aria-selected="${selected('market')}" aria-controls="dashboard-panel-market" data-dashboard-view="market">Mapa y hoteles</button>
-      <button type="button" role="tab" id="dashboard-view-tab-charts" tabindex="${active === 'charts' ? 0 : -1}" aria-selected="${selected('charts')}" aria-controls="dashboard-panel-charts" data-dashboard-view="charts">Gráficas</button>
-      <button type="button" role="tab" id="dashboard-view-tab-explorer" tabindex="${active === 'explorer' ? 0 : -1}" aria-selected="${selected('explorer')}" aria-controls="dashboard-panel-explorer" data-dashboard-view="explorer">Explorar</button>
-    </div>
-  </div>`;
-}
-
-function dashboardExplorerHTML(captures, latestSnapshot) {
-  const availableCaptures = (captures || []).filter((capture) => capture.anchorSnapshotId && capture.observedAt);
-  const fallbackId = latestSnapshot?.snapshot?.id || availableCaptures[0]?.anchorSnapshotId || null;
-  const selectedId = availableCaptures.some((capture) => Number(capture.anchorSnapshotId) === Number(State.dashboardExplorerSnapshotId))
-    ? Number(State.dashboardExplorerSnapshotId) : Number(fallbackId);
-  State.dashboardExplorerSnapshotId = Number.isInteger(selectedId) ? selectedId : null;
-  const options = availableCaptures.map((capture) => {
-    const dates = capture.checkIns || [];
-    const span = dates.length ? `${rateShortDate(dates[0])}${dates.length > 1 ? ` → ${rateShortDate(dates.at(-1))}` : ''}` : 'entrada no disponible';
-    const legacy = capture.kind === 'legacy_inferred_capture_group' ? ' · histórico inferido' : '';
-    return `<option value="${capture.anchorSnapshotId}"${Number(capture.anchorSnapshotId) === selectedId ? ' selected' : ''}>Extracción #${capture.anchorSnapshotId} · ${esc(fmtStamp(capture.observedAt))} · ${esc(span)} · ${nEs(capture.comparableRows)} observaciones${legacy}</option>`;
-  }).join('');
-  return `<article class="card card--pad dashboard-explorer-card">
-    <div class="dashboard-explorer-card__head">
-      <div><div class="card__kicker">Consulta certificada</div><h2>Explorar tarifas por extracción</h2><p>Agrega las observaciones del barrido seleccionado por hotel y conserva las fechas de entrada en cada resultado.</p></div>
-      <label class="dashboard-explorer-select"><span>Extracción</span><select id="dashboardExplorerPhoto" aria-label="Extracción para explorar"${options ? '' : ' disabled'}>${options || '<option>Sin extracciones</option>'}</select></label>
-    </div>
-    <div class="dashboard-explorer-controls" aria-label="Controles de resultados">
-      <label><span>Buscar hotel</span><input id="dashboardExplorerSearch" type="search" value="${esc(State.dashboardExplorerSearch)}" placeholder="Nombre del hotel" autocomplete="off"></label>
-      <label><span>Ordenar</span><select id="dashboardExplorerSort" aria-label="Orden de resultados"><option value="adr-desc"${State.dashboardExplorerSort === 'adr-desc' ? ' selected' : ''}>ADR medio: mayor a menor</option><option value="adr-asc"${State.dashboardExplorerSort === 'adr-asc' ? ' selected' : ''}>ADR medio: menor a mayor</option><option value="name-asc"${State.dashboardExplorerSort === 'name-asc' ? ' selected' : ''}>Hotel: A–Z</option></select></label>
-    </div>
-    <section id="dashboardExplorerComparison" class="dashboard-explorer-comparison" aria-live="polite" hidden></section>
-    <div id="dashboardExplorerData" class="dashboard-explorer-data" aria-live="polite"><div class="dashboard-explorer-loading">Cargando consulta certificada…</div></div>
-  </article>`;
-}
-
-function dashboardExplorerValue(item, metric) {
-  return (item.values || []).find((value) => value.metric === metric)?.value ?? null;
-}
-
-function dashboardExplorerDateSummary(item) {
-  const count = Number(item?.population?.distinctCheckIns || 0);
-  return count === 1 ? '1 fecha de entrada' : `${nEs(count)} fechas de entrada`;
-}
-
-function dashboardExplorerObservationLabel(value) {
-  const count = Number(value || 0);
-  return `${nEs(count)} ${count === 1 ? 'observación' : 'observaciones'}`;
-}
-
-function dashboardExplorerCheckIns(item) {
-  const dates = (item?.population?.checkIns || []).filter(Boolean);
-  if (!dates.length) return '—';
-  const labels = dates.slice(0, 3).map(rateShortDate);
-  return `${labels.join(', ')}${dates.length > 3 ? ` +${dates.length - 3}` : ''}`;
-}
-
-function dashboardExplorerPreviousCapture(selectedId) {
-  const captures = State.captureHistories[State.targetId]?.captures || [];
-  const selectedIndex = captures.findIndex((capture) => Number(capture.anchorSnapshotId) === Number(selectedId));
-  return selectedIndex >= 0 ? captures[selectedIndex + 1] || null : null;
-}
-
-function dashboardExplorerCheckInPoints(payload) {
-  return new Map((payload?.breakdown || []).map((item) => [item.dimensions?.checkIn, dashboardExplorerValue(item, 'adr_mean')]).filter(([date, value]) => Boolean(date) && Number.isFinite(Number(value))));
-}
-
-function dashboardExplorerComparisonSVG(currentPayload, previousPayload) {
-  const current = dashboardExplorerCheckInPoints(currentPayload);
-  const previous = dashboardExplorerCheckInPoints(previousPayload);
-  const dates = [...new Set([...current.keys(), ...previous.keys()])].sort();
-  const values = [...current.values(), ...previous.values()].map(Number).filter(Number.isFinite);
-  if (!dates.length || values.length < 2) return emptyChart(138);
-  const W = 720, H = 178, x0 = 42, x1 = 704, y0 = 18, y1 = 132;
-  const min = Math.min(...values), max = Math.max(...values);
-  const sx = (index) => dates.length === 1 ? (x0 + x1) / 2 : x0 + (index / (dates.length - 1)) * (x1 - x0);
-  const sy = (value) => y0 + (max > min ? (1 - (value - min) / (max - min)) : 0.5) * (y1 - y0);
-  const pathFor = (points) => dates.reduce((path, date, index) => {
-    const value = points.get(date);
-    if (!Number.isFinite(Number(value))) return `${path}M ${sx(index).toFixed(1)} ${sy(Number.NaN).toFixed(1)} `;
-    const prior = points.get(dates[index - 1]);
-    return `${path}${Number.isFinite(Number(prior)) ? 'L' : 'M'} ${sx(index).toFixed(1)} ${sy(Number(value)).toFixed(1)} `;
-  }, '').replace(/M [^ ]+ NaN /g, '');
-  const dotsFor = (points, color) => dates.map((date, index) => {
-    const value = points.get(date);
-    return Number.isFinite(Number(value)) ? `<circle cx="${sx(index).toFixed(1)}" cy="${sy(Number(value)).toFixed(1)}" r="3" fill="var(${color})"/>` : '';
-  }).join('');
-  const labels = dates.map((date, index) => `<text x="${sx(index).toFixed(1)}" y="157" text-anchor="middle">${esc(rateShortDate(date))}</text>`).join('');
-  return `<svg class="dashboard-explorer-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="ADR medio por fecha de entrada para dos extracciones"><g stroke="var(--line-soft)" stroke-width="1"><line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}"/><line x1="${x0}" y1="${(y0 + y1) / 2}" x2="${x1}" y2="${(y0 + y1) / 2}"/><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"/></g><g fill="var(--faint)" font-family="'Space Mono',monospace" font-size="9"><text x="${x0 - 7}" y="${y0 + 3}" text-anchor="end">${nEs(max)} €</text><text x="${x0 - 7}" y="${y1 + 3}" text-anchor="end">${nEs(min)} €</text>${labels}</g><path d="${pathFor(previous)}" fill="none" stroke="var(--warn-ink)" stroke-width="2" stroke-linecap="round" stroke-dasharray="5 4"/><path d="${pathFor(current)}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linecap="round"/>${dotsFor(previous, '--warn-ink')}${dotsFor(current, '--ac')}</svg>`;
-}
-
-function renderDashboardExplorerComparison(host, currentPayload, previousPayload, previousCapture) {
-  const outlet = $('#dashboardExplorerComparison', host);
-  if (!outlet) return;
-  if (!previousPayload || !previousCapture) { outlet.hidden = true; outlet.innerHTML = ''; return; }
-  const currentId = currentPayload.provenance?.snapshotId;
-  const previousId = previousPayload.provenance?.snapshotId;
-  outlet.hidden = false;
-  outlet.innerHTML = `<div class="dashboard-explorer-comparison__head"><div><div class="card__kicker">Comparación entre extracciones</div><h3>ADR por fecha de entrada</h3><p>El eje X es la fecha de entrada; cada línea agrega las tarifas comparables de su barrido.</p></div><div class="dashboard-explorer-legend"><span><i class="is-current"></i>Extracción #${esc(currentId)}</span><span><i class="is-previous"></i>Extracción #${esc(previousId)}</span></div></div>${dashboardExplorerComparisonSVG(currentPayload, previousPayload)}`;
-}
-
-function dashboardExplorerRows(payload) {
-  const needle = String(State.dashboardExplorerSearch || '').trim().toLocaleLowerCase('es');
-  const nameOf = (item) => String(item.labels?.hotel || item.dimensions?.hotel || '');
-  const adrOf = (item) => Number(dashboardExplorerValue(item, 'adr_mean'));
-  const rows = (payload.breakdown || []).filter((item) => !needle || nameOf(item).toLocaleLowerCase('es').includes(needle));
-  return rows.sort((a, b) => {
-    const nameOrder = nameOf(a).localeCompare(nameOf(b), 'es');
-    if (State.dashboardExplorerSort === 'name-asc') return nameOrder;
-    const ascending = State.dashboardExplorerSort === 'adr-asc';
-    const left = Number.isFinite(adrOf(a)) ? adrOf(a) : (ascending ? Infinity : -Infinity);
-    const right = Number.isFinite(adrOf(b)) ? adrOf(b) : (ascending ? Infinity : -Infinity);
-    return ascending ? left - right || nameOrder : right - left || nameOrder;
-  });
-}
-
-function renderDashboardExplorerResults(outlet, payload) {
-  if (!outlet) return;
-  const rows = dashboardExplorerRows(payload);
-  const totalHotels = (payload.breakdown || []).length;
-  const metricFormula = (payload.values || []).find((value) => value.metric === 'adr_mean')?.formula || 'Media de tarifa por habitación/noche sobre observaciones comparables.';
-  const observedAt = payload.provenance?.observedAt ? fmtStamp(payload.provenance.observedAt) : 'fecha de extracción no disponible';
-  const body = rows.length ? rows.map((item) => {
-    const name = item.labels?.hotel || item.dimensions?.hotel || 'Hotel no identificado';
-    const count = item.population?.comparableRows;
-    return `<tr><th scope="row" class="name" title="${esc(item.dimensions?.hotel || '')}">${esc(name)}</th><td class="num">${eur(dashboardExplorerValue(item, 'adr_mean'), 2)}</td><td class="num">${eur(dashboardExplorerValue(item, 'adr_median'), 2)}</td><td class="num">${eur(dashboardExplorerValue(item, 'adr_min'), 2)} — ${eur(dashboardExplorerValue(item, 'adr_max'), 2)}</td><td class="dashboard-explorer-checkin">${esc(dashboardExplorerCheckIns(item))}<small>${dashboardExplorerDateSummary(item)} · ${dashboardExplorerObservationLabel(count)} · ${nEs(item.population?.comparablePct, 0)}% comparables</small></td></tr>`;
-  }).join('') : `<tr><td colspan="5" class="empty">${totalHotels ? 'No hay hoteles que coincidan con la búsqueda.' : 'La extracción no contiene observaciones comparables para esta consulta.'}</td></tr>`;
-  const resultCount = rows.length === totalHotels ? `${nEs(totalHotels)} hoteles` : `${nEs(rows.length)} de ${nEs(totalHotels)} hoteles`;
-  outlet.innerHTML = `<div class="dashboard-explorer-meta"><span>Extracción anclada en #${esc(payload.provenance?.snapshotId)} · observada ${esc(observedAt)}</span><span>${resultCount} · ${nEs(payload.population?.comparableRows)} observaciones comparables de ${nEs(payload.population?.totalRows)} filas</span></div><div class="table-scroll"><table class="t dashboard-explorer-table"><caption>Tarifas agregadas por hotel en la extracción seleccionada</caption><thead><tr><th scope="col">Hotel</th><th scope="col" class="r">ADR medio</th><th scope="col" class="r">ADR mediano</th><th scope="col" class="r">Rango ADR</th><th scope="col">Entrada</th></tr></thead><tbody>${body}</tbody></table></div><details class="dashboard-explorer-method"><summary>Definición y alcance de la consulta</summary><p>${esc(metricFormula)} Los importes son EUR por habitación/noche; una cobertura incompleta no se interpreta como cero.</p></details>`;
-}
-
-async function loadDashboardExplorer(host) {
-  const targetId = State.targetId;
-  const selectedId = Number(State.dashboardExplorerSnapshotId);
-  const outlet = $('#dashboardExplorerData', host);
-  const comparisonOutlet = $('#dashboardExplorerComparison', host);
-  if (!outlet || !Number.isInteger(targetId) || !Number.isInteger(selectedId)) return;
-  outlet.innerHTML = '<div class="dashboard-explorer-loading">Cargando consulta certificada…</div>';
-  if (comparisonOutlet) { comparisonOutlet.hidden = true; comparisonOutlet.innerHTML = ''; }
-  try {
-    const query = (snapshotId, dimensions, metrics) => api('/api/analytics/query', {
-      method: 'POST',
-      body: JSON.stringify({ targetId, snapshotId, dimensions, metrics, limit: 500 }),
-    });
-    const previousCapture = dashboardExplorerPreviousCapture(selectedId);
-    const [payload, byCheckIn, previousByCheckIn] = await Promise.all([
-      query(selectedId, ['hotel'], ['adr_mean', 'adr_median', 'adr_min', 'adr_max']),
-      query(selectedId, ['checkIn'], ['adr_mean']),
-      previousCapture ? query(Number(previousCapture.anchorSnapshotId), ['checkIn'], ['adr_mean']) : Promise.resolve(null),
-    ]);
-    if (State.view !== 'dashboard' || State.targetId !== targetId || Number(State.dashboardExplorerSnapshotId) !== selectedId) return;
-    State.dashboardExplorerResult = payload;
-    State.dashboardExplorerResultKey = `${targetId}:${selectedId}`;
-    renderDashboardExplorerResults(outlet, payload);
-    renderDashboardExplorerComparison(host, byCheckIn, previousByCheckIn, previousCapture);
-  } catch (error) {
-    if (State.view === 'dashboard' && State.targetId === targetId) outlet.innerHTML = `<div class="inline-error">No se pudo cargar la consulta: ${esc(error.message)}</div>`;
-  }
-}
-
 /* --------------------------------------------------------------- router */
 function setView(view) {
   if (!VIEWS.includes(view)) view = 'dashboard';
@@ -853,14 +532,8 @@ async function getMetrics(targetId, force) {
 async function getSnapshot(targetId, force) {
   return cachedApi(State.snapshots, targetId, `snapshot:${targetId}`, `/api/snapshots/latest?targetId=${targetId}`, force);
 }
-async function getHeatmap(targetId, photos = 1, force = false) {
-  return cachedApi(State.heatmaps, targetId, `heatmap:${targetId}:${photos}`, `/api/hotels/heatmap?targetId=${targetId}&photos=${photos}`, force);
-}
 async function getDemandCurve(targetId, force = false) {
   return cachedApi(State.demandCurves, targetId, `demand:${targetId}`, `/api/analytics/demand-curve?targetId=${targetId}`, force);
-}
-async function getExternalObservations(force = false) {
-  return cachedApi(State.externalObservations, 'all', 'external-observations', '/api/external/observations?limit=250', force);
 }
 async function getHotelStability(targetId, force = false) {
   return cachedApi(State.hotelStability, targetId, `stability:${targetId}`, `/api/analytics/competitive-stability?targetId=${targetId}&snapshots=10`, force);
@@ -911,49 +584,6 @@ function adrHistorySVG(photos) {
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="238" class="svg-block" role="img" aria-label="Evolución temporal del ADR por captura"><g stroke="var(--line-soft)" stroke-width="1"><line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}"></line><line x1="${x0}" y1="${(y0 + y1) / 2}" x2="${x1}" y2="${(y0 + y1) / 2}"></line><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"></line></g><g font-family="'Space Mono',monospace" font-size="9" fill="var(--fainter)"><text x="${x0 - 8}" y="${y0 + 3}" text-anchor="end">${eur(max)}</text><text x="${x0 - 8}" y="${y1 + 3}" text-anchor="end">${eur(min)}</text></g><path d="${line}" fill="none" stroke="var(--ac)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><g>${points}</g></svg><div class="legend dashboard-history-legend"><span><i style="width:12px;height:2px;border-radius:0;background:var(--ac);"></i>ADR medio por captura · eje X = número de captura</span></div>`;
 }
 
-function latestAdrComparison(photos) {
-  const rows = (photos || []).filter((photo) => {
-    if (!photo.scrapedAt || !Number.isFinite(Number(photo.avgPricePerNight))) return false;
-    const date = new Date(photo.scrapedAt);
-    return !Number.isNaN(date.getTime());
-  }).slice().sort((a, b) => new Date(b.scrapedAt) - new Date(a.scrapedAt) || Number(b.id || 0) - Number(a.id || 0));
-  if (rows.length < 2) return '<div class="empty">Se necesitan dos extracciones para representar la evolución del ADR.</div>';
-  const current = rows[0];
-  const previous = rows[1];
-  const currentAdr = Number(current.avgPricePerNight);
-  const previousAdr = Number(previous.avgPricePerNight);
-  const change = previousAdr ? ((currentAdr - previousAdr) / previousAdr) * 100 : null;
-  return `<div class="dashboard-weekly-compare" aria-label="Evolución del ADR entre las dos últimas extracciones"><div class="dashboard-week"><span>Extracción anterior · #${previous.id}</span><strong>${eur(previousAdr)}</strong><small>${fmtStamp(previous.scrapedAt)} · ${nEs(previous.capturedRows)} filas</small></div><div class="dashboard-weekly-delta"><strong>${signPct(change)}</strong><span>última vs. anterior</span><small>Cambio descriptivo de la media</small></div><div class="dashboard-week dashboard-week--current"><span>Última extracción · #${current.id}</span><strong>${eur(currentAdr)}</strong><small>${fmtStamp(current.scrapedAt)} · ${nEs(current.capturedRows)} filas</small></div></div>`;
-}
-
-function demandCurveHTML(points, currency = null) {
-  if (currency == null) {
-    const currencies = [...new Set((points || []).map((point) => point.currency).filter(Boolean))];
-    if (!currencies.length) return '<div class="empty">Sin observaciones con moneda verificable.</div>';
-    return currencies.map((code) => `<div><strong>${esc(code)} · tarifas observadas</strong>${demandCurveHTML(points.filter((point) => point.currency === code), code)}</div>`).join('');
-  }
-  const eur = (value) => `${nEs(value)} ${esc(currency)}`;
-  const rows = (points || []).filter((point) => Number.isFinite(Number(point.daysUntilCheckIn)) && Number.isFinite(Number(point.avgAdr)) && Number.isFinite(Number(point.medianAdr))).slice().sort((a, b) => Number(a.daysUntilCheckIn) - Number(b.daysUntilCheckIn));
-  if (rows.length < 2) return '<div class="empty">No hay suficientes observaciones para dibujar la curva por fecha de entrada.</div>';
-  const values = rows.flatMap((row) => [Number(row.avgAdr), Number(row.medianAdr)]);
-  const min = Math.floor(Math.min(...values) / 10) * 10;
-  const max = Math.ceil(Math.max(...values) / 10) * 10;
-  const W = 820, H = 226, x0 = 52, x1 = 800, y0 = 18, y1 = 166;
-  const minDays = Number(rows[0].daysUntilCheckIn), maxDays = Number(rows[rows.length - 1].daysUntilCheckIn);
-  const sx = (days) => x0 + ((Number(days) - minDays) / Math.max(1, maxDays - minDays)) * (x1 - x0);
-  const sy = (value) => y0 + (1 - (Number(value) - min) / Math.max(1, max - min)) * (y1 - y0);
-  const path = (field) => rows.map((row, index) => `${index ? 'L' : 'M'} ${sx(row.daysUntilCheckIn).toFixed(1)} ${sy(row[field]).toFixed(1)}`).join(' ');
-  const marker = (field, color, label) => rows.map((row) => `<circle cx="${sx(row.daysUntilCheckIn).toFixed(1)}" cy="${sy(row[field]).toFixed(1)}" r="3.6" fill="var(--card)" stroke="${color}" stroke-width="2"><title>${label} · ${nEs(row.daysUntilCheckIn)} días hasta entrada: ${eur(row[field])}; ${nEs(row.observations)} observaciones (rango ${eur(row.minAdr)}–${eur(row.maxAdr)})</title></circle>`).join('');
-  const labels = rows.map((row, index) => (index === 0 || index === rows.length - 1 || index % 3 === 0 ? `<text x="${sx(row.daysUntilCheckIn).toFixed(1)}" y="194" text-anchor="middle">${nEs(row.daysUntilCheckIn)} d</text>` : '')).join('');
-  const group = (name, predicate) => {
-    const values = rows.filter(predicate).map((row) => Number(row.avgAdr));
-    return values.length ? { name, value: values.reduce((sum, value) => sum + value, 0) / values.length, points: values.length } : null;
-  };
-  const windows = [group('≤ 21 días', (row) => Number(row.daysUntilCheckIn) <= 21), group('22–42 días', (row) => Number(row.daysUntilCheckIn) >= 22 && Number(row.daysUntilCheckIn) <= 42), group('> 42 días', (row) => Number(row.daysUntilCheckIn) > 42)].filter(Boolean);
-  const windowMarkup = windows.map((window) => `<div><span>${window.name}</span><strong>${eur(window.value)}</strong><small>${window.points} ${window.points === 1 ? 'punto' : 'puntos'}</small></div>`).join('');
-  return `<div class="demand-curve-layout"><div class="demand-curve-chart"><svg viewBox="0 0 ${W} ${H}" width="100%" height="226" class="svg-block" role="img" aria-label="Tarifa pública media y mediana por días hasta la entrada"><g stroke="var(--line-soft)" stroke-width="1"><line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}"></line><line x1="${x0}" y1="${(y0 + y1) / 2}" x2="${x1}" y2="${(y0 + y1) / 2}"></line><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"></line></g><g font-family="'Space Mono',monospace" font-size="9" fill="var(--fainter)"><text x="${x0 - 8}" y="${y0 + 3}" text-anchor="end">${eur(max)}</text><text x="${x0 - 8}" y="${y1 + 3}" text-anchor="end">${eur(min)}</text>${labels}</g><path d="${path('medianAdr')}" fill="none" stroke="#b18322" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path><path d="${path('avgAdr')}" fill="none" stroke="var(--ac)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>${marker('medianAdr', '#b18322', 'ADR mediano')}${marker('avgAdr', 'var(--ac)', 'ADR medio')}</svg><div class="legend demand-curve-legend"><span><i style="width:12px;height:2px;border-radius:0;background:var(--ac);"></i>ADR medio</span><span><i style="width:12px;height:2px;border-radius:0;background:#b18322;"></i>ADR mediano</span><span>cada punto incluye sus observaciones reales</span></div></div><aside class="demand-curve-windows" aria-label="ADR por horizonte de entrada">${windowMarkup}</aside></div>`;
-}
-
 /* --------------------------------------------------------- head helpers */
 function pageHead(title, subtitle, actionsHTML, stampHTML) {
   return `<div class="page-head">
@@ -981,144 +611,249 @@ function availChip(row) {
   return `<span class="chip chip--good">Quedan ${n}</span>`;
 }
 
-function dashboardPrioritiesHTML(insights, rows) {
-  const rank = { critical: 0, warning: 1, info: 2 };
-  const hotelKeys = new Map((rows || []).filter((row) => row.hotelName && row.hotelKey).map((row) => [row.hotelName, row.hotelKey]));
-  const list = (insights || []).slice().sort((a, b) => (rank[a.severity] ?? 3) - (rank[b.severity] ?? 3) || String(a.title || '').localeCompare(String(b.title || ''), 'es')).slice(0, 6);
-  if (!list.length) return `<article class="card card--pad dashboard-priorities mb12"><div class="dashboard-priorities__head"><div><div class="card__kicker">Prioridades de mercado</div><h2>Sin señales prioritarias</h2></div><span class="table-filter-status">Lectura actual</span></div><p class="dashboard-priorities__empty">No hay alertas calculadas con la captura actual.</p></article>`;
-  const severityLabel = { critical: 'Crítica', warning: 'Atención', info: 'Lectura' };
-  const items = list.map((insight) => {
-    const hotelKey = insight.hotelKey || hotelKeys.get(insight.hotelName);
-    const value = insight.value != null && ['price_leader', 'protect_rate', 'aggressive_pricing', 'premium_opportunity'].includes(insight.type) ? eur(insight.value) : insight.changePct != null ? signPct(insight.changePct) : insight.value != null ? nEs(insight.value) : '—';
-    const action = hotelKey ? `<button type="button" class="dashboard-priority__action" data-dashboard-hotel="${esc(hotelKey)}" data-priority-hotel="true" aria-label="Abrir ${esc(insight.hotelName || insight.title)} en el mapa">Mapa ↗</button>` : '';
-    return `<li class="dashboard-priority dashboard-priority--${esc(insight.severity || 'info')}"><span class="dashboard-priority__severity">${severityLabel[insight.severity] || 'Lectura'}</span><div class="dashboard-priority__body"><strong>${esc(insight.title || 'Señal de mercado')}</strong><p>${esc(insight.message || '')}</p></div><div class="dashboard-priority__metric"><strong>${value}</strong>${insight.benchmark != null ? `<span>ref. ${eur(insight.benchmark)}</span>` : ''}</div>${action}</li>`;
-  }).join('');
-  return `<article class="card card--pad dashboard-priorities mb12" aria-label="Prioridades de mercado"><div class="dashboard-priorities__head"><div><div class="card__kicker">Prioridades de mercado</div><h2>Señales que requieren revisión</h2></div><span class="table-filter-status">${list.length} ${list.length === 1 ? 'señal' : 'señales'} calculadas</span></div><ol class="dashboard-priority-list">${items}</ol></article>`;
-}
+/* =============================================================== MAPAS */
+const MAP_STYLES = {
+  claro: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+  oscuro: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+};
+const MAP_LOAD_TIMEOUT_MS = 6000; // pasado este tiempo sin MapLibre se muestra el fondo rayado con el aviso
+const MAP_FAILED_TEXT = 'mapa · MapLibre + CARTO';
 
-/* Contexto público: se muestra separado de las capturas para no mezclar
-   señales comparables con la tarifa observada del hotel. */
-function externalSegmentMap(segment) {
-  return String(segment || '').split(';').reduce((acc, part) => {
-    const i = part.indexOf('=');
-    if (i > 0) acc[part.slice(0, i).trim()] = part.slice(i + 1).trim();
-    return acc;
-  }, {});
-}
+function atlasMapStyle() { return MAP_STYLES[State.theme] || MAP_STYLES.claro; }
 
-function externalProvinceForTarget(name) {
-  const value = String(name || '').toLowerCase();
-  if (/tenerife|santa cruz|la gomera|el hierro/.test(value)) return 'Santa Cruz de Tenerife';
-  if (/gran canaria|fuerteventura|lanzarote|las palmas/.test(value)) return 'Las Palmas';
-  return '';
-}
-
-function externalMonthKey(value) {
-  return /^\d{4}-\d{2}/.test(String(value || '')) ? String(value).slice(0, 7) : '';
-}
-
-function externalMonthLabel(value) {
-  if (!value) return 'Periodo no informado';
-  const date = new Date(`${String(value).slice(0, 10)}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return 'Periodo no informado';
-  return date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-}
-
-function externalDateLabel(value) {
-  if (!value) return 'Fecha no informada';
-  const date = new Date(`${String(value).slice(0, 10)}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return 'Fecha no informada';
-  return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
-}
-
-function externalUnitValue(row) {
-  const value = Number(row?.value);
-  if (!Number.isFinite(value)) return '—';
-  const unit = String(row.unit || '').toLowerCase();
-  const descriptor = `${row.metric || ''} ${row.segment || ''}`.toLowerCase();
-  if (unit.includes('percent') || /ocupaci|tasa/.test(descriptor)) return `${nEs(value, 1)}%`;
-  if (unit.includes('eur') || /adr|revpar|tarifa|precio/.test(descriptor)) return eur(value, 0);
-  if (row.metric === 'accommodation_capacity' || /plaza|habitaci|room|cama/.test(descriptor)) return nEs(value, 0);
-  if (row.metric === 'travellers_or_nights') return nEs(value, 1);
-  return `${nEs(value, Number.isInteger(value) ? 0 : 1)}${row.unit ? ` ${esc(row.unit)}` : ''}`;
-}
-
-function externalMetricLabel(row) {
-  const descriptor = `${row.metric || ''} ${row.segment || ''}`.toLowerCase();
-  if (/revpar|ingreso.*habit/.test(descriptor)) return 'RevPAR';
-  if (/adr|tarifa media|tarifa_media/.test(descriptor)) return 'ADR';
-  if (/ocupaci|tasa/.test(descriptor)) return 'Ocupación';
-  if (/plaza|habitaci|room|cama/.test(descriptor)) return 'Capacidad';
-  if (row.metric === 'travellers_or_nights') return /pernoct|noche/.test(descriptor) ? 'Pernoctaciones' : 'Viajeros';
-  if (row.metric === 'accommodation_capacity') return 'Capacidad';
-  return String(row.metric || 'Indicador').replace(/_/g, ' ');
-}
-
-function externalStatusBadge(period, targetMonth, quality) {
-  const stale = quality === 'stale';
-  const comparable = period && targetMonth && externalMonthKey(period) === targetMonth;
-  const label = stale ? 'Desactualizado' : comparable ? 'Comparable' : period ? 'Periodo distinto' : 'Sin periodo';
-  const tone = stale ? 'warn' : comparable ? 'good' : 'neutral';
-  return `<span class="dashboard-external-status dashboard-external-status--${tone}">${label}</span>`;
-}
-
-function dashboardExternalHTML(observations, target, snapshot, rows) {
-  const sourceRows = (observations || []).filter((row) => row && Number.isFinite(Number(row.value)));
-  const profile = snapshot?.snapshot?.captureProfile || {};
-  const firstRow = (rows || []).find((row) => row.checkIn) || {};
-  const checkIn = profile.checkIn || firstRow.checkIn || '';
-  const checkOut = profile.checkOut || firstRow.checkOut || '';
-  const targetMonth = externalMonthKey(checkIn);
-  const province = externalProvinceForTarget(target?.name);
-  const fetchedAt = sourceRows.map((row) => row.fetchedAt).filter(Boolean).sort().pop();
-  const fetchedLabel = fetchedAt ? `Última actualización ${fmtStamp(fetchedAt)}` : 'Actualización no informada';
-  const stayLabel = checkIn && checkOut ? `${esc(externalDateLabel(checkIn))} → ${esc(externalDateLabel(checkOut))}` : 'Estancia no informada';
-  const stayMonthLabel = targetMonth ? externalMonthLabel(`${targetMonth}-01`) : 'Mes no informado';
-
-  const istacRows = sourceRows.filter((row) => row.sourceId === 'istac-accommodation');
-  const istacPeriod = istacRows.map((row) => row.periodStart).filter(Boolean).sort().pop() || '';
-  const istacLatest = istacRows.filter((row) => !istacPeriod || row.periodStart === istacPeriod);
-  const seenMetrics = new Set();
-  const istacMetrics = istacLatest.filter((row) => {
-    const label = externalMetricLabel(row);
-    if (seenMetrics.has(label)) return false;
-    seenMetrics.add(label);
-    return true;
-  }).slice(0, 4);
-  const istacBody = istacMetrics.length ? `<div class="dashboard-external-metrics">${istacMetrics.map((row) => `<div class="dashboard-external-metric"><span>${esc(externalMetricLabel(row))}</span><strong>${externalUnitValue(row)}</strong><small>${esc(row.geographyCode || row.geographyType || 'Ámbito no informado')}</small></div>`).join('')}</div>` : `<div class="dashboard-external-empty"><strong>Sin observaciones ISTAC sincronizadas</strong><span>El conector está preparado; no se muestran ceros ni estimaciones.</span></div>`;
-  const istacFoot = istacRows.length ? `Periodo observado: ${esc(externalMonthLabel(istacPeriod))} · ${externalStatusBadge(istacPeriod, targetMonth, istacLatest[0]?.qualityStatus)}` : 'Fuente pendiente de sincronización';
-
-  const dataesturAll = sourceRows.filter((row) => row.sourceId === 'dataestur-segittur' && (!province || row.geographyCode === province));
-  const dataesturPeriod = dataesturAll.map((row) => row.periodStart).filter(Boolean).sort().pop() || '';
-  const dataesturLatest = dataesturAll.filter((row) => !dataesturPeriod || row.periodStart === dataesturPeriod);
-  const grouped = new Map();
-  dataesturLatest.forEach((row) => {
-    const seg = Object.assign({}, row.metadata || {}, externalSegmentMap(row.segment));
-    const category = seg.category || 'Categoría no informada';
-    const lead = seg.leadTime || seg.lead_time || 'Antelación no informada';
-    const key = `${category}|${lead}`;
-    if (!grouped.has(key)) grouped.set(key, { category, lead, weekday: null, weekend: null });
-    const item = grouped.get(key);
-    if ((seg.dayType || seg.day_type) === 'weekend') item.weekend = row.value;
-    else item.weekday = row.value;
+/* Cambia el mapa base de todos los mapas vivos. Los mapas con capas propias (rutas aéreas)
+   las vuelven a añadir en su manejador `_atlasRestyle` cuando el estilo nuevo termina de cargar. */
+function restyleMaps() {
+  [State.dashboardMap, State.biMap, State.flightMap].filter(Boolean).forEach((map) => {
+    try {
+      map.setStyle(atlasMapStyle(), { diff: false });
+      if (typeof map._atlasRestyle === 'function') map.once('style.load', map._atlasRestyle);
+    } catch (_) { /* un mapa que se está destruyendo no bloquea el cambio de tema */ }
   });
-  const leadOrder = { '1 Semana': 1, '2 Semanas': 2, '1 Mes': 3, '3 Meses': 4 };
-  const categoryOrder = (value) => { const match = String(value).match(/(\d+)/); return match ? -Number(match[1]) : 0; };
-  const dataesturGroups = [...grouped.values()].sort((a, b) => categoryOrder(a.category) - categoryOrder(b.category) || (leadOrder[a.lead] || 99) - (leadOrder[b.lead] || 99)).slice(0, 10);
-  const dataesturBody = dataesturGroups.length ? `<div class="dashboard-external-table-wrap"><table class="dashboard-external-table"><caption class="sr-only">Precios Dataestur por categoría y antelación</caption><thead><tr><th scope="col">Categoría</th><th scope="col">Antelación</th><th scope="col" class="r">Laborable</th><th scope="col" class="r">Fin de semana</th></tr></thead><tbody>${dataesturGroups.map((item) => `<tr><td>${esc(item.category)}</td><td>${esc(item.lead)}</td><td class="num">${item.weekday == null ? '—' : eur(item.weekday, 0)}</td><td class="num">${item.weekend == null ? '—' : eur(item.weekend, 0)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="dashboard-external-empty"><strong>Sin observaciones Dataestur para este ámbito</strong><span>Comprueba la sincronización o amplía el periodo de consulta.</span></div>`;
-  const dataesturFoot = dataesturAll.length ? `Periodo observado: ${esc(externalMonthLabel(dataesturPeriod))} · ${externalStatusBadge(dataesturPeriod, targetMonth, dataesturLatest[0]?.qualityStatus)}` : `Ámbito: ${esc(province || 'Canarias')}`;
+}
 
-  return `<article class="card card--pad dashboard-external-card mb12" aria-label="Contexto externo de fuentes públicas">
-    <div class="dashboard-external__head"><div><div class="card__kicker">Contexto externo</div><h2>Referencia pública para la estancia</h2><p>Indicadores agregados para contrastar el mercado; no sustituyen las capturas de tarifas.</p></div><div class="dashboard-external__meta"><span>Estancia objetivo <strong>${stayLabel}</strong></span><span>Mes de estancia <strong>${esc(stayMonthLabel)}</strong></span><span>${esc(fetchedLabel)}</span></div></div>
-    <div class="dashboard-external-grid">
-      <section class="dashboard-external-source dashboard-external-source--istac" aria-labelledby="dashboardExternalIstacTitle"><div class="dashboard-external-source__head"><div><div class="card__kicker">ISTAC · DESTINO</div><h3 id="dashboardExternalIstacTitle">Actividad y capacidad</h3></div><a href="https://www.gobiernodecanarias.org/istac/datos-abiertos/documentacion-api/index.html" target="_blank" rel="noreferrer">API ↗</a></div>${istacBody}<div class="dashboard-external__foot">${istacFoot}</div></section>
-      <section class="dashboard-external-source dashboard-external-source--dataestur" aria-labelledby="dashboardExternalDataesturTitle"><div class="dashboard-external-source__head"><div><div class="card__kicker">DATAESTUR · MERCADO Y ANTELACIÓN</div><h3 id="dashboardExternalDataesturTitle">Precio hotelero de referencia</h3></div><a href="https://www.dataestur.es/apidata/" target="_blank" rel="noreferrer">API ↗</a></div>${dataesturBody}<div class="dashboard-external__foot">${dataesturFoot} · EUR/habitación-noche</div></section>
-    </div>
-    <div class="dashboard-external__legend">Periodo de estancia y periodo observado se muestran por separado. Los datos externos se conservan como observaciones agregadas con su fuente, ámbito, unidad y fecha de actualización.</div>
-  </article>`;
+function loadMapLibre() {
+  if (window.maplibregl) return Promise.resolve(window.maplibregl);
+  if (State.mapLoader) return State.mapLoader;
+  State.mapLoader = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    const fail = () => { window.clearTimeout(timer); State.mapLoader = null; script.remove(); reject(new Error(MAP_FAILED_TEXT)); };
+    const timer = window.setTimeout(fail, MAP_LOAD_TIMEOUT_MS);
+    script.src = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
+    script.onload = () => { window.clearTimeout(timer); if (window.maplibregl) resolve(window.maplibregl); else fail(); };
+    script.onerror = fail;
+    document.head.appendChild(script);
+  });
+  return State.mapLoader;
+}
+
+/* Marca un marco de mapa como no disponible: fondo rayado y el aviso del README. */
+function mapFrameStatus(frame, text) {
+  if (!frame) return;
+  frame.querySelector('.map-frame__status')?.remove();
+  if (text == null) return;
+  frame.insertAdjacentHTML('beforeend', `<div class="map-frame__status" role="status">${esc(text)}</div>`);
+}
+
+/* Crea un mapa CARTO con los controles del prototipo. Si el estilo no llega en ~6 s, avisa. */
+function createAtlasMap(container, options) {
+  const ml = window.maplibregl;
+  const map = new ml.Map({ container, style: atlasMapStyle(), attributionControl: { compact: true }, ...options });
+  map.scrollZoom.disable();
+  map.addControl(new ml.NavigationControl({ showCompass: false }), 'top-left');
+  const frame = container.closest('.map-frame');
+  const timer = window.setTimeout(() => { if (!map._removed && !map.isStyleLoaded()) mapFrameStatus(frame, MAP_FAILED_TEXT); }, MAP_LOAD_TIMEOUT_MS);
+  map.once('load', () => { window.clearTimeout(timer); mapFrameStatus(frame, null); });
+  map.on('remove', () => { window.clearTimeout(timer); });
+  return map;
+}
+
+/* Marcador sin `position` inline en su raíz: el contenido va en un hijo con position:relative (clase .map-pin). */
+function mapPinElement(innerHTML) {
+  const root = document.createElement('div');
+  const pin = document.createElement('div');
+  pin.className = 'map-pin';
+  pin.innerHTML = innerHTML;
+  root.appendChild(pin);
+  return root;
+}
+
+function validLngLat(row) {
+  const lat = Number(row?.latitude), lng = Number(row?.longitude);
+  if (row?.latitude == null || row?.longitude == null || String(row.latitude).trim() === '' || String(row.longitude).trim() === '') return null;
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? [lng, lat] : null;
 }
 
 /* =============================================================== DASHBOARD */
+const DASH_SIGNALS_SHOWN = 3;
+const DASH_MAP_HEIGHT = 600;
+const DASH_POPOVER_MAX = 680;
+const DASH_OUTLIERS = 11;
+const DASH_PRICE_TYPES = ['price_leader', 'protect_rate', 'aggressive_pricing', 'premium_opportunity'];
+const DASH_SIGNAL_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2"></path></svg>';
+
+/* Señales del backend (insights) en el orden del prototipo: primero las que requieren atención. */
+function dashboardSignalModel(insights, hotels) {
+  const rank = { critical: 0, warning: 1, info: 2 };
+  const names = new Set((hotels || []).map((h) => h.name));
+  return (insights || []).slice().sort((a, b) => (rank[a.severity] ?? 3) - (rank[b.severity] ?? 3)).map((s) => {
+    const attention = s.severity === 'critical' || s.severity === 'warning';
+    const value = s.value != null && DASH_PRICE_TYPES.includes(s.type) ? eur(s.value)
+      : s.changePct != null ? pctTxt(s.changePct, 1)
+      : s.value != null ? nEs(s.value) : '';
+    return { attention, level: attention ? 'Atención' : 'Lectura', value, title: s.title || 'Señal de mercado', text: s.message || '', hotel: s.hotelName && names.has(s.hotelName) ? s.hotelName : null };
+  });
+}
+
+function dashboardSignalsHTML(signals) {
+  const attention = signals.filter((s) => s.attention).length;
+  const reading = signals.length - attention;
+  const all = State.dashboard.allSignals;
+  const shown = signals.slice(0, all ? signals.length : DASH_SIGNALS_SHOWN);
+  const count = signals.length ? `${attention} ${attention === 1 ? 'requiere' : 'requieren'} atención · ${reading} de lectura` : 'Sin señales con la foto actual';
+  const toggle = signals.length > DASH_SIGNALS_SHOWN
+    ? `<button type="button" class="dash-signals__toggle" data-dash-signals aria-expanded="${all}" aria-controls="dashSignalsGrid">${all ? 'Ver menos' : `Ver las ${signals.length} señales`}</button>` : '';
+  const cards = shown.map((s, i) => `<article class="dash-signal" style="animation-delay:${i * 60}ms">
+      <div class="dash-signal__top"><span class="dash-signal__level${s.attention ? ' is-attention' : ''}">${s.level}</span>${s.value ? `<strong>${esc(s.value)}</strong>` : ''}</div>
+      <strong class="dash-signal__title">${esc(s.title)}</strong>
+      <p>${esc(s.text)}</p>
+      <div class="dash-signal__actions">${s.hotel ? `<button type="button" class="dash-signal__open" data-dash-hotel="${esc(s.hotel)}">Ver hotel</button>` : ''}<button type="button" class="dash-signal__ask" data-dash-ask="${esc(`${s.title}: ${s.text} ¿Qué hago?`)}">Preguntar al Copilot →</button></div>
+    </article>`).join('');
+  return `<section class="dash-signals" id="dashSignals" aria-labelledby="dashSignalsTitle">
+    <div class="dash-signals__head"><div class="dash-signals__title"><span class="dash-signals__icon">${DASH_SIGNAL_ICON}</span><strong id="dashSignalsTitle">Señales de hoy</strong><span class="dash-signals__count">${count}</span></div>${toggle}</div>
+    ${signals.length ? `<div class="dash-signals__grid" id="dashSignalsGrid">${cards}</div>` : '<p class="dash-signals__empty">No hay señales calculadas con la captura actual.</p>'}
+  </section>`;
+}
+
+/* Fotos del mercado ordenadas de la más antigua a la más reciente, solo con ADR válido. */
+function dashboardPhotos(history) {
+  return (history?.photos || []).filter((p) => p.scrapedAt && Number(p.avgPricePerNight) > 0 && Number.isFinite(Date.parse(p.scrapedAt)))
+    .slice().sort((a, b) => Date.parse(a.scrapedAt) - Date.parse(b.scrapedAt) || Number(a.id) - Number(b.id));
+}
+
+function dashboardRange(values, padRatio, minPad) {
+  const lo = Math.min(...values), hi = Math.max(...values);
+  const pad = Math.max(minPad, (hi - lo) * padRatio);
+  return { lo: lo - pad, hi: hi + pad };
+}
+
+function dashboardAdrCardHTML(medianAdr, photos) {
+  let spark = '<div class="dash-spark__empty">Se necesitan dos fotos para la evolución</div>';
+  if (photos.length >= 2) {
+    const values = photos.map((p) => Number(p.avgPricePerNight));
+    const { lo, hi } = dashboardRange(values, 0.25, 8);
+    const pts = values.map((v, i) => `${((i / (values.length - 1)) * 300).toFixed(1)},${(90 - ((v - lo) / (hi - lo)) * 80).toFixed(1)}`).join(' ');
+    spark = `<svg viewBox="0 0 300 90" preserveAspectRatio="none" role="img" aria-label="ADR medio de las ${photos.length} fotos del mercado"><polyline points="0,90 ${pts} 300,90" fill="var(--accent-soft)" stroke="none"></polyline><polyline points="${pts}" fill="none" stroke="var(--ac)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"></polyline></svg>`;
+  }
+  const axis = photos.length ? `<div class="dash-axis"><span>foto #${photos[0].id}</span><span>${photos.length} ${photos.length === 1 ? 'foto' : 'fotos'}</span><span>#${photos.at(-1).id}</span></div>` : '';
+  return `<article class="dash-card dash-card--adr">
+    <span class="card__kicker">ADR mediano</span>
+    <div class="dash-big"><strong>${medianAdr > 0 ? nEs(medianAdr) : '—'}</strong><span>€</span></div>
+    <span class="dash-foot">Tarifa pública · habitación/noche</span>
+    <div class="dash-spark">${spark}</div>
+    ${axis}
+  </article>`;
+}
+
+function dashboardSwarmHTML(model) {
+  const hotels = model.hotels.filter((h) => h.adr != null).sort((a, b) => a.adr - b.adr);
+  const head = `<div class="dash-card__head"><div><span class="card__kicker">Dispersión del set</span><h2>Dónde compite el mercado</h2></div>
+    <div class="dash-legend"><span><i class="is-mid"></i>&lt;${nEs(model.p25)} €</span><span><i class="is-lo"></i>${nEs(model.p25)}–${nEs(model.p75)} €</span><span><i class="is-ac"></i>&gt;${nEs(model.p75)} €</span></div></div>`;
+  if (hotels.length < 2 || !(model.maxAdr > model.minAdr)) return `<article class="dash-card dash-card--swarm">${head}<div class="empty">Se necesitan al menos dos hoteles con tarifa.</div></article>`;
+  const x = (v) => ((v - model.minAdr) / (model.maxAdr - model.minAdr)) * 100;
+  const placed = [];
+  let levels = 0;
+  const dots = hotels.map((h, i) => {
+    const pos = x(h.adr);
+    let level = 0;
+    while (placed.some((p) => p.level === level && Math.abs(p.pos - pos) < 1.9)) level++;
+    placed.push({ pos, level });
+    levels = Math.max(levels, level);
+    const tone = h.adr > model.p75 ? 'ac' : h.adr >= model.p25 ? 'lo' : 'mid';
+    return `<button type="button" class="dash-swarm__dot is-${tone}" style="left:${pos.toFixed(2)}%;bottom:${26 + level * 17}px;animation-delay:${i * 18}ms" data-dash-hotel="${esc(h.name)}" data-dash-tip="${esc(h.name)}" data-dash-tip-adr="${esc(eur(h.adr))}" aria-label="${esc(`${h.name} · ${eur(h.adr)}`)}"></button>`;
+  }).join('');
+  return `<article class="dash-card dash-card--swarm">${head}
+    <div class="dash-swarm" style="min-height:${Math.max(150, 60 + levels * 17)}px">
+      <div class="dash-swarm__band" style="left:${x(model.p25).toFixed(2)}%;width:${(x(model.p75) - x(model.p25)).toFixed(2)}%"></div>
+      <div class="dash-swarm__med" style="left:${x(model.median).toFixed(2)}%"></div>
+      <span class="dash-swarm__medlabel" style="left:${x(model.median).toFixed(2)}%">mediana ${eur(model.median)}</span>
+      ${dots}
+      <div class="dash-swarm__axis"><span>${eur(model.minAdr)}</span><span>${eur(model.maxAdr)}</span></div>
+      <div class="dash-swarm__tip" id="dashSwarmTip" hidden></div>
+    </div>
+  </article>`;
+}
+
+function dashboardOutliersHTML(model) {
+  const list = model.hotels.filter((h) => h.vsMedian != null).sort((a, b) => Math.abs(b.vsMedian) - Math.abs(a.vsMedian)).slice(0, DASH_OUTLIERS);
+  const rows = list.map((h) => {
+    const w = Math.min(50, (Math.abs(h.vsMedian) / 150) * 50);
+    const left = h.vsMedian >= 0 ? 50 : 50 - w;
+    return `<button type="button" class="dash-outlier" data-dash-hotel="${esc(h.name)}"><span class="dash-outlier__name">${esc(h.name)}</span><span class="dash-outlier__adr">${eur(h.adr)}</span><span class="dash-outlier__bar"><span class="dash-outlier__track"><i class="${h.vsMedian >= 0 ? 'is-up' : 'is-down'}" style="left:${left.toFixed(2)}%;width:${w.toFixed(2)}%"></i></span><span class="dash-outlier__vs">${pctTxt(h.vsMedian, 0)}</span></span></button>`;
+  }).join('');
+  return `<article class="dash-card dash-card--outliers"><span class="card__kicker">Fuera del centro</span><h2>Mayor distancia a la mediana</h2>
+    <div class="dash-outliers">${rows || '<div class="empty">Sin tarifas comparables.</div>'}</div></article>`;
+}
+
+/* Semana (lunes) de una fecha ISO, para el resumen semanal del histórico. */
+function dashboardWeekStart(iso) {
+  const d = new Date(iso);
+  const day = (d.getDay() + 6) % 7;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - day);
+}
+
+function dashboardHistoryHTML(photos) {
+  const head = (stats) => `<div class="dash-card__head"><div><span class="card__kicker">Histórico de capturas</span><h2>ADR medio por foto</h2></div>${stats}</div>`;
+  if (photos.length < 2) return `<article class="dash-card dash-card--history">${head('')}<div class="empty">Se necesitan dos fotos para representar la evolución del ADR.</div></article>`;
+  const weeks = new Map();
+  photos.forEach((p) => {
+    const start = dashboardWeekStart(p.scrapedAt);
+    const key = start.getTime();
+    if (!weeks.has(key)) weeks.set(key, { start, values: [] });
+    weeks.get(key).values.push(Number(p.avgPricePerNight));
+  });
+  const lastWeeks = [...weeks.values()].sort((a, b) => a.start - b.start).slice(-2).map((w) => ({ label: `Sem. ${w.start.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '')}`, value: w.values.reduce((s, v) => s + v, 0) / w.values.length }));
+  const change = lastWeeks.length === 2 && lastWeeks[0].value ? ((lastWeeks[1].value / lastWeeks[0].value) - 1) * 100 : null;
+  const stats = `<div class="dash-history__stats">${lastWeeks.map((w) => `<span>${esc(w.label)} <b>${eur(w.value)}</b></span>`).join('')}${change == null ? '' : `<span class="dash-history__delta ${change > 0 ? 'pos' : change < 0 ? 'neg' : ''}">${pctTxt(change, 1)}</span>`}</div>`;
+  const values = photos.map((p) => Number(p.avgPricePerNight));
+  const { lo: rawLo, hi: rawHi } = dashboardRange(values, 0.1, 5);
+  const lo = Math.floor(rawLo / 10) * 10, hi = Math.ceil(rawHi / 10) * 10;
+  const n = photos.length;
+  const px = (i) => 50 + i * (640 / (n - 1));
+  const py = (v) => 140 - ((v - lo) / (hi - lo)) * 120;
+  const line = photos.map((p, i) => `${px(i).toFixed(1)},${py(Number(p.avgPricePerNight)).toFixed(1)}`).join(' ');
+  const every = n > 14 ? 2 : 1;
+  const points = photos.map((p, i) => {
+    const date = new Date(p.scrapedAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    const label = i % every === 0 || i === n - 1 ? `<text x="${px(i).toFixed(1)}" y="162" text-anchor="middle">#${p.id}</text>` : '';
+    return `<circle cx="${px(i).toFixed(1)}" cy="${py(Number(p.avgPricePerNight)).toFixed(1)}" r="4" fill="var(--card)" stroke="var(--ac)" stroke-width="2"><title>Foto #${p.id} · ${date} · ${eur(p.avgPricePerNight)}</title></circle>${label}`;
+  }).join('');
+  return `<article class="dash-card dash-card--history">${head(stats)}
+    <svg class="dash-history__chart" viewBox="0 0 700 170" role="img" aria-label="ADR medio por foto"><line x1="0" x2="700" y1="20" y2="20" stroke="var(--line)"></line><line x1="0" x2="700" y1="140" y2="140" stroke="var(--line)"></line><g class="dash-svg-text"><text x="0" y="14">${eur(hi)}</text><text x="0" y="134">${eur(lo)}</text></g><polyline points="${line}" fill="none" stroke="var(--ac)" stroke-width="2" stroke-linejoin="round"></polyline><g class="dash-svg-text">${points}</g></svg>
+  </article>`;
+}
+
+/* Curva de entrada: ADR medio de las observaciones agrupadas por días hasta la estancia. */
+function dashboardCurveHTML(points) {
+  const rows = (points || []).filter((p) => Number.isFinite(Number(p.daysUntilCheckIn)) && Number(p.avgAdr) > 0);
+  const windows = [
+    ['≤ 21 días', (d) => d <= 21], ['22–42 días', (d) => d >= 22 && d <= 42], ['> 42 días', (d) => d > 42],
+  ].map(([label, test]) => {
+    const values = rows.filter((p) => test(Number(p.daysUntilCheckIn))).map((p) => Number(p.avgAdr));
+    return values.length ? { label, value: values.reduce((s, v) => s + v, 0) / values.length, points: values.length } : null;
+  }).filter(Boolean);
+  const head = '<div><span class="card__kicker">Curva de entrada</span><h2>ADR según días hasta la estancia</h2></div>';
+  if (!windows.length) return `<article class="dash-card dash-card--curve">${head}<div class="empty">No hay observaciones suficientes por horizonte de entrada.</div><span class="dash-curve__note">Observaciones agregadas por horizonte; no es una previsión.</span></article>`;
+  const values = windows.map((w) => w.value);
+  const min = Math.min(...values), max = Math.max(...values);
+  const lo = min * 0.9, hi = max * 1.02;
+  const bars = windows.map((w) => {
+    const width = hi > lo ? ((w.value - lo) / (hi - lo)) * 100 : 60;
+    return `<div class="dash-curve__row"><span>${w.label}</span><div class="dash-curve__track"><i class="${windows.length > 1 && w.value === min ? 'is-low' : ''}" style="width:${width.toFixed(1)}%"></i></div><strong title="${w.points} ${w.points === 1 ? 'punto' : 'puntos'}">${eur(w.value)}</strong></div>`;
+  }).join('');
+  return `<article class="dash-card dash-card--curve">${head}${bars}<span class="dash-curve__note">Observaciones agregadas por horizonte; no es una previsión.</span></article>`;
+}
+
 async function renderDashboard() {
   const host = mount('dashboard');
   const request = {};
@@ -1127,226 +862,343 @@ async function renderDashboard() {
   const t = activeTarget();
   destroyDashboardMap();
   skeleton(host, 'dashboard');
-  if (!Number.isInteger(State.targetId)) {
-    renderNoActiveTarget(host, 'Lectura de mercado', 'Panel principal');
-    return;
-  }
-  let d, s, history, captures, demand, external;
-  try { [d, s, history, captures, demand, external] = await Promise.all([getMetrics(State.targetId), getSnapshot(State.targetId), getPhotoHistory(State.targetId), getCaptureHistory(State.targetId), getDemandCurve(State.targetId), getExternalObservations().catch(() => ({ observations: [] }))]); }
+  if (!Number.isInteger(State.targetId)) { renderNoActiveTarget(host, 'Lectura de mercado', 'Panel principal'); return; }
+  let d, s, history, demand;
+  try { [d, s, history, demand] = await Promise.all([getMetrics(targetId), getSnapshot(targetId), getPhotoHistory(targetId), getDemandCurve(targetId).catch(() => ({ demandCurve: [] }))]); }
   catch (e) { if (host._dashboardRequest === request && State.targetId === targetId) host.innerHTML = `<div class="page">${pageHead('Lectura de mercado', 'Panel principal', '')}<div class="inline-error">No se pudieron cargar las métricas: ${esc(e.message)}</div></div>`; return; }
   if (host._dashboardRequest !== request || State.targetId !== targetId || State.view !== 'dashboard') return;
-
   if (d.currencyPolicy?.status === 'blocked') { host.innerHTML = `<div class="page"><div class="inline-error">${esc(d.currencyPolicy.reason)}</div></div>`; return; }
-  const m = d.market || {}, mv = d.movement || {}, rs = d.rateShoppingIndex || {}, cmp = d.comparison || {};
-  const cs = d.competitiveSet || [];
-  const snapshot = s.latest || {};
-  const allRows = snapshot.rows || [];
-  const heatmap = {points: allRows.filter((row) => row.latitude != null && row.longitude != null && row.pricePerNight > 0)
-    .map((row) => ({...row, avgPricePerNight: row.pricePerNight, samples: 1}))};
-  const pricedRows = allRows.filter((row) => Number(row.pricePerNight) > 0);
-  const prices = cs.map((h) => h.pricePerNight).filter((p) => p > 0);
-  const p75 = rs.topQuartileThreshold || percentileVal(prices, 75);
-  const p25 = percentileVal(prices, 25);
-  const med = m.medianPricePerNight || median(prices);
-  const range = (m.maxPricePerNight || 0) - (m.minPricePerNight || 0);
-  const detailsByKey = Object.fromEntries(allRows.map((row) => [row.hotelKey, row]));
 
-  // La tabla es compacta, pero cada fila conserva el detalle real de la captura.
-  const top = (cs.length ? cs : pricedRows).slice(0, 12);
-  const maxTop = top.length ? top[0].pricePerNight : 1;
-  const rows = top.map((h) => {
-    const detail = detailsByKey[h.hotelKey] || h;
-    const gap = h.gapVsMedianPct;
-    const w = Math.max(6, Math.round((h.pricePerNight / maxTop) * 100));
-    const col = h.pricePerNight >= p75 ? 'var(--hi)' : h.pricePerNight >= med ? 'var(--mid)' : 'var(--lo)';
-    return `<tr class="dashboard-hotel-row">
-      <td class="row-toggle-cell"><button type="button" class="row-expand-toggle" data-dashboard-expand="${esc(h.hotelKey)}" aria-expanded="false" aria-label="Ver detalle de ${esc(h.hotelName)}">▸</button></td>
-      <td class="name">${esc(h.hotelName)}${detail.city ? `<small class="hotel-name-meta">${esc(detail.city)}</small>` : ''}</td>
-      <td class="num">${eur(h.pricePerNight)}</td>
-      <td><div class="bar"><div class="bar__track"><div class="bar__fill" style="width:${w}%; background:${col};"></div></div><span class="bar__val">${signPct(gap)}</span></div></td>
-      <td class="num">${h.rating != null ? nEs(h.rating, 1) : '—'}</td>
-      <td class="r">${availChip(detail)}</td>
-    </tr><tr class="dashboard-detail-row" data-dashboard-detail="${esc(h.hotelKey)}" hidden><td colspan="6">${dashboardHotelDetailHTML(detail, h)}</td></tr>`;
-  }).join('');
+  const rows = s.latest?.rows || [];
+  const snapshot = s.latest?.snapshot || d.latestSnapshot || {};
+  const model = hotelSheetModel(rows, d, []);
+  const priced = model.hotels.filter((h) => h.adr != null);
+  const photos = dashboardPhotos(history);
+  const mv = d.movement || {};
+  State.dashboard.model = model;
+  State.dashboard.photos = photos;
+  State.dashboard.previousSnapshotId = mv.previousSnapshotId ?? null;
+  State.dashboard.signals = dashboardSignalModel(d.insights, model.hotels);
+  const at = snapshot.scrapedAt || null;
+  const fresh = dataAgeDays(at) === 0 && State.freshCaptureTargetId === targetId;
+  const moveValue = mv.isComparable ? Number(mv.avgPricePerNightChangePct) : null;
+  const pricedPct = rows.length ? (priced.length / rows.length) * 100 : 0;
 
-  const ridgeRows = buildDashboardZoneRows(allRows);
-  const heatRows = pricedRows.slice().sort((a, b) => Math.abs(Number(b.pricePerNight) - med) - Math.abs(Number(a.pricePerNight) - med)).slice(0, 14);
-  const latestAt = snapshot.snapshot?.scrapedAt || d.latestSnapshot?.scrapedAt;
-  const dashboardView = restoreDashboardView();
-  const heatCells = heatRows.length ? heatRows.map((row) => {
-    const gap = med ? ((Number(row.pricePerNight) - med) / med) * 100 : 0;
-    const level = Math.max(0, Math.min(4, Math.floor(((Number(row.pricePerNight) - (m.minPricePerNight || 0)) / (range || 1)) * 5)));
-    return `<button type="button" class="dashboard-heat-cell dashboard-heat-cell--${level}" data-dashboard-hotel="${esc(row.hotelKey)}" aria-label="${esc(row.hotelName)}, ADR ${eur(row.pricePerNight)}, ${signPct(gap)} frente a la mediana"><span>${esc(row.hotelName)}</span><strong>${eur(row.pricePerNight)}</strong><small>${signPct(gap)} vs. mediana</small></button>`;
-  }).join('') : '<div class="empty">No hay tarifas comparables para construir el heatmap.</div>';
-
-  const marketPanelHTML = `<div class="grid dashboard-map-grid mb12">
-      <article class="card card--pad dashboard-map-card">
-        <div class="card__head dashboard-map-card__head">
-          <div><div class="card__kicker" style="margin-bottom:5px;">Mapa hotelero</div><h2>Precio por ubicación</h2><p>El color representa la intensidad del ADR. Selecciona un punto para ver su detalle.</p></div>
-          <div class="dashboard-map-meta"><span id="dashboardMapCount">${heatmap.points?.length || 0} hoteles</span><span id="dashboardMapLegend" class="legend"><span><i style="background:#2f7d5c;"></i>bajo</span><span><i style="background:#c88925;"></i>medio</span><span><i style="background:#b94f50;"></i>alto</span></span></div>
-        </div>
-        <div class="dashboard-map-layout">
-          <div id="dashboardHotelMap" class="dashboard-map" aria-label="Mapa de hoteles del mercado activo"><aside id="dashboardHotelDrawer" class="dashboard-drawer" role="complementary" aria-labelledby="dashboardHotelDrawerTitle" aria-live="polite" hidden></aside></div>
-        </div>
+  host.innerHTML = `<div class="page dash">
+    <div class="page-head"><div><h1>Lectura de mercado</h1><p>${esc(t ? t.name : 'Mercado')} · ${nEs(rows.length)} hoteles observados${snapshot.id ? ` · foto #${snapshot.id}` : ''}</p></div>
+      <div class="page-head__meta"><span>Extracción ${esc(fmtStamp(at))}</span>${fresh ? '' : '<button type="button" class="btn page-head__btn" data-dash-refresh>Actualizar datos</button>'}</div></div>
+    ${dashboardSignalsHTML(State.dashboard.signals)}
+    <div class="dash-grid">
+      ${dashboardAdrCardHTML(model.median, photos)}
+      <article class="dash-card dash-card--count"><span class="card__kicker">Hoteles con tarifa</span><div class="dash-mid"><strong>${nEs(priced.length)}</strong><span>/ ${nEs(rows.length)}</span></div><div class="dash-meter"><i style="width:${pricedPct.toFixed(1)}%"></i></div><span class="dash-foot">${rows.length ? `${nEs(pricedPct, 0)} % con precio observable` : 'Sin hoteles observados'}</span></article>
+      ${dashboardSwarmHTML(model)}
+      <article class="dash-card dash-card--move"><span class="card__kicker">Movimiento ADR</span><strong class="dash-move${moveValue > 0 ? ' is-up' : moveValue < 0 ? ' is-down' : ''}">${moveValue == null ? '—' : pctTxt(moveValue, 1)}</strong><span class="dash-foot">${mv.isComparable ? `${nEs(mv.changedHotels)} hoteles movidos · <span class="pos">▲${nEs(mv.priceIncreases)}</span> <span class="neg">▼${nEs(mv.priceDrops)}</span>` : 'Sin comparativa con la foto anterior'}</span></article>
+      <article class="dash-card dash-card--map">
+        <div class="dash-card__head"><div><span class="card__kicker">Mapa hotelero</span><h2>Precio por ubicación</h2></div><div class="dash-legend"><span><i class="is-low"></i>bajo</span><span><i class="is-mid-tier"></i>medio</span><span><i class="is-high"></i>alto</span></div></div>
+        <div class="map-frame dash-map" id="dashMapFrame"><div class="map-frame__canvas" id="dashMap" aria-label="Mapa de hoteles del mercado activo"></div><div class="dash-pop-layer" id="dashPopLayer"></div></div>
       </article>
-      <article class="card card--pad dashboard-price-card">
-        <div class="card__head" style="margin-bottom:14px;">
-          <div><div class="card__kicker" style="margin-bottom:5px;">Heatmap de ADR</div><h2>Hoteles fuera del centro</h2><p>Ordenado por distancia a la mediana del mercado.</p></div>
-          <span class="pill-tag">${heatRows.length} hoteles</span>
-        </div>
-        <div class="dashboard-heat-grid" aria-label="Heatmap de precios hoteleros">${heatCells}</div>
-      </article>
-    </div>`;
-
-  const chartsPanelHTML = `<div class="grid mb12 dashboard-distribution-grid">
-      <article class="card card--pad">
-        <div class="card__head" style="margin-bottom:6px;">
-          <div><div class="card__kicker" style="margin-bottom:5px;">Dispersión del set</div><h2>Enjambre de tarifas</h2><p>Un punto por hotel. La aglomeración marca dónde compite el mercado.</p></div>
-          <div class="legend"><span><i style="background:var(--lo);"></i>&lt;${nEs(med)}</span><span><i style="background:var(--mid);"></i>${nEs(med)}–${nEs(p75)}</span><span><i style="background:var(--ac);"></i>&gt;${nEs(p75)}</span></div>
-        </div>
-        ${beeswarmSVG(prices, med, p75)}
-      </article>
-      <article class="card card--pad card--dark" style="display:flex; flex-direction:column;">
-        <div class="card__kicker" style="margin-bottom:4px;">Posición</div>
-        <h2 style="color:#fff;">Percentil del set</h2>
-        ${gaugeSVG(50)}
-        <p style="margin:6px 0 0; font-size:12px; line-height:1.5;">La mediana (${eur(med)}) representa el P50 de las tarifas observadas.</p>
-      </article>
+      ${dashboardOutliersHTML(model)}
+      ${dashboardHistoryHTML(photos)}
+      ${dashboardCurveHTML(demand.demandCurve || [])}
     </div>
-
-    <article class="card card--pad mb12">
-      <div class="card__head" style="margin-bottom:8px;">
-        <div><div class="card__kicker" style="margin-bottom:5px;">Histórico de capturas</div><h2>Evolución entre extracciones</h2><p>ADR medio de las capturas disponibles para ${esc(t ? t.name : 'el mercado activo')}.</p></div>
-        <span class="pill-tag">${(history.photos || []).length} extracciones</span>
-      </div>
-      ${adrHistorySVG(history.photos || [])}
-      ${latestAdrComparison(history.photos || [])}
-    </article>
-
-    <article class="card card--pad mb12">
-      <div class="card__head demand-curve-head">
-        <div><div class="card__kicker" style="margin-bottom:5px;">Curva de entrada</div><h2>ADR según días hasta la estancia</h2><p>Agregado de observaciones reales por horizonte de entrada; no es una previsión.</p></div>
-        <span class="pill-tag">${(demand.demandCurve || []).length} puntos</span>
-      </div>
-      ${demandCurveHTML(demand.demandCurve || [])}
-    </article>
-
-    <article class="card card--pad mb12">
-      <div class="card__head" style="margin-bottom:14px;">
-        <div><div class="card__kicker" style="margin-bottom:5px;">Distribución del mercado</div><h2>Densidad de ADR por zona</h2><p>Dónde se concentra la tarifa dentro del mercado seleccionado.</p></div>
-        <span class="pill-tag">${ridgeRows.length} zonas</span>
-      </div>
-      ${ridgelineSVG(ridgeRows)}
-    </article>`;
-
-  const tablePanelHTML = `<article class="card table-card">
-      <div class="table-card__head">
-        <div><div class="card__kicker" style="margin-bottom:5px;">Lectura operativa</div><h2>Cola alta del mercado</h2></div>
-        <button type="button" class="btn btn--sm" data-nav="hotels">Ver los ${allRows.length} →</button>
-      </div>
-      <table class="t">
-        <thead><tr><th aria-label="Detalle"></th><th>Hotel</th><th class="r">ADR</th><th style="width:180px;">vs. mediana</th><th class="r">Nota</th><th class="r">Disponibilidad</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </article>`;
-
-  destroyDashboardMap();
-  host.innerHTML = `<div class="page dashboard-page">
-    ${pageHead('Lectura de mercado',
-      `${esc(t ? t.name : 'Mercado')} · ${allRows.length} hoteles observados · un mercado activo.`,
-      '', `${esc(d.dataQuality?.freshness?.etiqueta || 'Sin fecha verificable')} · Extracción ${fmtStamp(latestAt)}`)}
-
-    <div class="grid grid--4 mb12">
-      <article class="kpi">
-        <div class="kpi__label">ADR mediano</div>
-        <div class="kpi__value"><strong data-count="${Math.round(med)}">${Math.round(med)}</strong><span class="kpi__unit">€</span></div>
-        <div class="kpi__foot">Tarifa pública · habitación/noche</div>
-      </article>
-      <article class="kpi">
-        <div class="kpi__label">Hoteles con tarifa</div>
-        <div class="kpi__value"><strong data-count="${pricedRows.length}">0</strong><span class="kpi__unit">/ ${allRows.length}</span></div>
-        <div class="meter"><i style="width:${allRows.length ? Math.round((pricedRows.length / allRows.length) * 100) : 0}%;"></i></div>
-        <div class="kpi__foot">${allRows.length ? `${nEs((pricedRows.length / allRows.length) * 100, 0)}% con precio observable` : 'Sin hoteles observados'}</div>
-      </article>
-      <article class="kpi">
-        <div class="kpi__label">Banda central ADR</div>
-        <div class="kpi__value"><strong>${eur(p25, 0)}</strong><span class="kpi__unit">— ${eur(p75, 0)}</span></div>
-        <div class="kpi__sub">P25 — P75 · ${eur(m.minPricePerNight)} — ${eur(m.maxPricePerNight)}</div>
-      </article>
-      <article class="kpi">
-        <div class="kpi__label">Movimiento ADR</div>
-        <div class="kpi__value"><strong class="${(mv.avgPricePerNightChangePct || 0) < 0 ? 'pos' : (mv.avgPricePerNightChangePct || 0) > 0 ? 'neg' : ''}">${signPct(mv.avgPricePerNightChangePct)}</strong></div>
-        <div class="kpi__foot">${mv.isComparable ? `${mv.changedHotels} hoteles movidos · ▲${mv.priceIncreases} ▼${mv.priceDrops}` : 'Sin comparativa disponible'}</div>
-      </article>
-    </div>
-
-    ${dashboardViewSwitcherHTML(dashboardView)}
-
-    <section id="dashboard-panel-market" class="dashboard-view-panel" role="tabpanel" aria-labelledby="dashboard-view-tab-market"${dashboardView === 'market' ? '' : ' hidden'}>${marketPanelHTML}</section>
-    <section id="dashboard-panel-charts" class="dashboard-view-panel" role="tabpanel" aria-labelledby="dashboard-view-tab-charts"${dashboardView === 'charts' ? '' : ' hidden'}>${chartsPanelHTML}</section>
-    <section id="dashboard-panel-explorer" class="dashboard-view-panel" role="tabpanel" aria-labelledby="dashboard-view-tab-explorer"${dashboardView === 'explorer' ? '' : ' hidden'}>${dashboardExplorerHTML(captures.captures || [], s.latest || {})}</section>
-
-    ${dashboardPrioritiesHTML(d.insights, allRows)}
-
-    ${dashboardExternalHTML(external?.observations || [], t, s.latest || {}, allRows)}
-
-    ${tablePanelHTML}
   </div>`;
-  runCounters(host);
-  if (dashboardView === 'market') renderDashboardHotelMap(heatmap.points || [], allRows);
-  void loadDashboardExplorer(host);
+  void renderDashboardHotelMap(model);
 }
 
-function availChipInline(h) {
-  // competitiveSet no trae disponibilidad; se muestra guion salvo señal.
-  return '<span class="dim">—</span>';
+function destroyDashboardMap() {
+  if (State.dashboardMapResizeObserver) { State.dashboardMapResizeObserver.disconnect(); State.dashboardMapResizeObserver = null; }
+  State.dashboardMapMarkers.forEach((marker) => marker.remove());
+  State.dashboardMapMarkers = [];
+  if (State.dashboardMap) { State.dashboardMap.remove(); State.dashboardMap = null; }
+  State.dashboard.sel = null;
+  State.dashboard.ptHover = null;
 }
 
-function buildDashboardZoneRows(rows) {
-  const groups = new Map();
-  (rows || []).filter((row) => Number(row.pricePerNight) > 0).forEach((row) => {
-    const name = row.city || row.popularDistrict || row.displayLocation || 'Mercado activo';
-    if (!groups.has(name)) groups.set(name, []);
-    groups.get(name).push(Number(row.pricePerNight));
+async function renderDashboardHotelMap(model) {
+  const frame = $('#dashMapFrame');
+  const container = $('#dashMap');
+  if (!frame || !container) return;
+  const request = {};
+  frame._mapRequest = request;
+  const points = model.hotels.filter((h) => h.adr != null && validLngLat(h.row));
+  if (!points.length) { mapFrameStatus(frame, 'No hay hoteles con tarifa y coordenadas válidas en esta foto.'); return; }
+  try { await loadMapLibre(); } catch (_) { if (frame.isConnected && frame._mapRequest === request) mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
+  if (!frame.isConnected || frame._mapRequest !== request || State.view !== 'dashboard') return;
+  destroyDashboardMap();
+  const ml = window.maplibregl;
+  let map;
+  try { map = createAtlasMap(container, { center: [-15.655, 27.782], zoom: 10.7 }); }
+  catch (_) { mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
+  State.dashboardMap = map;
+  const bounds = new ml.LngLatBounds();
+  points.forEach((h) => {
+    const lngLat = validLngLat(h.row);
+    bounds.extend(lngLat);
+    const el = mapPinElement(`<button type="button" class="map-pin__dot map-pin__dot--${h.tier === 'none' ? 'mid' : h.tier}" data-dash-pin="${esc(h.key)}" aria-label="${esc(`${h.name} · ${eur(h.adr)}. Abrir inspector de tarifa`)}" aria-haspopup="dialog"></button>`);
+    State.dashboardMapMarkers.push(new ml.Marker({ element: el }).setLngLat(lngLat).addTo(map));
   });
-  return [...groups.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 5).map(([name, values]) => ({ name, prices: values, median: Math.round(median(values)) }));
+  // El prototipo centra el sur de Gran Canaria a zoom 10.7; si el set es más amplio se encuadra sin pasar de ese zoom.
+  map.fitBounds(bounds, { padding: 48, maxZoom: 10.7, duration: 0 });
+  map.on('move', () => positionDashboardPopover());
+  if (typeof ResizeObserver !== 'undefined') {
+    State.dashboardMapResizeObserver = new ResizeObserver(() => { if (State.dashboardMap === map) { map.resize(); positionDashboardPopover(); } });
+    State.dashboardMapResizeObserver.observe(frame);
+  }
 }
 
-function dashboardHotelDetailHTML(row, summary = row) {
-  const checkIn = row.checkIn || summary.checkIn;
-  const checkOut = row.checkOut || summary.checkOut;
-  return `<div class="dashboard-detail-grid">
-    <div><span>Habitación</span><strong>${esc(row.roomType || summary.roomType || '—')}</strong></div>
-    <div><span>Régimen</span><strong>${esc(row.board || summary.board || '—')}</strong></div>
-    <div><span>Estancia</span><strong>${esc(checkIn || '—')} → ${esc(checkOut || '—')}</strong></div>
-    <div><span>Precio total</span><strong>${eur(row.price)}</strong></div>
-    <div><span>Precio original</span><strong>${eur(row.priceOriginal)}</strong></div>
-    <div><span>Descuento</span><strong>${row.discountPct != null ? signPct(row.discountPct) : '—'}</strong></div>
-    <div><span>Cancelación</span><strong>${row.freeCancellation === true ? 'Gratis' : row.freeCancellation === false ? 'No incluida' : '—'}</strong></div>
-    <div><span>Ubicación</span><strong>${esc(row.address || row.displayLocation || row.city || '—')}</strong></div>
-  </div><div class="dashboard-detail-foot"><span>Fuente: Booking${row.detailUrl ? ' · detalle disponible' : ''}</span>${row.detailUrl ? `<a href="${esc(row.detailUrl)}" target="_blank" rel="noreferrer">Abrir fuente ↗</a>` : ''}</div>`;
+/* ---- ventana del mapa (inspector de tarifa) */
+function dashboardHotel(key) { return State.dashboard.model?.hotels.find((h) => h.key === key) || null; }
+
+/* Serie «por extracción»: mediana del hotel en cada foto del mercado, alineada con las fotos. */
+function dashboardHistSeries(history, photos) {
+  const bySnapshot = new Map();
+  (history || []).forEach((entry) => {
+    const value = Number(entry.pricePerNight);
+    if (entry.snapshotId == null || !(value > 0)) return;
+    if (!bySnapshot.has(Number(entry.snapshotId))) bySnapshot.set(Number(entry.snapshotId), []);
+    bySnapshot.get(Number(entry.snapshotId)).push(value);
+  });
+  return photos.map((p) => ({
+    label: `#${p.id}`, date: new Date(p.scrapedAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }),
+    value: bySnapshot.has(Number(p.id)) ? median(bySnapshot.get(Number(p.id))) : null, set: Number(p.avgPricePerNight),
+  }));
 }
 
-function dashboardDrawerOfferHTML(row, summary = row) {
-  const checkIn = row.checkIn || summary.checkIn;
-  const checkOut = row.checkOut || summary.checkOut;
-  const location = row.address || row.displayLocation || row.city || '—';
-  return `<div class="dashboard-offer__head"><div><strong>Condiciones de la oferta</strong><span>Producto, precio y flexibilidad observados</span></div></div>
-    <div class="dashboard-offer__groups">
-      <section aria-label="Producto y estancia"><h4>Producto y estancia</h4><dl class="dashboard-offer__grid">
-        <div><dt>Habitación</dt><dd>${esc(row.roomType || summary.roomType || '—')}</dd></div>
-        <div><dt>Régimen</dt><dd>${esc(row.board || summary.board || '—')}</dd></div>
-        <div><dt>Estancia</dt><dd>${esc(checkIn || '—')} → ${esc(checkOut || '—')}</dd></div>
-        <div><dt>Ubicación</dt><dd>${esc(location)}</dd></div>
-      </dl></section>
-      <section aria-label="Precio y flexibilidad"><h4>Precio y flexibilidad</h4><dl class="dashboard-offer__grid">
-        <div><dt>Precio total</dt><dd>${eur(row.price)}</dd></div>
-        <div><dt>Precio original</dt><dd>${eur(row.priceOriginal)}</dd></div>
-        <div><dt>Descuento</dt><dd>${row.discountPct != null ? signPct(row.discountPct) : '—'}</dd></div>
-        <div><dt>Cancelación</dt><dd>${row.freeCancellation === true ? 'Gratis' : row.freeCancellation === false ? 'No incluida' : '—'}</dd></div>
-      </dl></section>
+/* Serie «por fecha de entrada»: última extracción frente a la anterior. Una extracción reúne
+   las fotos tomadas con menos de 20 minutos de separación (un barrido de varias fechas). */
+function dashboardDateSeries(history) {
+  const valid = (history || []).filter((e) => e.snapshotId != null && e.checkIn && Number(e.pricePerNight) > 0 && Number.isFinite(Date.parse(e.scrapedAt)))
+    .slice().sort((a, b) => Date.parse(a.scrapedAt) - Date.parse(b.scrapedAt));
+  const batches = [];
+  valid.forEach((entry) => {
+    const at = Date.parse(entry.scrapedAt);
+    let batch = batches.at(-1);
+    if (!batch || at - batch.lastAt > 20 * 60 * 1000) { batch = { entries: [], lastAt: at, ids: [] }; batches.push(batch); }
+    batch.entries.push(entry);
+    batch.lastAt = at;
+    if (!batch.ids.includes(Number(entry.snapshotId))) batch.ids.push(Number(entry.snapshotId));
+  });
+  if (!batches.length) return null;
+  const byDate = (batch) => {
+    const map = new Map();
+    (batch?.entries || []).forEach((e) => { if (!map.has(e.checkIn)) map.set(e.checkIn, []); map.get(e.checkIn).push(Number(e.pricePerNight)); });
+    return new Map([...map.entries()].map(([k, v]) => [k, median(v)]));
+  };
+  const current = byDate(batches.at(-1));
+  const previous = batches.length > 1 ? byDate(batches.at(-2)) : new Map();
+  const dates = [...new Set([...current.keys(), ...previous.keys()])].sort();
+  const label = (batch) => { const ids = batch.ids; return ids.length === 1 ? `#${ids[0]}` : `#${ids[0]}–#${ids.at(-1)}`; };
+  return {
+    points: dates.map((date) => ({ label: `${date.slice(8, 10)}/${date.slice(5, 7)}`, value: current.get(date) ?? null, prev: previous.get(date) ?? null })),
+    currentLabel: label(batches.at(-1)), previousLabel: batches.length > 1 ? label(batches.at(-2)) : null,
+  };
+}
+
+function dashboardPopoverChartHTML(h) {
+  const st = State.dashboard;
+  const history = State.hotelPriceHistories[State.targetId]?.[h.key];
+  if (!history) return '<div class="dash-pop__loading"><i></i>Cargando evolución por extracción…</div>';
+  let s1, s2 = null, labels, leg1, leg2 = '', dashed = st.chart === 'hist', readout;
+  if (st.chart === 'hist') {
+    const series = dashboardHistSeries(history, st.photos);
+    s1 = series.map((p) => p.value);
+    if (st.cmp) s2 = series.map((p) => p.set);
+    labels = series.map((p) => p.label);
+    leg1 = 'ADR del hotel por extracción'; leg2 = 'Media del set';
+    const i = st.ptHover;
+    readout = i != null && s1[i] != null ? `Foto ${labels[i]} · ${series[i].date} · ${eur(s1[i])}${st.cmp ? ` · set ${eur(series[i].set)}` : ''}` : null;
+  } else {
+    const series = dashboardDateSeries(history);
+    if (!series) return '<div class="dash-pop__empty">Sin fechas de entrada observadas para este hotel.</div>';
+    s1 = series.points.map((p) => p.value);
+    s2 = series.previousLabel ? series.points.map((p) => p.prev) : null;
+    labels = series.points.map((p) => p.label);
+    leg1 = `Última captura · ${series.currentLabel}`; leg2 = series.previousLabel ? `Captura anterior · ${series.previousLabel}` : '';
+    const i = st.ptHover;
+    readout = i != null && s1[i] != null ? `Entrada ${labels[i]} · ${eur(s1[i])}${s2 && s2[i] != null ? ` · antes ${eur(s2[i])}` : ''}` : null;
+  }
+  const vals = [...s1, ...(s2 || [])].filter((v) => v != null);
+  if (!vals.length) return '<div class="dash-pop__empty">Este hotel no tiene tarifas en las fotos disponibles.</div>';
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = Math.max(6, (hi - lo) * 0.12); lo -= pad; hi += pad;
+  const n = s1.length;
+  const X = (i) => (n === 1 ? 215 : 34 + i * (362 / (n - 1)));
+  const Y = (v) => 140 - ((v - lo) / (hi - lo)) * 128;
+  const line = (arr) => arr.map((v, i) => (v == null ? null : `${X(i).toFixed(1)},${Y(v).toFixed(1)}`)).filter(Boolean).join(' ');
+  const idx = s1.map((v, i) => (v == null ? null : i)).filter((i) => i != null);
+  const l1 = line(s1);
+  const area = idx.length > 1 ? `${X(idx[0]).toFixed(1)},140 ${l1} ${X(idx.at(-1)).toFixed(1)},140` : '';
+  const xl = labels.map((t, i) => ({ t, i })).filter(({ i }) => n <= 8 || i % 2 === 1 || i === n - 1)
+    .map(({ t, i }) => `<text x="${X(i).toFixed(1)}" y="160" text-anchor="middle">${esc(t)}</text>`).join('');
+  const pts = s1.map((v, i) => (v == null ? '' : `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${st.ptHover === i ? 5.5 : 3.5}" class="dash-pop__pt${st.ptHover === i ? ' is-on' : ''}" data-dash-pt="${i}"></circle>`)).join('');
+  const c2 = dashed ? 'var(--faint)' : 'var(--warn-ink)';
+  const fallback = h.isNew ? 'Nuevo en el set: solo aparece en la última extracción' : 'Pasa el cursor por los puntos';
+  return `<div class="dash-pop__readout" aria-live="polite">${esc(readout || fallback)}</div>
+    <svg viewBox="0 0 400 170" role="img" aria-label="${esc(leg1)}"><line x1="34" x2="396" y1="12" y2="12" stroke="var(--line)"></line><line x1="34" x2="396" y1="76" y2="76" stroke="var(--line)"></line><line x1="34" x2="396" y1="140" y2="140" stroke="var(--line)"></line>
+      <g class="dash-svg-text dash-svg-text--sm"><text x="28" y="15" text-anchor="end">${eur(hi)}</text><text x="28" y="143" text-anchor="end">${eur(lo)}</text>${xl}</g>
+      ${s2 ? `<polyline points="${line(s2)}" fill="none" stroke="${c2}" stroke-width="1.6" stroke-dasharray="${dashed ? '4 4' : '0'}" stroke-linejoin="round"></polyline>` : ''}
+      ${area ? `<polyline points="${area}" fill="var(--accent-soft)" stroke="none" opacity=".7"></polyline>` : ''}
+      <polyline points="${l1}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"></polyline>${pts}</svg>
+    <div class="dash-pop__legend"><span><i style="background:var(--ac)"></i>${esc(leg1)}</span>${s2 ? `<span><i style="background:${c2}"></i>${esc(leg2)}</span>` : ''}</div>`;
+}
+
+function dashboardPopoverFacts(h) {
+  const cached = State.hotelRateDetails[State.targetId]?.[h.key] || null;
+  const rates = cached && cached.rows ? cached.rows : [];
+  const genius = !rates.length ? null : rates.some((rate) => rate.genius === true) ? true : rates.every((rate) => rate.genius === false) ? false : null;
+  const row = h.row;
+  return [
+    ['Nota', h.nota == null ? '—' : `${nEs(h.nota, 1)}${h.reviews == null ? '' : ` · ${nEs(h.reviews)} reseñas`}`, ''],
+    ['Régimen', row.board || '—', ''],
+    ['Habitación', row.roomType || '—', ''],
+    ['Cancelación', h.cancel === true ? 'Gratis' : h.cancel === false ? 'No gratuita' : '—', h.cancel === true ? 'pos' : ''],
+    ['Disponibilidad', h.stock.tone === 'none' ? 'Observable' : h.stock.text, h.stock.tone === 'warn' || h.stock.tone === 'bad' ? 'warn' : ''],
+    ['Genius', genius === true ? 'Participa' : genius === false ? 'No participa' : '—', genius === true ? 'ac' : ''],
+    ['Distancia playa', row.beachDistance || '—', ''],
+  ];
+}
+
+function dashboardPopoverHTML(h) {
+  const st = State.dashboard;
+  const priced = st.model.hotels.filter((x) => x.adr != null).length;
+  const sub = [h.chain, h.zone, h.adultsOnly ? 'Adults only' : ''].filter(Boolean).join(' · ');
+  const prevId = st.previousSnapshotId;
+  const delta = h.isNew ? ['Nuevo en el set', 'ac']
+    : h.delta == null ? ['Sin comparativa con la foto anterior', 'dim']
+    : h.delta === 0 ? [`Sin cambio vs foto #${prevId}`, 'dim']
+    : [`${h.delta > 0 ? '▲' : '▼'} ${nEs(Math.abs(h.delta), 1)} % vs foto #${prevId} (${eur(h.prevAdr)})`, h.delta > 0 ? 'pos' : 'neg'];
+  const modes = [['hist', 'Por extracción'], ['dates', 'Por fecha de entrada']].map(([id, label]) => `<button type="button" class="${st.chart === id ? 'is-active' : ''}" data-dash-chart="${id}" aria-pressed="${st.chart === id}">${label}</button>`).join('');
+  return `<div class="dash-pop__head"><div class="dash-pop__title"><span class="dash-pop__kicker">Inspector de tarifa · puesto ${h.rank} de ${priced}</span><h3 id="dashPopTitle">${esc(h.name)}</h3>${sub ? `<span class="dash-pop__sub">${esc(sub)}</span>` : ''}</div><button type="button" class="icon-x" data-dash-close aria-label="Cerrar inspector">×</button></div>
+    <div class="dash-pop__body">
+      <div class="dash-pop__chart"><div class="dash-pop__modes"><div class="seg seg--sm" role="group" aria-label="Modo de la gráfica">${modes}</div>${st.chart === 'hist' ? `<button type="button" class="dash-pop__cmp" data-dash-cmp aria-pressed="${st.cmp}"><i aria-hidden="true"></i>Media del set</button>` : ''}</div><div id="dashPopChart">${dashboardPopoverChartHTML(h)}</div></div>
+      <div class="dash-pop__side"><div class="dash-pop__adr"><span class="dash-pop__kicker">ADR hab/noche</span><div class="dash-pop__adrrow"><strong>${eur(h.adr)}</strong>${h.vsMedian == null ? '' : `<span class="dash-pop__vs${h.vsMedian >= 0 ? ' is-up' : ''}">${pctTxt(h.vsMedian, 0)} vs mediana</span>`}</div><span class="dash-pop__delta ${delta[1]}">${esc(delta[0])}</span></div>
+        <dl class="dash-pop__facts" id="dashPopFacts">${dashboardPopoverFacts(h).map(([k, v, tone]) => `<div><dt>${esc(k)}</dt><dd class="${tone}" title="${esc(v)}">${esc(v)}</dd></div>`).join('')}</dl></div>
     </div>
-    <div class="dashboard-offer__foot"><span>Fuente: Booking${row.detailUrl ? ' · detalle disponible' : ''}</span>${row.detailUrl ? `<a href="${esc(row.detailUrl)}" target="_blank" rel="noreferrer">Abrir fuente ↗</a>` : ''}</div>`;
+    <div class="dash-pop__foot"><button type="button" class="btn btn--primary" data-dash-hotel="${esc(h.name)}">Ver en la hoja de mercado</button><button type="button" class="btn" data-dash-ask="${esc(`¿Cómo ha evolucionado el precio de ${h.name}?`)}">Preguntar al Copilot</button></div>`;
+}
+
+function paintDashboardPopover(part) {
+  const h = dashboardHotel(State.dashboard.sel);
+  const pop = $('#dashPop');
+  if (!h || !pop) return;
+  if (part === 'chart') { const chart = $('#dashPopChart', pop); if (chart) chart.innerHTML = dashboardPopoverChartHTML(h); positionDashboardPopover(); return; }
+  if (part === 'facts') {
+    const facts = $('#dashPopFacts', pop);
+    if (facts) facts.innerHTML = dashboardPopoverFacts(h).map(([k, v, tone]) => `<div><dt>${esc(k)}</dt><dd class="${tone}" title="${esc(v)}">${esc(v)}</dd></div>`).join('');
+    return;
+  }
+  pop.innerHTML = dashboardPopoverHTML(h);
+}
+
+function openDashboardPopover(key) {
+  const h = dashboardHotel(key);
+  const layer = $('#dashPopLayer');
+  if (!h || !layer || !State.dashboardMap) return;
+  const st = State.dashboard;
+  if (st.sel !== key) st.ptHover = null;
+  if (!st.sel) st.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  st.sel = key;
+  $$('[data-dash-pin]').forEach((pin) => pin.classList.toggle('is-selected', pin.dataset.dashPin === key));
+  layer.innerHTML = `<span class="dash-pop-ring" id="dashPopRing"></span><svg class="dash-pop-link" aria-hidden="true"><line id="dashPopLine" stroke="var(--ac)" stroke-width="1.5" stroke-dasharray="3 3"></line><circle id="dashPopAnchor" r="3" fill="var(--ac)"></circle></svg><div class="dash-pop" id="dashPop" role="dialog" aria-labelledby="dashPopTitle"></div>`;
+  paintDashboardPopover();
+  positionDashboardPopover(true);
+  $('#dashPop [data-dash-close]')?.focus({ preventScroll: true });
+  const targetId = State.targetId;
+  getHotelPriceHistory(targetId, key).then(() => { if (State.dashboard.sel === key && State.targetId === targetId) paintDashboardPopover('chart'); })
+    .catch((error) => { const chart = $('#dashPopChart'); if (chart && State.dashboard.sel === key) chart.innerHTML = `<div class="dash-pop__empty">No se pudo cargar la evolución: ${esc(error.message)}</div>`; });
+  void ensureHotelRateDetails(key).then(() => { if (State.dashboard.sel === key && State.targetId === targetId) paintDashboardPopover('facts'); });
+}
+
+function closeDashboardPopover() {
+  const st = State.dashboard;
+  if (!st.sel) return false;
+  st.sel = null;
+  st.ptHover = null;
+  const layer = $('#dashPopLayer');
+  if (layer) layer.innerHTML = '';
+  $$('[data-dash-pin].is-selected').forEach((pin) => pin.classList.remove('is-selected'));
+  const origin = st.returnFocus;
+  st.returnFocus = null;
+  if (origin instanceof HTMLElement && origin.isConnected) origin.focus({ preventScroll: true });
+  return true;
+}
+
+/* Coloca la ventana junto al punto (a la derecha o, si no cabe, a la izquierda) y la línea que los une.
+   Al abrirla, si no cabe a ningún lado, desplaza el mapa para que la ventana no tape el punto. */
+function positionDashboardPopover(reveal = false) {
+  const st = State.dashboard;
+  const map = State.dashboardMap;
+  const frame = $('#dashMapFrame');
+  const pop = $('#dashPop');
+  const h = dashboardHotel(st.sel);
+  if (!map || !frame || !pop || !h) return;
+  const p = map.project(validLngLat(h.row));
+  const W = frame.clientWidth, H = frame.clientHeight || DASH_MAP_HEIGHT;
+  const cw = Math.min(DASH_POPOVER_MAX, W - 66); // deja sitio al punto y a la línea junto a la ventana
+  pop.classList.toggle('is-narrow', cw < 560);
+  pop.style.width = `${cw}px`;
+  const chh = pop.offsetHeight || (cw < 560 ? 580 : 450);
+  const right = p.x + 30 + cw <= W - 12;
+  if (reveal && !right && p.x - 30 - cw < 12) {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    map.easeTo({ center: map.unproject([W / 2 + p.x - 24, H / 2]), duration: reduce ? 0 : 320, essential: true });
+  }
+  const left = Math.max(12, right ? p.x + 30 : p.x - 30 - cw);
+  const top = Math.max(12, Math.min(H - chh - 12, p.y - 150));
+  const ax = right ? left : left + cw;
+  const ay = Math.max(top + 24, Math.min(top + chh - 24, p.y));
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
+  pop.style.transformOrigin = `${(p.x - left).toFixed(0)}px ${(p.y - top).toFixed(0)}px`;
+  const ring = $('#dashPopRing');
+  if (ring) { ring.style.left = `${p.x}px`; ring.style.top = `${p.y}px`; }
+  const lineEl = $('#dashPopLine');
+  if (lineEl) { lineEl.setAttribute('x1', p.x); lineEl.setAttribute('y1', p.y); lineEl.setAttribute('x2', ax); lineEl.setAttribute('y2', ay); }
+  const anchor = $('#dashPopAnchor');
+  if (anchor) { anchor.setAttribute('cx', ax); anchor.setAttribute('cy', ay); }
+}
+
+function showDashboardSwarmTip(dot) {
+  const tip = $('#dashSwarmTip');
+  if (!tip) return;
+  if (!dot) { tip.hidden = true; return; }
+  tip.innerHTML = `<b>${esc(dot.dataset.dashTip)}</b> · ${esc(dot.dataset.dashTipAdr)}`;
+  tip.style.left = dot.style.left;
+  tip.style.bottom = dot.style.bottom;
+  tip.hidden = false;
+}
+
+function handleDashboardClick(e) {
+  const target = e.target instanceof Element ? e.target : null;
+  if (!target || !target.closest('#view-dashboard')) return false;
+  if (target.closest('[data-dash-signals]')) {
+    State.dashboard.allSignals = !State.dashboard.allSignals;
+    const section = $('#dashSignals');
+    if (section) { section.outerHTML = dashboardSignalsHTML(State.dashboard.signals); $('#dashSignals [data-dash-signals]')?.focus(); }
+    return true;
+  }
+  const pin = target.closest('[data-dash-pin]');
+  if (pin) { e.stopPropagation(); openDashboardPopover(pin.dataset.dashPin); return true; }
+  if (target.closest('[data-dash-close]')) { closeDashboardPopover(); return true; }
+  const mode = target.closest('[data-dash-chart]');
+  if (mode) { State.dashboard.chart = mode.dataset.dashChart === 'dates' ? 'dates' : 'hist'; State.dashboard.ptHover = null; paintDashboardPopover(); positionDashboardPopover(); $(`#dashPop [data-dash-chart="${State.dashboard.chart}"]`)?.focus(); return true; }
+  if (target.closest('[data-dash-cmp]')) { State.dashboard.cmp = !State.dashboard.cmp; paintDashboardPopover(); $('#dashPop [data-dash-cmp]')?.focus(); return true; }
+  const hotel = target.closest('[data-dash-hotel]');
+  if (hotel) { openHotelInHotels(hotel.dataset.dashHotel); return true; }
+  const ask = target.closest('[data-dash-ask]');
+  if (ask) { askCopilot(ask.dataset.dashAsk); return true; }
+  if (target.closest('[data-dash-refresh]')) { void openCaptureDialog(); return true; }
+  return false;
+}
+
+function handleDashboardOver(e) {
+  const target = e.target instanceof Element ? e.target : null;
+  if (!target || State.view !== 'dashboard') return;
+  const tip = $('#dashSwarmTip');
+  if (target.closest('.dash-swarm')) showDashboardSwarmTip(target.closest('.dash-swarm__dot'));
+  else if (tip && !tip.hidden) tip.hidden = true;
+  const pt = target.closest('[data-dash-pt]');
+  if (pt && Number(pt.dataset.dashPt) !== State.dashboard.ptHover) { State.dashboard.ptHover = Number(pt.dataset.dashPt); paintDashboardPopover('chart'); }
 }
 
 function rateNights(checkIn, checkOut) {
@@ -1357,12 +1209,6 @@ function rateNights(checkIn, checkOut) {
   return Math.round((end - start) / 86400000);
 }
 
-function rateShortDate(value) {
-  if (!value) return '—';
-  const date = new Date(`${value}T00:00:00Z`);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', timeZone: 'UTC' }).replace('.', '');
-}
-
 function compactBoardLabel(board) {
   if (!board) return 'No informado';
   const value = String(board).toLowerCase();
@@ -1371,360 +1217,6 @@ function compactBoardLabel(board) {
   if (value.includes('desayuno')) return 'Desayuno';
   if (value.includes('solo alojamiento') || value.includes('solo habitación') || value.includes('room only')) return 'Solo alojamiento';
   return String(board);
-}
-
-function dashboardHotelForKey(key) {
-  if (key && typeof key === 'object') return key;
-  const rows = State.snapshots[State.targetId]?.latest?.rows || [];
-  return rows.find((row) => row.hotelKey === key) || State.metrics[State.targetId]?.competitiveSet?.find((row) => row.hotelKey === key) || null;
-}
-
-function dashboardSameStayComparisonHTML(history, chartWidth, amount) {
-  const valid = (history || []).filter((entry) => entry.snapshotId != null && Number.isFinite(Date.parse(entry.scrapedAt)) && Number.isFinite(Number(entry.pricePerNight)));
-  const snapshots = new Map();
-  valid.forEach((entry) => {
-    if (!snapshots.has(entry.snapshotId)) snapshots.set(entry.snapshotId, []);
-    snapshots.get(entry.snapshotId).push(entry);
-  });
-  const orderedSnapshots = [...snapshots.entries()].map(([snapshotId, entries]) => ({
-    snapshotId,
-    entries,
-    at: Math.max(...entries.map((entry) => Date.parse(entry.scrapedAt))),
-  })).sort((a, b) => a.at - b.at || a.snapshotId - b.snapshotId);
-  const groups = [];
-  const maxGap = 20 * 60 * 1000;
-  orderedSnapshots.forEach((snapshot) => {
-    let group = groups.at(-1);
-    if (!group || snapshot.at - group.lastAt > maxGap) {
-      group = { snapshots: [], lastAt: snapshot.at };
-      groups.push(group);
-    }
-    group.snapshots.push(snapshot);
-    group.lastAt = snapshot.at;
-  });
-  if (groups.length < 2) return '<section class="dashboard-drawer__section"><div class="dashboard-trend-empty">Se necesitan dos barridos de extracción para comparar la misma fecha de entrada.</div></section>';
-  const aggregateGroup = (group) => {
-    const byStay = new Map();
-    group.snapshots.flatMap((snapshot) => snapshot.entries).forEach((entry) => {
-      const stay = entry.checkIn;
-      if (!stay) return;
-      const item = byStay.get(stay) || { stay, values: [], snapshotIds: [] };
-      item.values.push(Number(entry.pricePerNight));
-      if (!item.snapshotIds.includes(entry.snapshotId)) item.snapshotIds.push(entry.snapshotId);
-      byStay.set(stay, item);
-    });
-    return [...byStay.values()].map((item) => ({
-      stay: item.stay,
-      pricePerNight: median(item.values),
-      snapshotIds: item.snapshotIds,
-    }));
-  };
-  const previous = aggregateGroup(groups.at(-2));
-  const current = aggregateGroup(groups.at(-1));
-  const previousByStay = new Map(previous.map((entry) => [entry.stay, entry]));
-  const currentByStay = new Map(current.map((entry) => [entry.stay, entry]));
-  const shared = [...new Set([...previousByStay.keys()].filter((stay) => currentByStay.has(stay)))].sort();
-  if (!shared.length) return '<section class="dashboard-drawer__section"><div class="dashboard-trend-empty">Los dos últimos barridos no comparten fechas de entrada comparables.</div></section>';
-  const pairs = shared.map((stay) => {
-    const before = previousByStay.get(stay), after = currentByStay.get(stay);
-    return { stay, previous: before.pricePerNight, current: after.pricePerNight, changePct: before.pricePerNight ? ((after.pricePerNight / before.pricePerNight) - 1) * 100 : null };
-  });
-  const values = pairs.flatMap((pair) => [pair.previous, pair.current]);
-  const minRaw = Math.min(...values), maxRaw = Math.max(...values);
-  const chartMin = Math.floor((minRaw - 5) / 10) * 10, chartMax = Math.ceil((maxRaw + 5) / 10) * 10;
-  const W = Math.max(240, Number(chartWidth) || 324), H = 158, x0 = 35, x1 = W - 10, y0 = 13, y1 = 108;
-  const sx = (index) => x0 + (index / Math.max(1, pairs.length - 1)) * (x1 - x0);
-  const sy = (value) => y0 + (1 - (value - chartMin) / Math.max(1, chartMax - chartMin)) * (y1 - y0);
-  const shortDate = (iso) => { const parts = String(iso || '').slice(0, 10).split('-'); return parts.length === 3 ? `${parts[2]}/${parts[1]}` : String(iso || '—'); };
-  const labels = pairs.map((pair, index) => `<text x="${sx(index).toFixed(1)}" y="130" text-anchor="middle">${esc(shortDate(pair.stay))}</text>`).join('');
-  const pathFor = (key) => pairs.map((pair, index) => `${index ? 'L' : 'M'} ${sx(index).toFixed(1)} ${sy(pair[key]).toFixed(1)}`).join(' ');
-  const pointsFor = (key, color, label) => pairs.map((pair, index) => `<circle cx="${sx(index).toFixed(1)}" cy="${sy(pair[key]).toFixed(1)}" r="3.4" fill="var(--card)" stroke="${color}" stroke-width="2"><title>${label} · entrada ${esc(pair.stay)} · ${amount(pair[key])} por noche</title></circle>`).join('');
-  const firstPrevious = groups.at(-2).snapshots[0]?.snapshotId, lastPrevious = groups.at(-2).snapshots.at(-1)?.snapshotId;
-  const firstCurrent = groups.at(-1).snapshots[0]?.snapshotId, lastCurrent = groups.at(-1).snapshots.at(-1)?.snapshotId;
-  const groupLabel = (first, last) => first === last ? `foto #${first}` : `fotos #${first}–#${last}`;
-  return `<section class="dashboard-drawer__section dashboard-drawer__same-date"><div class="dashboard-trend-head"><div><strong>Comparación por fecha de entrada</strong><span>Eje X = fecha de entrada · ${groupLabel(firstPrevious, lastPrevious)} frente a ${groupLabel(firstCurrent, lastCurrent)}</span></div></div><svg viewBox="0 0 ${W} ${H}" width="100%" height="158" class="dashboard-trend-svg" role="img" aria-label="Comparación del precio por fecha de entrada entre la captura anterior y la última captura"><g stroke="var(--line-soft)" stroke-width="1"><line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}"></line><line x1="${x0}" y1="${(y0 + y1) / 2}" x2="${x1}" y2="${(y0 + y1) / 2}"></line><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"></line></g><g font-family="'Space Mono',monospace" font-size="8.5" fill="var(--faint)"><text x="${x0 - 5}" y="${y0 + 3}" text-anchor="end">${eur(chartMax)}</text><text x="${x0 - 5}" y="${y1 + 3}" text-anchor="end">${eur(chartMin)}</text>${labels}</g><path d="${pathFor('previous')}" fill="none" stroke="var(--warn-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><path d="${pathFor('current')}" fill="none" stroke="var(--ac)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path><g>${pointsFor('previous', 'var(--warn-ink)', 'Captura anterior')}${pointsFor('current', 'var(--ac)', 'Última captura')}</g></svg><div class="dashboard-trend-legend"><span><i style="background:var(--warn-ink);"></i>Captura anterior · ${groupLabel(firstPrevious, lastPrevious)}</span><span><i style="background:var(--ac);"></i>Última captura · ${groupLabel(firstCurrent, lastCurrent)}</span></div><div class="dashboard-trend-legend">Pasa el cursor por los puntos para consultar el precio de cada fecha. La diferencia refleja el cambio observado entre capturas.</div></section>`;
-}
-
-function dashboardHotelTrendHTML(row, history, chartWidth = 324) {
-  const snapshots = new Map();
-  for (const entry of history || []) {
-    if (entry.snapshotId == null) continue;
-    if (!snapshots.has(entry.snapshotId)) snapshots.set(entry.snapshotId, []);
-    snapshots.get(entry.snapshotId).push(entry);
-  }
-  const series = [...snapshots.entries()].map(([snapshotId, entries]) => {
-    const valid = entries.filter((entry) => Number.isFinite(Date.parse(entry.scrapedAt)) && Number.isFinite(Number(entry.pricePerNight)));
-    if (!valid.length) return null;
-    const prices = valid.map((entry) => Number(entry.pricePerNight));
-    const stays = [...new Set(valid.map((entry) => entry.checkIn).filter(Boolean))];
-    const latest = valid.slice().sort((a, b) => Date.parse(a.scrapedAt) - Date.parse(b.scrapedAt)).at(-1);
-    return {
-      snapshotId,
-      scrapedAt: latest.scrapedAt,
-      pricePerNight: median(prices),
-      checkIn: stays.length === 1 ? stays[0] : `${stays[0] || '—'}${stays.length > 1 ? ` +${stays.length - 1}` : ''}`,
-      observationCount: valid.length,
-    };
-  }).filter(Boolean).sort((a, b) => Date.parse(a.scrapedAt) - Date.parse(b.scrapedAt) || a.snapshotId - b.snapshotId).map((entry, index, all) => {
-    const previous = all[index - 1];
-    return { ...entry, changePct: previous && previous.pricePerNight ? ((entry.pricePerNight / previous.pricePerNight) - 1) * 100 : null };
-  });
-  if (series.length < 2) return '<div class="dashboard-trend-empty">Se necesitan dos fotos con precio válido para representar la evolución.</div>';
-  const extractionGroups = [];
-  const maxGap = 20 * 60 * 1000;
-  series.forEach((entry) => {
-    let group = extractionGroups.at(-1);
-    const at = Date.parse(entry.scrapedAt);
-    if (!group || at - group.lastAt > maxGap) {
-      group = { entries: [], lastAt: at };
-      extractionGroups.push(group);
-    }
-    group.entries.push(entry);
-    group.lastAt = at;
-  });
-  const previousGroup = extractionGroups.at(-2) || { entries: [series.at(-2)] };
-  const currentGroup = extractionGroups.at(-1) || { entries: [series.at(-1)] };
-  const previous = { pricePerNight: median(previousGroup.entries.map((entry) => entry.pricePerNight)), scrapedAt: previousGroup.entries.at(-1).scrapedAt, snapshotId: previousGroup.entries.at(-1).snapshotId };
-  const current = { pricePerNight: median(currentGroup.entries.map((entry) => entry.pricePerNight)), scrapedAt: currentGroup.entries.at(-1).scrapedAt, snapshotId: currentGroup.entries.at(-1).snapshotId };
-  const change = previous.pricePerNight ? ((current.pricePerNight / previous.pricePerNight) - 1) * 100 : null;
-  const amount = (value) => value == null ? '—' : `${nEs(value, 2)} ${esc(row.currency || 'EUR')}`;
-  const groupLabel = (group) => {
-    const first = group.entries[0]?.snapshotId, last = group.entries.at(-1)?.snapshotId;
-    return first == null ? '—' : first === last ? `foto #${first}` : `fotos #${first}–#${last}`;
-  };
-  const previousMarkup = `<strong>${amount(previous.pricePerNight)}</strong><small>${groupLabel(previousGroup)} · ${fmtStamp(previous.scrapedAt)}</small>`;
-  const currentMarkup = `<strong>${amount(current.pricePerNight)}</strong><small>${groupLabel(currentGroup)} · ${fmtStamp(current.scrapedAt)}</small>`;
-  const W = Math.max(240, Number(chartWidth) || 324);
-  return `<div class="dashboard-trend-stats"><div><span>Captura anterior</span>${previousMarkup}</div><div class="dashboard-trend-stat--current"><span>Última captura</span>${currentMarkup}</div><div><span>Variación entre capturas</span><strong>${signPct(change)}</strong><small>Mediana del precio por barrido</small></div></div>${dashboardSameStayComparisonHTML(history, W, amount)}`;
-}
-
-function dashboardTrendWidth(drawer) {
-  return Math.max(240, Math.round(drawer.clientWidth - 26));
-}
-
-function renderDashboardHotelTrend(drawer, row, history) {
-  const trend = $(`[data-dashboard-history-key="${CSS.escape(row.hotelKey)}"]`, drawer);
-  if (!trend) return;
-  drawer._dashboardTrend = { row, history };
-  trend.innerHTML = dashboardHotelTrendHTML(row, history, dashboardTrendWidth(drawer));
-}
-
-function closeDashboardHotel() {
-  const drawer = $('#dashboardHotelDrawer');
-  if (!drawer || drawer.hidden) return false;
-  drawer.hidden = true;
-  drawer._dashboardResize?.disconnect();
-  drawer._dashboardTrend = null;
-  drawer._dashboardRequest = null;
-  $$('.dashboard-map-marker').forEach((marker) => marker.setAttribute('aria-pressed', 'false'));
-  drawer.classList.remove('is-expanded');
-  drawer.innerHTML = '';
-  const origin = State.dashboardDrawerFocusOrigin;
-  State.dashboardDrawerFocusOrigin = null;
-  if (origin instanceof HTMLElement && origin.isConnected) origin.focus({ preventScroll: true });
-  return true;
-}
-
-function toggleDashboardHotelInspector() {
-  const drawer = $('#dashboardHotelDrawer');
-  if (!drawer || drawer.hidden) return;
-  const expanded = drawer.classList.toggle('is-expanded');
-  const button = drawer.querySelector('[data-dashboard-drawer-expand]');
-  if (button) {
-    button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    button.setAttribute('aria-label', expanded ? 'Reducir análisis' : 'Ampliar análisis');
-    button.textContent = expanded ? '↙' : '↗';
-  }
-  window.requestAnimationFrame(() => {
-    if (drawer._dashboardTrend) renderDashboardHotelTrend(drawer, drawer._dashboardTrend.row, drawer._dashboardTrend.history);
-  });
-}
-
-function dashboardHotelFallbackHTML(row) {
-  const adr = row.pricePerNight ?? row.avgPricePerNight ?? null;
-  return `<div class="dashboard-drawer__head"><div><div class="card__kicker">Inspector de tarifa</div><h3 id="dashboardHotelDrawerTitle">${esc(row.hotelName || 'Hotel sin identificar')}</h3></div><div class="dashboard-drawer__tools"><button type="button" class="icon-btn" data-dashboard-drawer-close aria-label="Cerrar detalle">×</button></div></div>
-    <div class="dashboard-drawer__overview"><div class="dashboard-drawer__price">${eur(adr)}<span>ADR hab/noche</span></div><dl class="dashboard-drawer__facts"><div><dt>Nota</dt><dd>${row.rating != null ? nEs(row.rating, 1) : '—'}</dd></div><div><dt>Régimen</dt><dd>${esc(row.board || '—')}</dd></div><div><dt>Disponibilidad</dt><dd>${row.soldOut ? 'Sin disponibilidad' : row.unitsLeft != null ? `Quedan ${nEs(row.unitsLeft)}` : 'Observable'}</dd></div><div><dt>Ubicación</dt><dd>${esc(row.displayLocation || row.city || '—')}</dd></div></dl></div>
-    <section class="dashboard-drawer__section"><div class="dashboard-trend-empty">Este punto no tiene una ficha completa en la captura actual; se muestra la tarifa geolocalizada disponible.</div></section>`;
-}
-
-function openDashboardHotel(key) {
-  const row = dashboardHotelForKey(key);
-  const drawer = $('#dashboardHotelDrawer');
-  if (!drawer || !row) return;
-  drawer._dashboardResize?.disconnect();
-  drawer._dashboardTrend = null;
-  const request = {};
-  drawer._dashboardRequest = request;
-  if (!drawer.hidden && drawer.dataset.hotelKey !== row.hotelKey) State.dashboardDrawerFocusOrigin = document.activeElement instanceof HTMLElement ? document.activeElement : State.dashboardDrawerFocusOrigin;
-  if (drawer.hidden) State.dashboardDrawerFocusOrigin = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  drawer.dataset.hotelKey = row.hotelKey;
-  drawer.classList.remove('is-expanded');
-  try {
-    drawer.innerHTML = `<div class="dashboard-drawer__head"><div><div class="card__kicker">Inspector de tarifa</div><h3 id="dashboardHotelDrawerTitle">${esc(row.hotelName)}</h3></div><div class="dashboard-drawer__tools"><button type="button" class="icon-btn" data-dashboard-drawer-expand aria-label="Ampliar análisis" aria-expanded="false">↗</button><button type="button" class="icon-btn" data-dashboard-drawer-close aria-label="Cerrar detalle">×</button></div></div>
-      <div class="dashboard-drawer__overview"><div class="dashboard-drawer__price">${eur(row.pricePerNight)}<span>ADR hab/noche</span></div><dl class="dashboard-drawer__facts"><div><dt>Nota</dt><dd title="${esc(row.rating != null ? nEs(row.rating, 1) : '—')}">${row.rating != null ? nEs(row.rating, 1) : '—'}</dd></div><div><dt>Régimen</dt><dd title="${esc(row.board || '—')}">${esc(row.board || '—')}</dd></div><div><dt>Disponibilidad</dt><dd title="${esc(row.soldOut ? 'Sin disponibilidad' : row.unitsLeft != null ? `Quedan ${nEs(row.unitsLeft)}` : 'Observable')}">${row.soldOut ? 'Sin disponibilidad' : row.unitsLeft != null ? `Quedan ${nEs(row.unitsLeft)}` : 'Observable'}</dd></div><div><dt>Distancia playa</dt><dd title="${esc(row.beachDistance || '—')}">${esc(row.beachDistance || '—')}</dd></div></dl></div>
-      <section class="dashboard-drawer__section dashboard-drawer__trend" data-dashboard-history-key="${esc(row.hotelKey)}"><div class="dashboard-trend-loading"><i></i> Cargando evolución por extracción…</div></section>
-      <section class="dashboard-drawer__section dashboard-drawer__offer">${dashboardDrawerOfferHTML(row)}</section>`;
-  } catch (_) {
-    drawer.innerHTML = dashboardHotelFallbackHTML(row);
-  }
-  drawer.hidden = false;
-  drawer.scrollTop = 0;
-  $$('.dashboard-map-marker').forEach((marker) => marker.setAttribute('aria-pressed', String(State.dashboardMapRows[marker.dataset.dashboardMapMarker]?.hotelKey === row.hotelKey)));
-  drawer.querySelector('[data-dashboard-drawer-close]')?.focus({ preventScroll: true });
-  if (typeof ResizeObserver !== 'undefined') {
-    let width = drawer.clientWidth;
-    drawer._dashboardResize = new ResizeObserver(() => {
-      if (drawer.clientWidth === width || drawer.hidden) return;
-      width = drawer.clientWidth;
-      if (drawer._dashboardTrend) renderDashboardHotelTrend(drawer, row, drawer._dashboardTrend.history);
-    });
-    drawer._dashboardResize.observe(drawer);
-  }
-  if (!row.hotelKey) {
-    const trend = $('[data-dashboard-history-key=""]', drawer);
-    if (trend) trend.innerHTML = '<div class="dashboard-trend-empty">No hay histórico identificable para este punto del mapa.</div>';
-    return;
-  }
-  getHotelPriceHistory(State.targetId, row.hotelKey).then((history) => {
-    if (!drawer.isConnected || drawer._dashboardRequest !== request) return;
-    renderDashboardHotelTrend(drawer, row, history);
-  }).catch((error) => {
-    if (!drawer.isConnected || drawer._dashboardRequest !== request) return;
-    const trend = $(`[data-dashboard-history-key="${CSS.escape(row.hotelKey)}"]`, drawer);
-    if (trend) trend.innerHTML = `<div class="dashboard-trend-empty">No se pudo cargar la evolución: ${esc(error.message)}</div>`;
-  });
-}
-
-function loadMapLibre() {
-  if (window.maplibregl) return Promise.resolve(window.maplibregl);
-  if (State.mapLoader) return State.mapLoader;
-  State.mapLoader = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
-    script.onload = () => resolve(window.maplibregl);
-    script.onerror = () => { State.mapLoader = null; script.remove(); reject(new Error('No se pudo cargar el mapa base')); };
-    document.head.appendChild(script);
-  });
-  return State.mapLoader;
-}
-
-function dashboardMapStyle() {
-  // Teselas OSM (la CSP solo permite este origen ráster); el tema oscuro se aplica con un filtro CSS sobre el canvas.
-  return {
-    version: 8,
-    sources: {
-      osm: {
-        type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        attribution: '© OpenStreetMap contributors',
-      },
-    },
-    layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-  };
-}
-
-function destroyDashboardMap() {
-  const drawer = $('#dashboardHotelDrawer');
-  drawer?._dashboardResize?.disconnect();
-  if (State.dashboardMapResizeObserver) {
-    State.dashboardMapResizeObserver.disconnect();
-    State.dashboardMapResizeObserver = null;
-  }
-  if (State.dashboardMapResizeFrame) {
-    window.cancelAnimationFrame(State.dashboardMapResizeFrame);
-    State.dashboardMapResizeFrame = null;
-  }
-  State.dashboardMapMarkers.forEach((marker) => marker.remove());
-  State.dashboardMapMarkers = [];
-  State.dashboardMapRows = {};
-  if (State.dashboardMap) { State.dashboardMap.remove(); State.dashboardMap = null; }
-}
-
-async function renderDashboardHotelMap(points, rows) {
-  const container = $('#dashboardHotelMap');
-  if (!container) return;
-  const request = {};
-  container._mapRequest = request;
-  const valid = (points || []).filter((point) => point.latitude != null && point.longitude != null && String(point.latitude).trim() !== '' && String(point.longitude).trim() !== '' && Number.isFinite(Number(point.latitude)) && Math.abs(Number(point.latitude)) <= 90 && Number.isFinite(Number(point.longitude)) && Math.abs(Number(point.longitude)) <= 180 && Number(point.pricePerNight ?? point.avgPricePerNight) > 0);
-  const showStatus = (message) => {
-    container.querySelector('.dashboard-map-status')?.remove();
-    container.insertAdjacentHTML('beforeend', `<div class="empty dashboard-map-status" role="status">${message}</div>`);
-  };
-  const count = $('#dashboardMapCount');
-  if (count) count.textContent = `${valid.length} hoteles`;
-  if (!valid.length) { showStatus('No hay hoteles con tarifa y coordenadas válidas en esta foto.'); return; }
-  try { await loadMapLibre(); } catch (e) { if (container.isConnected && container._mapRequest === request) showStatus(`${esc(e.message)}. <button type="button" class="btn" data-dashboard-map-retry>Reintentar</button>`); return; }
-  if (!window.maplibregl || !container.isConnected || container._mapRequest !== request || State.dashboardView !== 'market' || State.view !== 'dashboard') return;
-  container.querySelector('.dashboard-map-status')?.remove();
-  destroyDashboardMap();
-  const oldCanvas = container.querySelector('.dashboard-map__canvas');
-  if (oldCanvas) oldCanvas.remove();
-  const mapHost = document.createElement('div'); mapHost.className = 'dashboard-map__canvas'; container.appendChild(mapHost);
-  const map = new window.maplibregl.Map({ container: mapHost, style: dashboardMapStyle(), center: [-15.57, 27.78], zoom: 9.5, attributionControl: true });
-  State.dashboardMap = map;
-  map.addControl(new window.maplibregl.NavigationControl({ showCompass: false }), 'top-left');
-  let userHasMovedMap = false;
-  let hasFittedBounds = false;
-  const fitMarkers = () => {
-    if (bounds.isEmpty()) return;
-    map.fitBounds(bounds, { padding: 42, maxZoom: 12.3, duration: 0 });
-    hasFittedBounds = true;
-  };
-  const syncMapSize = () => {
-    if (State.dashboardMapResizeFrame) window.cancelAnimationFrame(State.dashboardMapResizeFrame);
-    State.dashboardMapResizeFrame = window.requestAnimationFrame(() => {
-      State.dashboardMapResizeFrame = null;
-      if (State.dashboardMap !== map) return;
-      map.resize();
-      // Hasta la primera interacción mantenemos todos los hoteles encuadrados.
-      // Después, resize conserva exactamente la vista elegida por la persona usuaria.
-      if (!hasFittedBounds || !userHasMovedMap) fitMarkers();
-    });
-  };
-  if (typeof ResizeObserver !== 'undefined') {
-    State.dashboardMapResizeObserver = new ResizeObserver(syncMapSize);
-    State.dashboardMapResizeObserver.observe(mapHost);
-  }
-  map.on('dragstart', () => { userHasMovedMap = true; });
-  map.on('zoomstart', (event) => { if (event.originalEvent) userHasMovedMap = true; });
-  const priceFor = (point) => Number(point.pricePerNight ?? point.avgPricePerNight);
-  const scale = { min: Math.min(...valid.map(priceFor)), max: Math.max(...valid.map(priceFor)) };
-  const interactivePoints = [];
-  const bounds = new window.maplibregl.LngLatBounds();
-  const rowByKey = Object.fromEntries((rows || []).map((row) => [row.hotelKey, row]));
-  valid.forEach((point, index) => {
-    const sourceRow = rowByKey[point.hotelKey] || {};
-    const row = {
-      ...point,
-      ...sourceRow,
-      hotelKey: sourceRow.hotelKey || point.hotelKey || '',
-      hotelName: sourceRow.hotelName || point.hotelName || 'Hotel sin identificar',
-      pricePerNight: sourceRow.pricePerNight ?? point.pricePerNight ?? point.avgPricePerNight ?? null,
-    };
-    const price = Number(row.pricePerNight || point.avgPricePerNight || 0);
-    const ratio = scale.max > scale.min ? (price - scale.min) / (scale.max - scale.min) : .5;
-    const tier = ratio > .66 ? 'high' : ratio < .33 ? 'low' : 'mid';
-    const markerId = `${row.hotelKey || point.hotelKey || 'point'}-${index}`;
-    State.dashboardMapRows[markerId] = row;
-    interactivePoints.push({ row, coordinates: [Number(point.longitude), Number(point.latitude)] });
-    const marker = document.createElement('button'); marker.type = 'button'; marker.className = `dashboard-map-marker dashboard-map-marker--${tier}`; marker.dataset.dashboardMapMarker = markerId; marker.setAttribute('aria-label', `${row.hotelName || point.hotelName}. ${eur(price)} por noche. Abrir detalle.`); marker.title = `${row.hotelName || point.hotelName} · ${eur(price)}`; marker.innerHTML = `<span aria-hidden="true"></span><b>${eur(price)}</b>`;
-    const markerInstance = new window.maplibregl.Marker({ element: marker, anchor: 'center' }).setLngLat([Number(point.longitude), Number(point.latitude)]).addTo(map);
-    marker.setAttribute('aria-pressed', 'false');
-    marker.setAttribute('aria-controls', 'dashboardHotelDrawer');
-    State.dashboardMapMarkers.push(markerInstance);
-    bounds.extend([Number(point.longitude), Number(point.latitude)]);
-  });
-  map.on('click', (event) => {
-    let nearest = null;
-    interactivePoints.forEach((candidate) => {
-      const screenPoint = map.project(candidate.coordinates);
-      const distance = Math.hypot(event.point.x - screenPoint.x, event.point.y - screenPoint.y);
-      if (!nearest || distance < nearest.distance) nearest = { ...candidate, distance };
-    });
-    if (nearest && nearest.distance <= 18) openDashboardHotel(nearest.row);
-  });
-  syncMapSize();
 }
 
 /* ================================================================= HOTELES */
@@ -4489,6 +3981,7 @@ function applyTheme(theme, persist = true) {
     $('#themeIcon').innerHTML = dark ? ICON_SUN : ICON_MOON;
   }
   if (persist) writePref(PREFS.theme, State.theme);
+  restyleMaps();
 }
 function toggleTheme() { applyTheme(State.theme === 'oscuro' ? 'claro' : 'oscuro'); }
 
@@ -4671,9 +4164,6 @@ function selectMarket(id) {
   State.captureHotelSearch = '';
   State.captureComparisonOpen = false;
   State.hotelQueryTargetId = null;
-  State.dashboardExplorerResult = null;
-  State.dashboardExplorerResultKey = null;
-  State.dashboardExplorerSearch = '';
   renderMarketList();
   void renderChromeData();
   // recarga la vista actual con el nuevo mercado (todas las vistas dependen del mercado), desde arriba
@@ -4751,7 +4241,7 @@ async function openCaptureDialog() {
 }
 
 function invalidateTargetData(targetId) {
-  delete State.snapshots[targetId]; delete State.metrics[targetId]; delete State.heatmaps[targetId]; delete State.demandCurves[targetId]; delete State.hotelStability[targetId]; delete State.photoHistories[targetId]; delete State.captureHistories[targetId];
+  delete State.snapshots[targetId]; delete State.metrics[targetId]; delete State.demandCurves[targetId]; delete State.hotelStability[targetId]; delete State.photoHistories[targetId]; delete State.captureHistories[targetId];
   delete State.hotelPriceHistories[targetId]; delete State.hotelRateDetails[targetId];
   State.workspaceSemanticData = {};
   State.selectedPhotoId = null; State.captureHotelSearch = ''; State.captureComparisonOpen = false;
@@ -4919,40 +4409,6 @@ function wireEvents() {
     if (e.key === 'Escape' && !chromeLayerOpen() && !$('#copilotResults')?.hidden) {
       const close = $('#closeCopilotPanel'); close?.click(); e.preventDefault(); return;
     }
-    const tab = e.target.closest('[data-dashboard-view]');
-    if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-    e.preventDefault();
-    const tabs = [...document.querySelectorAll('[data-dashboard-view]')];
-    const current = tabs.indexOf(tab);
-    const nextIndex = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (current + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-    const next = tabs[nextIndex]?.dataset.dashboardView || 'market';
-    activateDashboardView(next);
-    document.querySelector(`[data-dashboard-view="${next}"]`)?.focus();
-  });
-  document.addEventListener('change', (e) => {
-    const control = e.target instanceof HTMLSelectElement ? e.target : null;
-    if (!control) return;
-    if (control.id === 'dashboardExplorerPhoto') {
-      const snapshotId = Number(control.value);
-      if (!Number.isInteger(snapshotId)) return;
-      State.dashboardExplorerSnapshotId = snapshotId;
-      State.dashboardExplorerResult = null;
-      State.dashboardExplorerResultKey = null;
-      void loadDashboardExplorer(mount('dashboard'));
-      return;
-    }
-    if (control.id === 'dashboardExplorerSort') {
-      State.dashboardExplorerSort = ['adr-desc', 'adr-asc', 'name-asc'].includes(control.value) ? control.value : 'adr-desc';
-      const outlet = $('#dashboardExplorerData', mount('dashboard'));
-      if (State.dashboardExplorerResult && State.dashboardExplorerResultKey === `${State.targetId}:${State.dashboardExplorerSnapshotId}`) renderDashboardExplorerResults(outlet, State.dashboardExplorerResult);
-    }
-  });
-  document.addEventListener('input', (e) => {
-    const control = e.target instanceof HTMLInputElement ? e.target : null;
-    if (!control || control.id !== 'dashboardExplorerSearch') return;
-    State.dashboardExplorerSearch = control.value.slice(0, 160);
-    const outlet = $('#dashboardExplorerData', mount('dashboard'));
-    if (State.dashboardExplorerResult && State.dashboardExplorerResultKey === `${State.targetId}:${State.dashboardExplorerSnapshotId}`) renderDashboardExplorerResults(outlet, State.dashboardExplorerResult);
   });
   document.addEventListener('error', (e) => {
     if (e.target instanceof HTMLImageElement && e.target.classList.contains('flight-airline__logo-img')) e.target.remove();
@@ -4960,27 +4416,15 @@ function wireEvents() {
   document.addEventListener('mouseover', (e) => {
     const item = e.target instanceof Element ? e.target.closest('.palette__item') : null;
     if (item && Number(item.dataset.paletteIndex) !== State.palette.index) setPaletteIndex(Number(item.dataset.paletteIndex), false);
+    handleDashboardOver(e);
   });
   document.addEventListener('focusin', (e) => {
     if (e.target instanceof Element && !e.target.closest('.market-switch')) closeMarketMenu();
+    handleDashboardOver(e);
   });
-  document.addEventListener('click', (e) => {
-    const target = e.target instanceof Element ? e.target : null;
-    const marker = target?.closest('[data-dashboard-map-marker]');
-    if (!marker) return;
-    const row = State.dashboardMapRows[marker.dataset.dashboardMapMarker];
-    if (!row) return;
-    e.preventDefault();
-    e.stopPropagation();
-    openDashboardHotel(row);
-  }, true);
   document.addEventListener('click', async (e) => {
-    if (e.target.closest('[data-dashboard-map-retry]')) {
-      const rows = State.snapshots[State.targetId]?.latest?.rows || [];
-      void renderDashboardHotelMap(rows, rows);
-      return;
-    }
     if (!e.target.closest('.market-switch')) closeMarketMenu();
+    if (handleDashboardClick(e)) return;
     if (handleHotelSheetClick(e)) return;
     const tickerHotel = e.target.closest('[data-ticker-hotel]');
     if (tickerHotel) { openHotelInHotels(tickerHotel.dataset.tickerHotel); return; }
@@ -5027,42 +4471,10 @@ function wireEvents() {
     const workspaceRestore = e.target.closest('[data-workspace-restore]');
     if (workspaceRestore) { restoreWorkspaceRevision(workspaceRestore.dataset.workspaceRestore); return; }
     if (e.target.closest('#workspaceSave')) { void saveWorkspaceDraft(); return; }
-    const dashboardView = e.target.closest('[data-dashboard-view]');
-    if (dashboardView) {
-      const nextView = dashboardView.dataset.dashboardView;
-      activateDashboardView(nextView);
-      return;
-    }
     const mk = e.target.closest('[data-market]');
     if (mk) { selectMarket(mk.dataset.market); return; }
     const capMk = e.target.closest('[data-cap-market]');
     if (capMk) { selectMarket(capMk.dataset.capMarket); return; }
-    const dashboardHotel = e.target.closest('[data-dashboard-hotel]');
-    if (dashboardHotel) {
-      if (dashboardHotel.dataset.priorityHotel === 'true') {
-        if (State.dashboardView !== 'market') {
-          activateDashboardView('market');
-        }
-        $('#dashboardHotelMap')?.scrollIntoView({ block: 'center', behavior: 'auto' });
-      }
-      openDashboardHotel(dashboardHotel.dataset.dashboardHotel); return;
-    }
-    const dashboardExpand = e.target.closest('[data-dashboard-expand]');
-    if (dashboardExpand) {
-      const key = dashboardExpand.dataset.dashboardExpand;
-      const detail = $(`[data-dashboard-detail="${CSS.escape(key)}"]`);
-      const expanded = detail && detail.hidden;
-      if (detail) detail.hidden = !expanded;
-      dashboardExpand.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      dashboardExpand.classList.toggle('is-expanded', expanded);
-      dashboardExpand.textContent = expanded ? '▾' : '▸';
-      return;
-    }
-    if (e.target.closest('[data-dashboard-drawer-expand]')) { toggleDashboardHotelInspector(); return; }
-    if (e.target.closest('[data-dashboard-drawer-close]')) {
-      closeDashboardHotel();
-      return;
-    }
     const flightTab = e.target.closest('[data-flight-tab]');
     if (flightTab) { State.flightTab = flightTab.dataset.flightTab === 'operations' ? 'operations' : 'overview'; renderFlights(); return; }
     if (e.target.closest('[data-air-capture-estimate]')) { void estimateAirCapture(); return; }
@@ -5152,7 +4564,7 @@ function wireEvents() {
       items[(items.indexOf(marketItemFocus) + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
       return;
     }
-    if (e.key === 'Escape' && closeDashboardHotel()) {
+    if (e.key === 'Escape' && closeDashboardPopover()) {
       e.preventDefault();
       return;
     }

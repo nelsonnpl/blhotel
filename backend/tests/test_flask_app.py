@@ -113,6 +113,16 @@ def test_main_ui_shell_exposes_palette_capture_dialog_and_no_inline_scripts() ->
     assert "onclick=" not in html
 
 
+def test_csp_allows_carto_gl_styles_and_tiles_for_the_maps() -> None:
+    # Los mapas usan los estilos vectoriales de CARTO (positron / dark-matter):
+    # el style.json vive en el dominio raíz y las teselas, sprites y fuentes en subdominios.
+    csp = app.test_client().get("/").headers["Content-Security-Policy"]
+    connect = next(part for part in csp.split(";") if part.strip().startswith("connect-src"))
+    assert "https://basemaps.cartocdn.com" in connect.split()
+    assert "https://*.basemaps.cartocdn.com" in connect.split()
+    assert "worker-src 'self' blob:" in csp
+
+
 def test_weather_market_example_groups_coordinates_and_links_snapshot(monkeypatch) -> None:
     class FakeOpenMeteo:
         def __init__(self, *args, **kwargs):

@@ -107,7 +107,7 @@ def apply_security_headers(response):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: https://www.gstatic.com; "
-        "connect-src 'self' https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://demotiles.maplibre.org; "
+        "connect-src 'self' https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://demotiles.maplibre.org; "
         "worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     )
 

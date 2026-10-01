@@ -5280,6 +5280,13 @@ def _empty_dashboard() -> dict:
     }
 
 
+def _pct_es(value: float | None) -> str:
+    """Porcentaje para el texto de una señal: una cifra decimal con coma («131,9 %»)."""
+    if value is None:
+        return "—"
+    return f"{abs(value):.1f}".replace(".", ",") + " %"
+
+
 def _build_insights(
     avg_ppn: float,
     market_change: float | None,
@@ -5304,7 +5311,7 @@ def _build_insights(
         insights.append(RevenueInsight(
             id="raise-rates", type="raise_rate", severity="critical" if ppn_change >= 12 else "warning",
             title="Revisar subida competitiva",
-            message=f"El ADR del mercado ha subido un {ppn_change}%. Revisa si tu hotel sigue la tendencia.",
+            message=f"El ADR del mercado ha subido un {_pct_es(ppn_change)}. Revisa si tu hotel sigue la tendencia.",
             changePct=ppn_change,
         ))
 
@@ -5313,7 +5320,7 @@ def _build_insights(
         insights.append(RevenueInsight(
             id="market-cooling", type="market_cooling", severity="warning",
             title="Bajadas de tarifa observadas",
-            message=f"{drops} competidores bajaron precio simultaneamente. ADR del set cayo un {abs(ppn_change)}%.",
+            message=f"{drops} competidores bajaron precio a la vez. El ADR del set cayó un {_pct_es(ppn_change)}.",
             changePct=ppn_change,
         ))
     elif ppn_change is not None and abs(ppn_change) >= 5:
@@ -5321,7 +5328,7 @@ def _build_insights(
             id="market-movement", type="market_movement",
             severity="critical" if abs(ppn_change) >= 12 else "warning",
             title="Mercado en subida" if ppn_change > 0 else "Mercado en bajada",
-            message=f"El ADR competitivo cambio un {ppn_change}% frente a la lectura anterior.",
+            message=f"El ADR competitivo {'subió' if ppn_change > 0 else 'bajó'} un {_pct_es(ppn_change)} frente a la lectura anterior.",
             changePct=ppn_change,
         ))
 
@@ -5330,7 +5337,7 @@ def _build_insights(
         insights.append(RevenueInsight(
             id="demand-surge", type="data_quality", severity="critical",
             title="Cobertura de extracción limitada",
-            message=f"Ratio de captura bajo ({fill_ratio}%). Revisa el límite solicitado y los errores de extracción; no mide ocupación.",
+            message=f"Ratio de captura bajo ({_pct_es(fill_ratio)}). Revisa el límite solicitado y los errores de extracción; no mide ocupación.",
             value=fill_ratio,
         ))
 
@@ -5340,8 +5347,8 @@ def _build_insights(
         if leader.get("gapVsMarketPct") is not None and leader["gapVsMarketPct"] >= 15:
             insights.append(RevenueInsight(
                 id="price-leader", type="price_leader", severity="info",
-                title="Lider de precio identificado",
-                message=f"{leader['hotelName']} esta un {leader['gapVsMarketPct']}% por encima de la media del set.",
+                title="Líder de precio identificado",
+                message=f"{leader['hotelName']} está un {_pct_es(leader['gapVsMarketPct'])} por encima de la media del set.",
                 hotelName=leader["hotelName"], value=leader["pricePerNight"],
                 benchmark=_round(avg_ppn), changePct=leader["gapVsMarketPct"],
             ))
@@ -5352,7 +5359,7 @@ def _build_insights(
             insights.append(RevenueInsight(
                 id="protect-rate", type="protect_rate", severity="warning",
                 title="Protege tu tarifa",
-                message=f"{worst['hotelName']} ha bajado un {abs(worst['priceChangePct'])}%. Vigila tu posicionamiento.",
+                message=f"{worst['hotelName']} ha bajado un {_pct_es(worst['priceChangePct'])}. Vigila tu posicionamiento.",
                 hotelName=worst["hotelName"], value=worst["pricePerNight"],
                 benchmark=_round(avg_ppn), changePct=worst["priceChangePct"],
             ))
@@ -5362,7 +5369,7 @@ def _build_insights(
             insights.append(RevenueInsight(
                 id="aggressive-pricing", type="aggressive_pricing", severity="warning",
                 title="Precio agresivo en el mercado",
-                message=f"{aggressive['hotelName']} esta {abs(aggressive['gapVsMarketPct'])}% por debajo de la media del set.",
+                message=f"{aggressive['hotelName']} está un {_pct_es(aggressive['gapVsMarketPct'])} por debajo de la media del set.",
                 hotelName=aggressive["hotelName"], value=aggressive["pricePerNight"],
                 benchmark=_round(avg_ppn), changePct=aggressive["gapVsMarketPct"],
             ))
@@ -5377,7 +5384,7 @@ def _build_insights(
                 insights.append(RevenueInsight(
                     id="premium-opportunity", type="premium_opportunity", severity="info",
                     title="Oportunidad premium",
-                    message=f"{best.hotelName} tiene rating {best.rating} pero no cobra prima. Revisar producto y condiciones antes de inferir potencial de precio.",
+                    message=f"{best.hotelName} tiene nota {str(best.rating).replace('.', ',')} pero no cobra prima. Revisa producto y condiciones antes de inferir potencial de precio.",
                     hotelName=best.hotelName, value=_round(best_ppn),
                     benchmark=_round(avg_ppn),
                 ))
@@ -5417,7 +5424,7 @@ def _build_insights(
         insights.append(RevenueInsight(
             id="comparability-risk", type="data_quality", severity="warning",
             title="Comparabilidad limitada",
-            message=f"Solo el {_round(comparable_pct)}% de filas tiene precio y noches validas.",
+            message=f"Solo el {_pct_es(comparable_pct)} de las filas tiene precio y noches válidas.",
             value=_round(comparable_pct),
         ))
     for index, note in enumerate(notes[:2], start=1):
