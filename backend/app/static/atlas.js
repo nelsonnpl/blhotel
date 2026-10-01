@@ -95,42 +95,6 @@ function runCounters(root) {
 
 /* --------------------------------------------------------------- charts */
 
-/* Slope de movimiento entre dos fotos */
-function dumbbellSVG(routes) {
-  const vals = routes.flatMap((r) => [r.min, r.avg]).filter((v) => v > 0);
-  if (!vals.length) return emptyChart(250);
-  const dmin = Math.floor(Math.min(...vals) / 50) * 50;
-  const dmax = Math.ceil(Math.max(...vals) / 50) * 50;
-  const x0 = 175, x1 = 620, top = 20, rh = 32;
-  const sx = (v) => x0 + (v - dmin) / (dmax - dmin || 1) * (x1 - x0);
-  let grid = '', axis = '';
-  const ticks = 5;
-  for (let i = 0; i < ticks; i++) {
-    const v = dmin + (i / (ticks - 1)) * (dmax - dmin);
-    const x = sx(v);
-    grid += `<line x1="${x.toFixed(1)}" y1="6" x2="${x.toFixed(1)}" y2="${top + routes.length * rh - 8}"></line>`;
-    axis += `<text x="${x.toFixed(1)}" y="${top + routes.length * rh + 6}" text-anchor="middle">${nEs(v)}${i === ticks - 1 ? ' €' : ''}</text>`;
-  }
-  const body = routes.map((r, i) => {
-    const y = top + i * rh;
-    const a = sx(r.min), b = sx(r.avg);
-    return `<g transform="translate(0,${y})">
-      <text x="${x0 - 7}" y="4" text-anchor="end" font-family="Archivo,sans-serif" font-size="11.5" font-weight="500" fill="var(--ink)">${esc(r.label)}</text>
-      <text x="${x0 - 7}" y="17" text-anchor="end" font-family="'Space Mono',monospace" font-size="9" fill="var(--fainter)">${esc(r.market || '')}</text>
-      <line x1="${a.toFixed(1)}" y1="0" x2="${b.toFixed(1)}" y2="0" stroke="var(--lo)" stroke-width="6" stroke-linecap="round" style="transform-origin:${a.toFixed(1)}px 0; animation:atWipe 700ms cubic-bezier(.22,1,.36,1) ${380 + i * 40}ms both;"></line>
-      <circle cx="${a.toFixed(1)}" cy="0" r="4.6" fill="var(--card)" stroke="var(--ac)" stroke-width="2.4"></circle>
-      <circle cx="${b.toFixed(1)}" cy="0" r="4.4" fill="var(--ink)"></circle>
-      <text x="${(b + 19).toFixed(1)}" y="4" font-family="'Space Mono',monospace" font-size="10" fill="var(--ink)">${nEs(r.avg)}</text>
-    </g>`;
-  }).join('');
-  const h = top + routes.length * rh + 28;
-  return `<svg viewBox="0 0 700 ${h}" width="100%" height="${h}" class="svg-block">
-    <g stroke="var(--line-soft)" stroke-width="1">${grid}</g>
-    <g font-family="'Space Mono',monospace" font-size="9.5" fill="var(--fainter)">${axis}</g>
-    <g style="animation:atFade 500ms ease 320ms both;">${body}</g>
-  </svg>`;
-}
-
 /* Línea simple (tendencia) */
 function lineSVG(points, opts = {}) {
   const vals = points.map((p) => p.v).filter((v) => v > 0);
@@ -558,23 +522,12 @@ const State = {
   },
   air: null,
   airRuns: null,
-  flightTab: 'overview',
-  airOperations: {
-    page: 1,
-    pageSize: 100,
-    query: '',
-    market: '',
-    origin: '',
-    destination: '',
-    airline: '',
-    connection: '',
-    price: '',
-    runId: 'all',
-    dateFrom: '',
-    dateTo: '',
-    sort: 'price-asc',
-    requestId: 0,
-    fullscreen: false,
+  airComparison: null,
+  flight: null,        // Vuelos: pestaña, ruta seleccionada, modo del mapa y desplegable de captura
+  flightModel: null,
+  flightMarkers: [],
+  airOperations: {     // tabla «Operación aérea»: filtros, orden y página (paginada en el servidor)
+    page: 1, query: '', segment: '', origin: '', airline: '', connection: '', sort: 'date-asc', requestId: 0, fullscreen: false,
   },
   sessions: [],
   activeSession: null,
@@ -2702,106 +2655,33 @@ function captureComparisonHTML(currentDetail, previousDetail, currentPhoto, prev
   return `<article class="card table-card mb12" id="captureComparison"><div class="table-card__head capture-comparison__head"><div><div class="card__kicker" style="margin-bottom:5px;">Comparación de fotos</div><strong style="font-size:15px;">Foto #${currentPhoto.id} frente a foto #${previousPhoto.id}</strong><span class="capture-comparison__stamp">${fmtStamp(currentPhoto.scrapedAt)} vs. ${fmtStamp(previousPhoto.scrapedAt)} · Emparejamiento por hotel, estancia, habitación, régimen y condiciones</span></div><button type="button" class="btn btn--quiet" data-capture-compare-close>Cerrar comparación</button></div><div class="capture-comparison-summary"><div><span>Filas equivalentes</span><strong>${avgCurrent == null ? '—' : eur(avgCurrent)}</strong><small>${comparable.length} con el mismo producto</small></div><div><span>Δ ADR comparable</span><strong class="capture-change capture-change--${deltaTone}">${signPct(avgChange)}</strong><small>solo filas equivalentes</small></div><div><span>Producto actual</span><strong>${onlyCurrent.length}</strong><small>sin equivalente anterior</small></div><div><span>Producto anterior</span><strong>${onlyPrevious.length}</strong><small>sin equivalente actual</small></div></div><div class="table-scroll"><table class="t" style="min-width:760px;"><caption class="sr-only">Mayores variaciones de ADR entre las dos capturas seleccionadas</caption><thead><tr><th>Hotel</th><th class="r">ADR anterior</th><th class="r">ADR actual</th><th class="r">Δ €</th><th class="r">Δ ADR</th><th>Régimen</th></tr></thead><tbody>${movementRows || '<tr><td colspan="6" class="empty">No hay filas con el mismo hotel, estancia y producto en ambas capturas.</td></tr>'}</tbody></table></div></article>`;
 }
 
-/* ========================================================== OPERACIÓN AÉREA */
+/* ================================================================== VUELOS */
 let airOperationsSearchTimer = null;
-
-function flightTabsHTML(active) {
-  return `<div class="flight-tabs" role="tablist" aria-label="Vistas de vuelos">
-    <button type="button" role="tab" data-flight-tab="overview" aria-selected="${active === 'overview' ? 'true' : 'false'}" class="${active === 'overview' ? 'is-active' : ''}">Resumen</button>
-    <button type="button" role="tab" data-flight-tab="operations" aria-selected="${active === 'operations' ? 'true' : 'false'}" class="${active === 'operations' ? 'is-active' : ''}">Operación aérea</button>
-  </div>`;
-}
-
-function flightsPageHeader(subtitle) {
-  return `${pageHead('Vuelos', subtitle, '')}${flightTabsHTML(State.flightTab)}`;
-}
-
-function airOperationParams() {
-  const q = State.airOperations;
-  const params = new URLSearchParams({ page: String(q.page), pageSize: String(q.pageSize), sort: q.sort });
-  ['query', 'market', 'origin', 'destination', 'airline', 'connection', 'price', 'dateFrom', 'dateTo'].forEach((key) => {
-    if (q[key]) params.set(key, q[key]);
-  });
-  if (q.runId === 'all') params.set('scope', 'history');
-  else if (q.runId) params.set('runId', q.runId);
-  return params.toString();
-}
-
-function persistAirOperationsQuery() {
-  try {
-    const q = State.airOperations;
-    localStorage.setItem('atlas.air-operations.query.v2', JSON.stringify({
-      pageSize: q.pageSize, query: q.query, market: q.market, origin: q.origin, destination: q.destination,
-      airline: q.airline, connection: q.connection, price: q.price, dateFrom: q.dateFrom, dateTo: q.dateTo,
-      runId: q.runId, sort: q.sort,
-    }));
-  } catch (_) { /* la consulta sigue operativa sin almacenamiento local */ }
-}
-
-function restoreAirOperationsQuery() {
-  const q = State.airOperations;
-  if (q.restored) return;
-  q.restored = true;
-  try {
-    const stored = JSON.parse(localStorage.getItem('atlas.air-operations.query.v2') || 'null');
-    if (!stored || typeof stored !== 'object') return;
-    q.pageSize = [25, 50, 100].includes(Number(stored.pageSize)) ? Number(stored.pageSize) : q.pageSize;
-    q.query = typeof stored.query === 'string' ? stored.query.slice(0, 160) : '';
-    ['market', 'origin', 'destination', 'airline', 'connection', 'price', 'dateFrom', 'dateTo'].forEach((key) => {
-      q[key] = typeof stored[key] === 'string' ? stored[key].slice(0, 80) : '';
-    });
-    q.runId = stored.runId === 'all' || stored.runId === '' || (typeof stored.runId === 'string' && /^\d+$/.test(stored.runId)) ? stored.runId : 'all';
-    q.sort = ['price-asc', 'price-desc', 'duration-asc', 'duration-desc', 'aai-asc', 'aai-desc', 'stops-asc', 'date-asc', 'airline-asc'].includes(stored.sort) ? stored.sort : q.sort;
-  } catch (_) { /* una preferencia local dañada no bloquea la vista */ }
-}
-
-function airSelectOptions(items, current, placeholder) {
-  const values = [...new Set(items || [])].filter(Boolean).sort((a, b) => String(a).localeCompare(String(b), 'es'));
-  return `<option value="">${esc(placeholder)}</option>${values.map((value) => `<option value="${esc(value)}" ${value === current ? 'selected' : ''}>${esc(value)}</option>`).join('')}`;
-}
-
-function airCaptureOptions(runs, current) {
-  const totalFlights = (runs || []).reduce((sum, run) => sum + Number(run.flightsCaptured || 0), 0);
-  const scopeOptions = `<option value="all" ${current === 'all' ? 'selected' : ''}>Todas las capturas · ${nEs(totalFlights)} vuelos</option><option value="" ${current === '' ? 'selected' : ''}>Última captura</option>`;
-  return scopeOptions + (runs || []).map((run) => {
-    const id = String(run.id);
-    const label = `${fmtStamp(run.capturedAt)} · ${nEs(run.flightsCaptured || 0)} vuelos`;
-    return `<option value="${esc(id)}" ${id === String(current) ? 'selected' : ''}>${esc(label)}</option>`;
-  }).join('');
-}
+let airPlanTimer = null;
+const FLIGHT_TABS = ['overview', 'routes', 'operations'];
+const FLIGHT_TAB_KEY = 'atlas.flightTab';
+const AIR_PAGE_SIZE = 50;
+const AIR_LPA = { code: 'LPA', lat: 27.9319, lng: -15.3866 };
+const AIR_TIER_COLORS = ['#1f7a52', '#c98a1e', '#b94f50'];
+const AIR_OPS_COLUMNS = [
+  // [etiqueta, clave de ordenación del servidor, alineación, ancho]
+  ['Mercado', null, 'l', 150], ['Origen', 'origin', 'l', 170], ['Destino', null, 'l', 110], ['Fecha', 'date', 'l', 100],
+  ['Aerolínea', null, 'l', 170], ['Vuelo', null, 'l', 150], ['Avión', null, 'l', 150], ['Clase', null, 'l', 80],
+  ['Salida', null, 'r', 72], ['Llegada', null, 'r', 72], ['Conexión', null, 'l', 130], ['Duración', 'duration', 'r', 88],
+  ['Precio', 'price', 'r', 84], ['Posición en ruta', null, 'l', 150], ['AAI', 'aai', 'r', 64], ['Vuelta', null, 'l', 84], ['Captura', null, 'l', 130],
+];
 
 function airDate(value) {
   if (!value) return '—';
   const date = new Date(`${value}T12:00:00Z`);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
-
+function airShortDate(value) { const s = String(value || ''); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : '—'; }
 function durationLabel(minutes) {
   const value = Number(minutes);
   if (!Number.isFinite(value) || value < 0) return '—';
-  return `${Math.floor(value / 60)}h ${String(value % 60).padStart(2, '0')}m`;
+  return `${Math.floor(value / 60)}h ${String(Math.round(value % 60)).padStart(2, '0')}m`;
 }
-
-function airPricePosition(row) {
-  const min = Number(row.typical_price_min);
-  const max = Number(row.typical_price_max);
-  const price = Number(row.price ?? row.lowest_price);
-  const label = row.price_quality_label || 'Sin dato';
-  const tone = label === 'Barato' ? 'good' : label === 'Caro' ? 'bad' : 'neutral';
-  if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(price) || max <= min) {
-    return `<span class="air-position air-position--${tone}"><span>${esc(label)}</span><b>—</b></span>`;
-  }
-  const point = Math.max(0, Math.min(100, ((price - min) / (max - min)) * 100));
-  const tooltipId = `air-price-range-${String(row.id || row.itinerary_id || `${row.market}-${row.origin}-${row.destination}-${price}`).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-  const description = `${label}: ${eur(price)}. Barato por debajo de ${eur(min)}, normal entre ${eur(min)} y ${eur(max)}, caro por encima de ${eur(max)}.`;
-  return `<span class="air-position air-position--${tone} air-position--interactive" tabindex="0" aria-describedby="${tooltipId}" aria-label="${esc(description)}"><span class="air-position__label"><span>${esc(label)}</span><b>${eur(price)}</b></span><span class="air-position__scale"><i class="air-position__low"></i><i class="air-position__mid"></i><i class="air-position__high"></i><em style="left:${point.toFixed(2)}%"></em></span><span class="air-position__help" id="${tooltipId}" role="tooltip"><strong>Rango de precio</strong><span class="air-position__help-row"><i class="air-position__low"></i>Bajo <b>&lt; ${eur(min)}</b></span><span class="air-position__help-row"><i class="air-position__mid"></i>Normal <b>${eur(min)}–${eur(max)}</b></span><span class="air-position__help-row"><i class="air-position__high"></i>Alto <b>&gt; ${eur(max)}</b></span><small>Precio observado <b>${eur(price)}</b></small></span></span>`;
-}
-
-function airportCell(code, name) {
-  const label = [code, name].filter(Boolean).join(' · ') || '—';
-  return `<span class="air-airport" title="${esc(label)}">${esc(code || '—')}</span>`;
-}
-
 function airlineCode(airline) {
   return {
     'Iberia Express': 'I2', Iberia: 'IB', 'Air Europa': 'UX', Vueling: 'VY', Eurowings: 'EW', Condor: 'DE',
@@ -2809,17 +2689,9 @@ function airlineCode(airline) {
     'Brussels Airlines': 'SN', Austrian: 'OS', 'Austrian Airlines': 'OS', 'Tap Air Portugal': 'TP', 'TAP Air Portugal': 'TP', TAP: 'TP',
     'Discover Airlines': '4Y', 'Edelweiss Air': 'WK', Edelweiss: 'WK', 'Binter Canarias': 'NT', Binter: 'NT',
     'Aer Lingus': 'EI', Ryanair: 'FR', easyJet: 'U2', Norwegian: 'DY', 'Scandinavian Airlines': 'SK', SAS: 'SK',
-    Finnair: 'AY', 'Wizz Air': 'W6', 'TUI fly': 'X3', TUI: 'X3', Volotea: 'V7',
+    Finnair: 'AY', 'Wizz Air': 'W6', 'TUI fly': 'X3', TUI: 'X3', 'TUI fly Netherlands': 'OR', Volotea: 'V7',
   }[airline] || String(airline || '?').slice(0, 2).toUpperCase();
 }
-
-function airlineCell(row) {
-  const airline = row.main_airline || (row.airlines || []).join(' · ') || '—';
-  const code = airlineCode(airline);
-  const logoUrl = row.airline_logo || `https://www.gstatic.com/flights/airline_logos/70px/${encodeURIComponent(code)}.png`;
-  return `<span class="flight-airline"><span class="flight-airline__logo" aria-hidden="true"><span>${esc(code)}</span><img class="flight-airline__logo-img" src="${esc(logoUrl)}" alt="" loading="lazy" decoding="async"></span><span class="flight-airline__name">${esc(airline)}</span></span>`;
-}
-
 const AIR_MARKET_BY_IATA = {
   MAD: ['Español', 'España'], BCN: ['Español', 'España'],
   DUS: ['Alemán', 'Alemania'], FRA: ['Alemán', 'Alemania'], MUC: ['Alemán', 'Alemania'],
@@ -2828,221 +2700,12 @@ const AIR_MARKET_BY_IATA = {
   BRU: ['Belga', 'Bélgica'], ZRH: ['Suizo', 'Suiza'], MXP: ['Italiano', 'Italia'],
   LIS: ['Portugués', 'Portugal'], OPO: ['Portugués', 'Portugal'], ARN: ['Sueco', 'Suecia'], CPH: ['Danés', 'Dinamarca'],
 };
-
 function airMarketFromIata(row) {
   const code = [row.origin, row.destination].map((value) => String(value || '').toUpperCase()).find((value) => AIR_MARKET_BY_IATA[value]);
   const mapped = code ? AIR_MARKET_BY_IATA[code] : null;
   return mapped ? { segment: mapped[0], country: mapped[1] } : { segment: 'Internacional', country: '' };
 }
-
-function airMarketCell(row) {
-  const mapped = airMarketFromIata(row);
-  const segment = row.market_segment || mapped.segment;
-  const country = row.market_country || mapped.country;
-  const city = row.market || 'Origen no informado';
-  const title = [segment, country, city].filter((value, index, values) => value && values.indexOf(value) === index).join(' · ');
-  return `<span class="flight-market" title="${esc(title)}"><strong>${esc(segment)}</strong><small>${esc(city)}</small></span>`;
-}
-
-function airOperationRow(row) {
-  const connection = row.is_direct
-    ? '<span class="chip chip--direct">Directo</span>'
-    : `<span class="chip chip--warn">${nEs(row.num_layovers || row.stops || 0)} escala${Number(row.num_layovers || row.stops || 0) === 1 ? '' : 's'}</span>`;
-  const aai = row.air_accessibility_index == null ? '—' : nEs(row.air_accessibility_index, 2);
-  const classes = (row.travel_classes || []).join(' · ') || '—';
-  const layovers = (row.layover_airports || []).join(' · ') || 'Sin escala';
-  return `<tr class="air-option-row">
-    <td class="air-route">${airMarketCell(row)}</td>
-    <td>${airportCell(row.origin, row.departure_airport_name)}</td>
-    <td>${airportCell(row.destination, row.arrival_airport_name)}</td>
-    <td class="air-date">${airDate(row.outbound_date)}${row.days_ahead == null ? '' : ` <small>${nEs(row.days_ahead)}d</small>`}</td>
-    <td class="name">${airlineCell(row)}</td>
-    <td class="mono air-flight" title="${esc((row.flight_numbers || []).join(' · '))}">${esc((row.flight_numbers || []).join(' · ') || '—')}</td>
-    <td class="air-aircraft" title="${esc((row.aircraft_models || []).join(' · '))}">${esc((row.aircraft_models || []).join(' · ') || '—')}</td>
-    <td class="air-class">${esc(classes)}</td>
-    <td class="mono r">${esc(row.departure_time || '—')}</td>
-    <td class="mono r">${esc(row.arrival_time || '—')}</td>
-    <td title="${esc(layovers)}">${connection}</td>
-    <td class="num air-price">${eur(row.price ?? row.lowest_price)}</td>
-    <td class="air-position-cell">${airPricePosition(row)}</td>
-    <td class="num" title="Precio observado dividido por el promedio típico">${aai}</td>
-    <td class="mono r">${durationLabel(row.total_duration_min)}</td>
-    <td class="air-return mono">${airDate(row.return_date)}</td>
-    <td class="air-capture-date mono">${fmtStamp(row.capture_run_at || row.search_datetime)}</td>
-  </tr>`;
-}
-
-async function renderAirOperations({ focusSearch = false } = {}) {
-  const host = mount('flights');
-  restoreAirOperationsQuery();
-  skeleton(host, 'list');
-  const requestId = ++State.airOperations.requestId;
-  let data, runsData;
-  try {
-    [data, runsData] = await Promise.all([
-      api(`/api/air-data/options?${airOperationParams()}`),
-      State.airRuns ? Promise.resolve(State.airRuns) : api('/api/air-data/runs?limit=100'),
-    ]);
-    State.airRuns = runsData;
-  }
-  catch (e) {
-    if (requestId !== State.airOperations.requestId) return;
-    host.innerHTML = `<div class="page">${flightsPageHeader('Opciones de vuelo capturadas para el destino.')}<div class="inline-error">No se pudieron cargar las opciones aéreas: ${esc(e.message)}</div></div>`;
-    return;
-  }
-  if (requestId !== State.airOperations.requestId) return;
-  const q = State.airOperations;
-  const rows = data.rows || [];
-  const total = Number(data.total || 0);
-  const pageCount = Math.max(1, Math.ceil(total / q.pageSize));
-  if (q.page > pageCount) { q.page = pageCount; return renderAirOperations({ focusSearch }); }
-  const from = total ? ((q.page - 1) * q.pageSize) + 1 : 0;
-  const to = Math.min(total, q.page * q.pageSize);
-  const capture = data.capture || {};
-  const historicalScope = data.scope === 'history';
-  const sourceLabel = historicalScope ? 'Histórico completo' : data.is_live ? 'Captura SerpApi' : 'Datos de demostración';
-  const sourceClass = data.is_live ? 'air-capture--live' : 'air-capture--demo';
-  const facets = data.facets || {};
-  const runs = runsData?.runs || [];
-  const historicalFlights = Number(runsData?.totalFlights || 0);
-  const filtered = ['query', 'market', 'origin', 'destination', 'airline', 'connection', 'price', 'dateFrom', 'dateTo'].filter((key) => q[key]).length;
-  const tbody = rows.map(airOperationRow).join('') || '<tr><td colspan="17" class="empty"><strong>Sin opciones para esta consulta</strong>Ajusta los filtros o restablece la vista.</td></tr>';
-
-  host.innerHTML = `<div class="page air-operations-page">
-    ${flightsPageHeader('Detalle de cada opción de vuelo capturada para el destino.')}
-    <article class="card table-card air-operations-card${q.fullscreen ? ' is-fullscreen' : ''}">
-      <div class="air-operations-card__head">
-        <div><div class="card__kicker">Opciones de conectividad</div><strong>Tabla de vuelos</strong><span class="air-operations-card__count">${nEs(total)} opciones · ${nEs(data.facets?.markets?.length || 0)} mercados</span><span class="air-history-coverage">${nEs(runs.length)} capturas · ${nEs(historicalFlights)} opciones históricas</span></div>
-        <div class="air-capture ${sourceClass}"><i></i><span>${sourceLabel}</span><b>${historicalScope ? `${nEs(runs.length)} capturas consolidadas` : capture.capturedAt ? fmtStamp(capture.capturedAt) : 'sin fecha'}</b></div>
-      </div>
-      <div class="air-operations-toolbar" aria-label="Filtros de opciones aéreas">
-        <label class="air-capture-filter"><span>Captura aérea</span><select class="input" data-air-operation-filter="runId">${airCaptureOptions(runs, q.runId)}</select></label>
-        <label class="air-operations-search"><span class="sr-only">Buscar opción aérea</span><input type="search" class="input input--search" id="airOperationsSearch" value="${esc(q.query)}" placeholder="Mercado, IATA, aerolínea, vuelo o aeronave…" /></label>
-        <label><span>Mercado</span><select class="input" data-air-operation-filter="market">${airSelectOptions(facets.markets, q.market, 'Todos')}</select></label>
-        <label><span>Origen</span><select class="input" data-air-operation-filter="origin">${airSelectOptions(facets.origins, q.origin, 'Todos')}</select></label>
-        <label><span>Destino</span><select class="input" data-air-operation-filter="destination">${airSelectOptions(facets.destinations, q.destination, 'Todos')}</select></label>
-        <label><span>Aerolínea</span><select class="input" data-air-operation-filter="airline">${airSelectOptions(facets.airlines, q.airline, 'Todas')}</select></label>
-        <label><span>Conexión</span><select class="input" data-air-operation-filter="connection"><option value="">Todas</option><option value="direct" ${q.connection === 'direct' ? 'selected' : ''}>Directo</option><option value="non_direct" ${q.connection === 'non_direct' ? 'selected' : ''}>Con escala</option><option value="1 escala" ${q.connection === '1 escala' ? 'selected' : ''}>1 escala</option><option value="2 escalas" ${q.connection === '2 escalas' ? 'selected' : ''}>2 escalas</option><option value="3+ escalas" ${q.connection === '3+ escalas' ? 'selected' : ''}>3+ escalas</option></select></label>
-        <label><span>Precio</span><select class="input" data-air-operation-filter="price">${airSelectOptions(facets.prices, q.price, 'Cualquier posición')}</select></label>
-        <label><span>Salida desde</span><input class="input" type="date" value="${esc(q.dateFrom)}" data-air-operation-filter="dateFrom" /></label>
-        <label><span>Salida hasta</span><input class="input" type="date" value="${esc(q.dateTo)}" data-air-operation-filter="dateTo" /></label>
-      </div>
-      <div class="air-operations-table-head">
-        <span class="air-operations-status" aria-live="polite">${filtered ? `${filtered} filtro${filtered === 1 ? '' : 's'} · ` : ''}${from}–${to} de ${nEs(total)} opciones</span>
-        <div class="air-operations-table-tools">
-          <label><span>Ordenar</span><select class="input" data-air-operation-filter="sort"><option value="price-asc" ${q.sort === 'price-asc' ? 'selected' : ''}>Precio ↑</option><option value="price-desc" ${q.sort === 'price-desc' ? 'selected' : ''}>Precio ↓</option><option value="date-asc" ${q.sort === 'date-asc' ? 'selected' : ''}>Salida próxima</option><option value="duration-asc" ${q.sort === 'duration-asc' ? 'selected' : ''}>Duración ↑</option><option value="duration-desc" ${q.sort === 'duration-desc' ? 'selected' : ''}>Duración ↓</option><option value="aai-asc" ${q.sort === 'aai-asc' ? 'selected' : ''}>AAI favorable</option><option value="aai-desc" ${q.sort === 'aai-desc' ? 'selected' : ''}>AAI alto</option><option value="stops-asc" ${q.sort === 'stops-asc' ? 'selected' : ''}>Menos escalas</option><option value="airline-asc" ${q.sort === 'airline-asc' ? 'selected' : ''}>Aerolínea A–Z</option></select></label>
-          <label><span>Filas</span><select class="input" data-air-operation-filter="pageSize"><option value="25" ${q.pageSize === 25 ? 'selected' : ''}>25</option><option value="50" ${q.pageSize === 50 ? 'selected' : ''}>50</option><option value="100" ${q.pageSize === 100 ? 'selected' : ''}>100</option></select></label>
-          <button type="button" class="btn btn--quiet" data-air-operation-reset ${filtered || q.runId !== 'all' || q.sort !== 'price-asc' || q.pageSize !== 100 ? '' : 'disabled'}>Restablecer</button>
-          <button type="button" class="btn btn--quiet air-fullscreen-toggle" data-air-operations-fullscreen aria-pressed="${q.fullscreen ? 'true' : 'false'}" aria-label="${q.fullscreen ? 'Salir de la vista de tabla a pantalla completa' : 'Ver la tabla a pantalla completa'}"><span aria-hidden="true">${q.fullscreen ? '↙' : '↗'}</span>${q.fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button>
-        </div>
-      </div>
-      <div class="table-scroll air-operations-scroll">
-        <table class="t air-operations-table" id="airOperationsTable">
-          <caption class="sr-only">Opciones de vuelo capturadas, con conexión, precio, posición frente al rango típico, índice de accesibilidad y duración</caption>
-          <thead><tr><th>Mercado</th><th>Origen</th><th>Destino</th><th>Salida</th><th>Aerolínea</th><th>Vuelo</th><th>Aeronave</th><th>Clase</th><th class="r">Despegue</th><th class="r">Llegada</th><th>Conexión</th><th class="r">Precio</th><th>Posición precio</th><th class="r" title="Precio observado dividido por el promedio típico">AAI</th><th class="r">Duración</th><th>Vuelta</th><th>Captura</th></tr></thead>
-          <tbody>${tbody}</tbody>
-        </table>
-      </div>
-      <footer class="air-operations-pager">
-        <span>Página ${nEs(q.page)} de ${nEs(pageCount)}</span>
-        <div><button type="button" class="btn btn--xs" data-air-operation-page="prev" ${q.page <= 1 ? 'disabled' : ''}>Anterior</button><button type="button" class="btn btn--xs" data-air-operation-page="next" ${q.page >= pageCount ? 'disabled' : ''}>Siguiente</button></div>
-      </footer>
-    </article>
-  </div>`;
-  document.body.classList.toggle('air-operations-fullscreen', q.fullscreen);
-  persistAirOperationsQuery();
-  if (focusSearch) requestAnimationFrame(() => $('#airOperationsSearch')?.focus());
-}
-
-function toggleAirOperationsFullscreen(force) {
-  const card = $('.air-operations-card');
-  if (!card) return;
-  const button = $('[data-air-operations-fullscreen]', card);
-  const next = typeof force === 'boolean' ? force : !State.airOperations.fullscreen;
-  State.airOperations.fullscreen = next;
-  card.classList.toggle('is-fullscreen', next);
-  document.body.classList.toggle('air-operations-fullscreen', next);
-  if (button) {
-    button.setAttribute('aria-pressed', next ? 'true' : 'false');
-    button.setAttribute('aria-label', next ? 'Salir de la vista de tabla a pantalla completa' : 'Ver la tabla a pantalla completa');
-    button.innerHTML = `<span aria-hidden="true">${next ? '↙' : '↗'}</span>${next ? 'Salir de pantalla completa' : 'Pantalla completa'}`;
-    if (!next) requestAnimationFrame(() => button.focus());
-  }
-}
-
-function updateAirOperationsQuery(key, value, focusSearch = false) {
-  const q = State.airOperations;
-  if (!Object.prototype.hasOwnProperty.call(q, key)) return;
-  q[key] = value;
-  if (key === 'runId') {
-    ['query', 'market', 'origin', 'destination', 'airline', 'connection', 'price', 'dateFrom', 'dateTo'].forEach((filterKey) => { q[filterKey] = ''; });
-  }
-  q.page = 1;
-  renderAirOperations({ focusSearch });
-}
-
-function resetAirOperationsQuery() {
-  const q = State.airOperations;
-  Object.assign(q, { page: 1, pageSize: 100, query: '', market: '', origin: '', destination: '', airline: '', connection: '', price: '', runId: 'all', dateFrom: '', dateTo: '', sort: 'price-asc' });
-  renderAirOperations({ focusSearch: true });
-}
-
-function airComparisonSVG(points, status) {
-  const grouped = new Map();
-  (points || []).filter((point) => point.comparable && point.currentPrice != null && point.previousPrice != null).forEach((point) => {
-    const date = String(point.outboundDate || '');
-    if (!grouped.has(date)) grouped.set(date, { date, current: [], previous: [], routes: [] });
-    const group = grouped.get(date);
-    group.current.push(Number(point.currentPrice));
-    group.previous.push(Number(point.previousPrice));
-    group.routes.push(point.routeKey);
-  });
-  const usable = [...grouped.values()].map((group) => ({
-    outboundDate: group.date,
-    currentPrice: median(group.current),
-    previousPrice: median(group.previous),
-    routes: group.routes,
-  }));
-  if (!usable.length) {
-    const message = status === 'incompatible_profile'
-      ? 'No se pueden comparar las fotos: el perfil de búsqueda ha cambiado.'
-      : 'No hay dos fotos SerpAPI comparables para las mismas rutas y fechas.';
-    return `<div class="air-comparison-empty">${message}</div>`;
-  }
-  const width = 780, height = 250, pad = { left: 54, right: 22, top: 22, bottom: 42 };
-  const values = usable.flatMap((point) => [Number(point.currentPrice), Number(point.previousPrice)]);
-  const min = Math.min(...values), max = Math.max(...values), span = Math.max(1, max - min);
-  const sx = (index) => pad.left + (index / Math.max(1, usable.length - 1)) * (width - pad.left - pad.right);
-  const sy = (value) => pad.top + (1 - ((value - min) / span)) * (height - pad.top - pad.bottom);
-  const path = (field) => usable.map((point, index) => `${index ? 'L' : 'M'} ${sx(index).toFixed(1)} ${sy(Number(point[field])).toFixed(1)}`).join(' ');
-  const dateLabel = (value) => {
-    const parts = String(value || '').split('-');
-    return parts.length === 3 ? `${parts[2]}/${parts[1]}` : '—';
-  };
-  const labels = usable.map((point, index) => `<text x="${sx(index).toFixed(1)}" y="${height - 19}" text-anchor="middle">${dateLabel(point.outboundDate)}</text>`).join('');
-  const dots = (field, colour) => usable.map((point, index) => `<circle cx="${sx(index).toFixed(1)}" cy="${sy(Number(point[field])).toFixed(1)}" r="3.5" fill="${colour}"><title>${esc(point.outboundDate)} · ${point.routes.length} rutas · mediana ${eur(point[field])}</title></circle>`).join('');
-  return `<svg class="air-comparison-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Comparación de precios entre las dos últimas fotos, por fecha de salida"><line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" stroke="var(--line)"/><line x1="${pad.left}" y1="${pad.top}" x2="${width - pad.right}" y2="${pad.top}" stroke="var(--line)"/><path d="${path('previousPrice')}" fill="none" stroke="#9aa4b2" stroke-width="2" stroke-dasharray="5 4"/><path d="${path('currentPrice')}" fill="none" stroke="var(--ac)" stroke-width="2.5"/>${dots('previousPrice', '#9aa4b2')}${dots('currentPrice', 'var(--ac)')}${labels}<text class="air-axis-value" x="${pad.left - 8}" y="${pad.top + 3}" text-anchor="end">${eur(max)}</text><text class="air-axis-value" x="${pad.left - 8}" y="${height - pad.bottom + 3}" text-anchor="end">${eur(min)}</text><text class="air-axis-title air-axis-title--y" x="14" y="${height / 2}" text-anchor="middle" transform="rotate(-90 14 ${height / 2})">€ por viajero</text><text class="air-axis-title" x="${(pad.left + width - pad.right) / 2}" y="${height - 2}" text-anchor="middle">Fecha de salida</text></svg>`;
-}
-
-function airComparisonReadout(points) {
-  const groups = new Map();
-  (points || []).filter((point) => point.comparable && point.currentPrice != null && point.previousPrice != null).forEach((point) => {
-    const date = String(point.outboundDate || '');
-    if (!groups.has(date)) groups.set(date, { current: [], previous: [], routes: 0 });
-    const group = groups.get(date);
-    group.current.push(Number(point.currentPrice));
-    group.previous.push(Number(point.previousPrice));
-    group.routes += 1;
-  });
-  return [...groups.entries()].map(([date, group]) => {
-    const current = median(group.current), previous = median(group.previous);
-    const delta = current - previous;
-    const pct = previous ? (delta / previous) * 100 : null;
-    const parts = date.split('-');
-    const label = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
-    return `<div class="air-chart-readout"><strong>${label}</strong><span>Última foto <b>${eur(current)}</b></span><span>Foto anterior <b>${eur(previous)}</b></span><span class="${delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}">${delta > 0 ? '+' : ''}${eur(delta)} (${signPct(pct)})</span><small>${group.routes} rutas comparables · mediana</small></div>`;
-  }).join('');
-}
+function airSegment(row) { return row.market_segment || airMarketFromIata(row).segment; }
 
 function airCaptureStartDate() {
   const date = new Date();
@@ -3050,58 +2713,617 @@ function airCaptureStartDate() {
   return date.toISOString().slice(0, 10);
 }
 
+function restoreFlightState() {
+  if (State.flight) return State.flight;
+  State.flight = { tab: readPref(FLIGHT_TAB_KEY, FLIGHT_TABS, 'overview'), focus: null, mapMode: 'options', planOpen: false, firstDate: airCaptureStartDate(), budget: 500, estimate: null, barHover: null };
+  return State.flight;
+}
+
+/* Modelo del resumen aéreo a partir de la foto aérea vigente y la comparación con la anterior. */
+function flightModel(data, comparison) {
+  const flights = data.flights || [];
+  const airports = data.airports || {};
+  const deltas = new Map();
+  (comparison?.points || []).forEach((p) => { if (p.comparable && p.changePct != null) { if (!deltas.has(p.origin)) deltas.set(p.origin, []); deltas.get(p.origin).push(Number(p.changePct)); } });
+  const routes = (data.routes || []).map((r) => {
+    const fs = flights.filter((f) => f.origin === r.origin);
+    const prices = fs.map((f) => Number(f.price)).filter((v) => v > 0);
+    const durs = fs.map((f) => Number(f.total_duration_min)).filter((v) => v > 0);
+    const ap = airports[r.origin] || {};
+    const d = deltas.get(r.origin);
+    return {
+      code: r.origin, key: r.route_key, city: r.market || ap.city || r.origin, airport: ap.name || r.origin, country: r.market_country || ap.country || '',
+      lat: ap.lat, lng: ap.lng, segment: r.market_segment || airMarketFromIata(r).segment,
+      options: Number(r.num_options || fs.length), airlines: r.airlines_detected || [], minP: Number(r.lowest_price) || (prices.length ? Math.min(...prices) : null),
+      avgP: Number(r.avg_price) || (prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : null), maxP: prices.length ? Math.max(...prices) : null,
+      directPct: Math.round(Number(r.direct_share || 0) * 100), durAvg: durs.length ? durs.reduce((a, b) => a + b, 0) / durs.length : null,
+      delta: d && d.length ? d.reduce((a, b) => a + b, 0) / d.length : null, flights: fs,
+    };
+  }).filter((r) => r.avgP != null);
+  const sortedAvg = routes.map((r) => r.avgP).sort((a, b) => a - b);
+  const q1 = sortedAvg[Math.floor(sortedAvg.length / 3)], q2 = sortedAvg[Math.floor((sortedAvg.length * 2) / 3)];
+  routes.forEach((r) => { r.tier = r.avgP < q1 ? 0 : r.avgP < q2 ? 1 : 2; });
+  const comparable = (comparison?.points || []).filter((p) => p.comparable && p.changePct != null);
+  return {
+    flights, routes, airports, capture: data.capture || {}, summary: data.summary || {},
+    variation: comparable.length ? comparable.reduce((a, p) => a + Number(p.changePct), 0) / comparable.length : null,
+    comparableRoutes: comparable.length,
+  };
+}
+
+function flightHeaderHTML(model) {
+  const st = State.flight;
+  const segments = new Set(model.routes.map((r) => r.segment)).size;
+  const direct = model.routes.filter((r) => r.directPct > 0).length;
+  const at = model.capture.capturedAt;
+  const plan = st.planOpen ? flightPlanHTML(model) : '';
+  return `<div class="page-head"><div><h1>Vuelos</h1><p>Conectividad aérea hacia Gran Canaria · ${direct} ${direct === 1 ? 'ruta directa' : 'rutas directas'} desde ${segments} ${segments === 1 ? 'mercado emisor' : 'mercados emisores'}</p></div>
+    <div class="page-head__meta fl-head"><span>Foto aérea ${esc(fmtStamp(at))} · ${nEs(model.flights.length)} opciones</span><button type="button" class="btn btn--primary btn--icon-text" data-fl-plan aria-expanded="${st.planOpen}" aria-controls="flPlan">Nueva captura aérea</button>${plan}</div></div>
+    <div class="htabs" role="tablist" aria-label="Vistas de vuelos">${[['overview', 'Resumen', ''], ['routes', 'Rutas', model.routes.length], ['operations', 'Operación aérea', model.flights.length]].map(([id, label, count]) => `<button type="button" role="tab" class="htabs__tab${st.tab === id ? ' is-active' : ''}" id="flTab-${id}" data-flight-tab="${id}" aria-selected="${st.tab === id}" aria-controls="flPanel" tabindex="${st.tab === id ? 0 : -1}">${label}${count === '' ? '' : `<span>${nEs(count)}</span>`}</button>`).join('')}</div>`;
+}
+
+function flightPlanHTML(model) {
+  const st = State.flight, est = st.estimate;
+  const ok = est && est.withinBudget && est.serpapiConfigured !== false;
+  const estText = !est ? '<span>Calculando consultas…</span><strong>—</strong>'
+    : est.error ? `<span>${esc(est.error)}</span><strong>—</strong>`
+    : `<span>${nEs(est.dateCount)} fechas × ${nEs(est.routes)} rutas${est.serpapiConfigured === false ? ' · falta SERPAPI_API_KEY' : ''}</span><strong>${nEs(est.queries)} consultas</strong>`;
+  return `<div class="fl-plan" id="flPlan" role="dialog" aria-label="Preparar una foto de conectividad">
+    <div><strong>Preparar una foto de conectividad</strong><p>SerpAPI · 1 adulto · turista · solo ida. 14 fechas diarias y después una semanal hasta 90 días.</p></div>
+    <div class="fl-plan__fields"><label><span>Primera salida</span><input type="date" id="airCaptureStart" value="${esc(st.firstDate)}"></label><label><span>Presupuesto de consultas</span><input type="number" id="airCaptureBudget" min="1" max="5000" step="1" value="${esc(st.budget)}"></label></div>
+    <div class="fl-plan__est${est && !est.error ? (ok ? ' is-ok' : ' is-bad') : ''}" id="airCaptureEstimate" role="status">${estText}</div>
+    <button type="button" class="btn btn--primary fl-plan__go" data-air-capture-start${ok ? '' : ' disabled'}>Iniciar captura</button>
+  </div>`;
+}
+
+function flightKpisHTML(model) {
+  const fl = model.flights;
+  const prices = fl.map((f) => Number(f.price)).filter((v) => v > 0);
+  const dates = new Set(fl.map((f) => f.outbound_date).filter(Boolean)).size;
+  const direct = fl.filter((f) => f.is_direct).length;
+  const airlines = new Set(fl.map((f) => f.main_airline).filter(Boolean)).size;
+  const durs = fl.map((f) => Number(f.total_duration_min)).filter((v) => v > 0);
+  const access = model.routes.length ? model.routes.reduce((a, r) => a + r.minP, 0) / model.routes.length : null;
+  const v = model.variation;
+  const cells = [
+    ['Rutas activas', nEs(model.routes.length), '', `${new Set(model.routes.map((r) => r.segment)).size} mercados emisores`],
+    ['Opciones', nEs(fl.length), '', `${dates} ${dates === 1 ? 'fecha' : 'fechas'} de salida`],
+    ['Precio de acceso', access == null ? '—' : nEs(access), access == null ? '' : '€', 'mínimo medio por ruta'],
+    ['Precio medio', prices.length ? nEs(prices.reduce((a, b) => a + b, 0) / prices.length) : '—', prices.length ? '€' : '', '1 adulto · solo ida'],
+    ['Variación', v == null ? '—' : biSigned(v), v == null ? '' : '%', v == null ? 'sin foto aérea comparable' : `vs foto aérea anterior · ${model.comparableRoutes} rutas`, v == null ? '' : v > 0 ? 'neg' : v < 0 ? 'pos' : ''],
+    ['Directos', fl.length ? nEs((direct / fl.length) * 100) : '—', fl.length ? '%' : '', `${fl.length - direct} opciones con escala`],
+    ['Aerolíneas', nEs(airlines), '', durs.length ? `duración media ${durationLabel(durs.reduce((a, b) => a + b, 0) / durs.length)}` : 'sin duración publicada'],
+  ];
+  return cells.map(([label, value, unit, foot, tone]) => `<div class="kpi-strip__cell"><span class="kpi-strip__label">${label}</span><div class="kpi-strip__value"><strong>${value}</strong>${unit ? `<span>${unit}</span>` : ''}</div><span class="kpi-strip__foot${tone ? ` ${tone}` : ''}">${esc(foot)}</span></div>`).join('');
+}
+
+function flightRouteCardHTML(model, r) {
+  if (!r) return '<div class="empty">Sin rutas en la foto aérea.</div>';
+  const st = State.flight;
+  const options = model.routes.map((x) => `<option value="${esc(x.code)}"${x.code === r.code ? ' selected' : ''}>${esc(x.code)} · ${esc(x.city)}</option>`).join('');
+  const facts = [['Mínimo', eur(r.minP), 'ac'], ['Medio', eur(r.avgP), ''], ['Máximo', eur(r.maxP), ''], ['Opciones', nEs(r.options), ''], ['Directos', `${r.directPct} %`, ''], ['Duración', durationLabel(r.durAvg), '']]
+    .map(([k, v, tone]) => `<div><span>${k}</span><strong class="${tone}">${v}</strong></div>`).join('');
+  const dates = [...new Set(r.flights.map((f) => f.outbound_date).filter(Boolean))].sort();
+  const byDate = dates.map((d) => ({ d, v: Math.min(...r.flights.filter((f) => f.outbound_date === d).map((f) => Number(f.price)).filter((v) => v > 0)) }));
+  const bmax = Math.max(...byDate.map((b) => b.v), 1), bmin = Math.min(...byDate.map((b) => b.v));
+  const bars = byDate.map((b) => `<i class="${b.v === bmin ? 'is-min' : ''}" style="height:${((b.v / bmax) * 100).toFixed(1)}%" title="${esc(`${airShortDate(b.d)} · ${eur(b.v)}`)}" data-fl-bar="${esc(`${airShortDate(b.d)} · ${eur(b.v)}`)}"></i>`).join('');
+  const axis = dates.length ? `<span>${airShortDate(dates[0])}</span>${dates.length > 2 ? `<span>${airShortDate(dates[Math.floor(dates.length / 2)])}</span>` : ''}${dates.length > 1 ? `<span>${airShortDate(dates.at(-1))}</span>` : ''}` : '';
+  const airlines = [...new Set(r.flights.map((f) => f.main_airline).filter(Boolean))].map((name) => {
+    const fs = r.flights.filter((f) => f.main_airline === name);
+    return { name, aircraft: (fs[0].aircraft_models || [])[0] || '', n: fs.length, min: Math.min(...fs.map((f) => Number(f.price))) };
+  }).sort((a, b) => a.min - b.min).map((a) => `<div class="fl-airline"><span class="fl-iata">${esc(airlineCode(a.name))}</span><span class="fl-airline__name">${esc(a.name)}${a.aircraft ? ` <small>· ${esc(a.aircraft)}</small>` : ''}</span><span class="fl-airline__n">${a.n} opc.</span><strong>${eur(a.min)}</strong></div>`).join('');
+  return `<div class="fl-route__head"><div class="fl-route__top"><span class="card__kicker">Ruta seleccionada</span><select id="flRouteSelect" class="fl-route__select" aria-label="Ruta seleccionada">${options}</select></div><h2>${esc(r.code)} → LPA</h2><span>${esc(r.airport)}${r.country ? ` · ${esc(r.country)}` : ''}</span></div>
+    <div class="fl-route__facts">${facts}</div>
+    <div class="fl-route__bars"><div class="fl-route__barshead"><span class="card__kicker">Mínimo por fecha de salida</span><span id="flBarReadout">${dates.length > 1 ? 'más barato en verde' : `${dates.length} fecha capturada`}</span></div><div class="fl-bars">${bars}</div><div class="fl-bars__axis">${axis}</div></div>
+    <div class="fl-route__airlines"><span class="card__kicker">Aerolíneas</span>${airlines || '<span class="dim">Sin aerolíneas</span>'}</div>
+    <div class="fl-route__foot"><button type="button" class="btn" data-fl-ops="${esc(r.code)}">Ver ${nEs(r.options)} vuelos</button><button type="button" class="btn fl-ask" data-fl-ask="${esc(`¿Cómo evoluciona el precio de ${r.code} → LPA?`)}">Preguntar al Copilot</button></div>`;
+}
+
+function flightHeatHTML(model, focus) {
+  const start = model.capture.capturedAt ? new Date(model.capture.capturedAt) : new Date();
+  const weeks = Array.from({ length: 13 }, (_, w) => { const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`; });
+  const rows = model.routes.map((r) => {
+    const cells = Array.from({ length: 13 }, (_, w) => {
+      const ws = r.flights.filter((f) => Number(f.days_ahead) >= 0 && Math.floor(Math.max(0, Number(f.days_ahead) - 1) / 7) === w).map((f) => Number(f.price)).filter((v) => v > 0);
+      if (!ws.length) return '<span class="fl-heat__cell is-empty" title="Sin datos">—</span>';
+      const v = Math.min(...ws), idx = v / r.avgP - 1, a = Math.min(0.6, Math.abs(idx) * 1.6);
+      const bg = Math.abs(idx) < 0.04 ? 'var(--line-soft)' : idx < 0 ? `rgba(31,122,82,${a.toFixed(2)})` : `rgba(185,79,80,${a.toFixed(2)})`;
+      return `<span class="fl-heat__cell${a > 0.4 ? ' is-strong' : ''}${r.code === focus ? ' is-focus' : ''}" style="background:${bg}" title="${esc(`${r.code} · semana del ${weeks[w]} · ${eur(v)} (${biSigned(idx * 100)} % vs media)`)}">${nEs(v)}</span>`;
+    }).join('');
+    return `<button type="button" class="fl-heat__route${r.code === focus ? ' is-focus' : ''}" data-fl-route="${esc(r.code)}">${esc(r.code)} <small>${esc(r.city)}</small></button>${cells}`;
+  }).join('');
+  return `<div class="dash-card__head"><div><span class="card__kicker">Mapa de calor</span><h2>Precio mínimo por ruta y semana de salida</h2></div><div class="fl-heat__legend"><span>bajo su media</span><span class="bi-legend__scale" aria-hidden="true"><i style="background:rgba(31,122,82,.55)"></i><i style="background:rgba(31,122,82,.2)"></i><i style="background:var(--line-soft)"></i><i style="background:rgba(185,79,80,.2)"></i><i style="background:rgba(185,79,80,.55)"></i></span><span>sobre su media</span></div></div>
+    <div class="fl-heat"><span></span>${weeks.map((w) => `<span class="fl-heat__week">${w}</span>`).join('')}${rows}</div>`;
+}
+
+function flightLeadHTML(model) {
+  const buckets = [['≤ 14 días', 0, 14], ['15–30 días', 15, 30], ['31–60 días', 31, 60], ['61–90 días', 61, 90]].map(([label, a, b]) => {
+    const vs = model.flights.filter((f) => Number(f.days_ahead) >= a && Number(f.days_ahead) <= b && f.air_accessibility_index != null).map((f) => Number(f.air_accessibility_index));
+    if (!vs.length) return `<div class="fl-lead"><span>${label}</span><div class="fl-lead__track"><i class="fl-lead__axis"></i></div><strong class="dim">—</strong></div>`;
+    const idx = vs.reduce((x, v) => x + v, 0) / vs.length - 1, w = Math.min(50, (Math.abs(idx) / 0.2) * 50);
+    return `<div class="fl-lead" title="${vs.length} opciones"><span>${label}</span><div class="fl-lead__track"><i class="fl-lead__axis"></i><i class="fl-lead__fill ${idx >= 0 ? 'is-up' : 'is-down'}" style="left:${idx >= 0 ? 50 : 50 - w}%;width:${w.toFixed(1)}%"></i></div><strong class="${idx >= 0 ? 'neg' : 'pos'}">${biSigned(idx * 100)} %</strong></div>`;
+  }).join('');
+  return `<div><span class="card__kicker">Curva de antelación</span><h2>Precio según días hasta la salida</h2></div>${buckets}<span class="dash-curve__note">Índice AAI (precio / precio típico de la ruta) por tramo de antelación. Agrega las ${model.routes.length} rutas.</span>`;
+}
+
+function flightShareHTML(model) {
+  const names = [...new Set(model.flights.map((f) => f.main_airline).filter(Boolean))];
+  const share = names.map((n) => { const fs = model.flights.filter((f) => f.main_airline === n); return { n, count: fs.length, min: Math.min(...fs.map((f) => Number(f.price))) }; }).sort((a, b) => b.count - a.count).slice(0, 8);
+  const max = share[0]?.count || 1;
+  return `<span class="card__kicker">Cuota de oferta</span><h2>Aerolíneas</h2>${share.map((s) => `<div class="fl-share"><span>${esc(s.n)}</span><div class="fl-share__track"><i style="width:${((s.count / max) * 100).toFixed(1)}%"></i></div><span class="mono">${nEs((s.count / model.flights.length) * 100, 1)}%</span><span class="mono dim">${eur(s.min)}</span></div>`).join('') || '<div class="empty">Sin aerolíneas.</div>'}`;
+}
+
+function flightMarketsHTML(model) {
+  const names = [...new Set(model.routes.map((r) => r.segment))];
+  const segs = names.map((n) => { const rs = model.routes.filter((r) => r.segment === n), fs = model.flights.filter((f) => airSegment(f) === n); return { n, routes: rs.length, opts: fs.length, min: Math.min(...fs.map((f) => Number(f.price))) }; }).sort((a, b) => b.opts - a.opts);
+  const max = segs[0]?.opts || 1;
+  return `<span class="card__kicker">Origen de la demanda</span><h2>Mercados emisores</h2><div class="fl-mkt fl-mkt--head"><span>Mercado</span><span>Rutas</span><span>Opc.</span><span>Desde</span></div>${segs.map((s) => `<div class="fl-mkt"><span class="fl-mkt__name"><i style="width:${Math.max(8, (s.opts / max) * 36).toFixed(0)}px"></i><span>${esc(s.n)}</span></span><span>${s.routes}</span><span>${s.opts}</span><strong>${eur(s.min)}</strong></div>`).join('')}`;
+}
+
+function flightSignalsHTML(model) {
+  const rs = model.routes;
+  if (!rs.length) return '<span class="card__kicker">Lectura automática</span><h2>Señales aéreas</h2><div class="empty">Sin rutas.</div>';
+  const avgNet = rs.reduce((a, r) => a + r.avgP, 0) / rs.length;
+  const byAvg = [...rs].sort((a, b) => b.avgP - a.avgP)[0];
+  const cheapest = [...rs].sort((a, b) => a.minP - b.minP)[0];
+  const spread = [...rs].sort((a, b) => (b.maxP - b.minP) - (a.maxP - a.minP))[0];
+  const lowDirect = [...rs].sort((a, b) => a.directPct - b.directPct)[0];
+  const via = (lowDirect.flights.find((f) => !f.is_direct)?.layover_airports || [])[0];
+  const moved = [...rs].filter((r) => r.delta != null).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+  const signals = [
+    [eur(byAvg.avgP), `Ruta más cara: ${byAvg.code}`, `${byAvg.city}: ${nEs(byAvg.avgP / avgNet, 1)}× el precio medio de la red.`, 'neg', byAvg.code],
+    [eur(cheapest.minP), `Acceso más barato: ${cheapest.code}`, `Mínimo observado desde ${cheapest.city}.`, 'pos', cheapest.code],
+    [`+${eur(spread.maxP - spread.minP)}`, `Mayor amplitud: ${spread.code}`, 'Diferencia entre mínimo y máximo en la ruta.', '', spread.code],
+    [`${lowDirect.directPct} %`, `Menos directos: ${lowDirect.code}`, lowDirect.directPct === 100 ? 'Toda la oferta observada es directa.' : `Parte de la oferta conecta vía ${via || 'otro aeropuerto'}.`, 'warn', lowDirect.code],
+    moved ? [`${biSigned(moved.delta)} %`, `Mayor cambio: ${moved.code}`, 'Variación del precio frente a la foto aérea anterior.', moved.delta > 0 ? 'neg' : 'pos', moved.code] : null,
+  ].filter(Boolean);
+  return `<span class="card__kicker">Lectura automática</span><h2>Señales aéreas</h2>${signals.map(([v, title, text, tone, code]) => `<button type="button" class="fl-signal" data-fl-route="${esc(code)}"><span class="fl-signal__v ${tone}">${esc(v)}</span><span><strong>${esc(title)}</strong><span>${esc(text)}</span></span></button>`).join('')}`;
+}
+
+function flightOverviewHTML(model) {
+  const st = State.flight;
+  const focus = model.routes.find((r) => r.code === st.focus) || model.routes[0] || null;
+  st.focus = focus ? focus.code : null;
+  const legend = { options: 'Número de opciones observadas', airlines: 'Número de aerolíneas', price: 'Más gruesa = más barata' }[st.mapMode];
+  return `<section class="kpi-strip kpi-strip--bi" aria-label="Resumen de conectividad">${flightKpisHTML(model)}</section>
+    <div class="dash-grid">
+      <article class="dash-card dash-card--map fl-map-card"><div class="dash-card__head"><div><span class="card__kicker">Red de rutas</span><h2>Conectividad hacia LPA</h2></div>
+        <div class="fl-map__tools"><div class="seg seg--sm" role="group" aria-label="Grosor de línea">${[['options', 'Oferta'], ['airlines', 'Aerolíneas'], ['price', 'Precio']].map(([id, label]) => `<button type="button" class="${st.mapMode === id ? 'is-active' : ''}" data-fl-mode="${id}" aria-pressed="${st.mapMode === id}">${label}</button>`).join('')}</div>
+        <div class="dash-legend"><span><i class="fl-line tone-low"></i>bajo</span><span><i class="fl-line tone-mid"></i>medio</span><span><i class="fl-line tone-high"></i>alto</span></div></div></div>
+        <div class="map-frame fl-map" id="flMapFrame"><div class="map-frame__canvas" id="flMap" aria-label="Mapa de rutas hacia Gran Canaria"></div><div class="fl-map__legend"><span class="card__kicker">Grosor de línea</span><span id="flMapLegend">${legend}</span></div></div></article>
+      <article class="dash-card fl-route" id="flRoute">${flightRouteCardHTML(model, focus)}</article>
+      <article class="dash-card fl-heat-card" id="flHeat">${flightHeatHTML(model, st.focus)}</article>
+      <article class="dash-card fl-lead-card">${flightLeadHTML(model)}</article>
+      <article class="dash-card fl-small">${flightShareHTML(model)}</article>
+      <article class="dash-card fl-small">${flightMarketsHTML(model)}</article>
+      <article class="dash-card fl-small">${flightSignalsHTML(model)}</article>
+    </div>`;
+}
+
+function flightRoutesHTML(model) {
+  const rs = [...model.routes].sort((a, b) => b.avgP - a.avgP);
+  if (!rs.length) return '<article class="card card--pad"><div class="empty">Sin rutas en la foto aérea.</div></article>';
+  const lo = Math.floor(Math.min(...rs.map((r) => r.minP)) / 50) * 50, hi = Math.ceil(Math.max(...rs.map((r) => r.maxP)) / 50) * 50;
+  const X = (v) => ((v - lo) / Math.max(1, hi - lo)) * 100;
+  const ticks = Array.from({ length: 5 }, (_, i) => lo + ((hi - lo) * i) / 4);
+  const rows = rs.map((r) => `<button type="button" class="fl-range" data-fl-route-open="${esc(r.code)}"><span class="fl-range__name"><strong>${esc(r.code)} → LPA</strong><small>${esc(r.city)}</small></span>
+    <span class="fl-range__plot"><i class="fl-range__axis"></i><i class="fl-range__span" style="left:${X(r.minP).toFixed(1)}%;width:${(X(r.maxP) - X(r.minP)).toFixed(1)}%"></i><i class="fl-range__min" style="left:${X(r.minP).toFixed(1)}%"></i><i class="fl-range__avg" style="left:${X(r.avgP).toFixed(1)}%"></i><i class="fl-range__max" style="left:${X(r.maxP).toFixed(1)}%"></i></span>
+    <span class="mono">${nEs(r.minP)} · ${nEs(r.avgP)} · ${nEs(r.maxP)} €</span><span class="mono dim">${r.directPct} %</span><span class="mono ${r.delta > 0 ? 'neg' : r.delta < 0 ? 'pos' : 'dim'}">${r.delta == null ? '—' : `${biSigned(r.delta)} %`}</span></button>`).join('');
+  return `<article class="card card--pad fl-ranges"><div class="dash-card__head"><div><span class="card__kicker">Precio de entrada vs. medio vs. máximo</span><h2>Amplitud de tarifa por ruta</h2></div><div class="dash-legend"><span><i class="fl-key fl-key--min"></i>mínimo</span><span><i class="fl-key fl-key--avg"></i>medio</span><span><i class="fl-key fl-key--max"></i>máximo</span></div></div>
+    <div class="fl-range fl-range--head"><span>Ruta</span><span></span><span>Mín · medio · máx</span><span>Directos</span><span>Δ foto</span></div>${rows}
+    <div class="fl-ranges__axis"><span></span><span class="fl-ranges__ticks">${ticks.map((t) => `<span>${eur(t)}</span>`).join('')}</span><span></span><span></span><span></span></div>
+    <p class="fl-note">Ofertas observadas, no billetes vendidos.</p></article>`;
+}
+
+/* ---- operación aérea (tabla profesional, paginada en el servidor) */
+function airOperationParams(extra = {}) {
+  const q = State.airOperations;
+  const params = new URLSearchParams({ page: String(q.page), pageSize: String(AIR_PAGE_SIZE), sort: q.sort, ...extra });
+  [['query', 'query'], ['segment', 'segment'], ['origin', 'origin'], ['airline', 'airline'], ['connection', 'connection']].forEach(([key, param]) => { if (q[key]) params.set(param, q[key]); });
+  return params.toString();
+}
+
+function persistAirOperationsQuery() {
+  try {
+    const q = State.airOperations;
+    localStorage.setItem('atlas.air-operations.query.v3', JSON.stringify({ query: q.query, segment: q.segment, origin: q.origin, airline: q.airline, connection: q.connection, sort: q.sort }));
+  } catch (_) { /* la consulta sigue operativa sin almacenamiento local */ }
+}
+
+const AIR_SORTS = ['price-asc', 'price-desc', 'duration-asc', 'duration-desc', 'aai-asc', 'aai-desc', 'date-asc', 'date-desc', 'origin-asc', 'origin-desc'];
+function restoreAirOperationsQuery() {
+  const q = State.airOperations;
+  if (q.restored) return;
+  q.restored = true;
+  try {
+    const stored = JSON.parse(localStorage.getItem('atlas.air-operations.query.v3') || 'null');
+    if (!stored || typeof stored !== 'object') return;
+    ['query', 'segment', 'origin', 'airline'].forEach((key) => { q[key] = typeof stored[key] === 'string' ? stored[key].slice(0, 120) : ''; });
+    q.connection = ['', 'direct', 'non_direct'].includes(stored.connection) ? stored.connection : '';
+    q.sort = AIR_SORTS.includes(stored.sort) ? stored.sort : q.sort;
+  } catch (_) { /* una preferencia local dañada no bloquea la vista */ }
+}
+
+function airPositionCell(row) {
+  const min = Number(row.typical_price_min), max = Number(row.typical_price_max), price = Number(row.price ?? row.lowest_price);
+  const label = row.price_quality_label;
+  const text = label === 'Barato' ? 'barato para la ruta' : label === 'Caro' ? 'caro para la ruta' : label === 'Normal' ? 'en la media' : 'sin rango típico';
+  const tone = label === 'Barato' ? 'pos' : label === 'Caro' ? 'neg' : 'dim';
+  if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(price) || max <= min) return `<div class="fl-pos"><div class="fl-pos__bar"><i></i><i></i><i></i></div><span class="fl-pos__label ${tone}">${text}</span></div>`;
+  // los tramos son: por debajo del típico, dentro y por encima; el marcador se sitúa en el tercio que le toca
+  const point = price < min ? Math.max(2, (price / min) * 33.3) : price > max ? Math.min(98, 66.7 + ((price - max) / max) * 33.3) : 33.3 + ((price - min) / (max - min)) * 33.4;
+  return `<div class="fl-pos" title="${esc(`Rango típico ${eur(min)}–${eur(max)} · observado ${eur(price)}`)}"><div class="fl-pos__bar"><i></i><i></i><i></i><em style="left:${point.toFixed(1)}%"></em></div><span class="fl-pos__label ${tone}">${text}</span></div>`;
+}
+
+function airOperationRow(row) {
+  const segment = airSegment(row);
+  const stops = Number(row.num_layovers || row.stops || 0);
+  const via = (row.layover_airports || [])[0];
+  const conn = row.is_direct ? '<span class="chip chip--good">Directo</span>' : `<span class="chip chip--warn">${stops || 1} escala${stops > 1 ? 's' : ''}${via ? ` · ${esc(via)}` : ''}</span>`;
+  const aai = row.air_accessibility_index == null ? null : Number(row.air_accessibility_index);
+  const airline = row.main_airline || (row.airlines || []).join(' · ') || '—';
+  return `<tr>
+    <th scope="row" class="fops__sticky"><strong>${esc(segment)}</strong><small>${esc(row.market || '—')}</small></th>
+    <td><strong class="mono">${esc(row.origin || '—')}</strong><small>${esc(row.departure_airport_name || '')}</small></td>
+    <td><strong class="mono">${esc(row.destination || '—')}</strong><small>${esc(row.arrival_airport_name || 'Gran Canaria')}</small></td>
+    <td class="mono nowrap">${esc(airShortDate(row.outbound_date))}${row.days_ahead == null ? '' : ` <small class="inline">${nEs(row.days_ahead)}d</small>`}</td>
+    <td><span class="fl-airline__cell"><span class="fl-iata">${esc(airlineCode(airline))}</span><span class="ellipsis">${esc(airline)}</span></span></td>
+    <td class="mono muted ellipsis" title="${esc((row.flight_numbers || []).join(' · '))}">${esc((row.flight_numbers || []).join(' · ') || '—')}</td>
+    <td class="muted ellipsis" title="${esc((row.aircraft_models || []).join(' · '))}">${esc((row.aircraft_models || []).join(' · ') || '—')}</td>
+    <td class="muted">${esc((row.travel_classes || []).map((c) => (c === 'Economy' ? 'Turista' : c)).join(' · ') || '—')}</td>
+    <td class="mono r">${esc(row.departure_time || '—')}</td>
+    <td class="mono r">${esc(row.arrival_time || '—')}</td>
+    <td title="${esc(row.is_direct ? 'Sin escala' : `Escala en ${(row.layover_airports || []).join(', ') || 'aeropuerto no informado'}`)}">${conn}</td>
+    <td class="mono r muted">${durationLabel(row.total_duration_min)}</td>
+    <td class="mono r fops__price">${eur(row.price ?? row.lowest_price)}</td>
+    <td>${airPositionCell(row)}</td>
+    <td class="mono r ${aai == null ? 'dim' : aai < 0.9 ? 'pos' : aai > 1.1 ? 'neg' : ''}" title="Precio observado dividido por el promedio típico de la ruta">${aai == null ? '—' : nEs(aai, 2)}</td>
+    <td class="dim">${row.return_date ? esc(airShortDate(row.return_date)) : 'Solo ida'}</td>
+    <td class="mono dim nowrap">${esc(fmtStamp(row.capture_run_at || row.search_datetime))}</td>
+  </tr>`;
+}
+
+async function flightOperationsHTML(model) {
+  const q = State.airOperations;
+  restoreAirOperationsQuery();
+  const data = await api(`/api/air-data/options?${airOperationParams()}`);
+  const total = Number(data.total || 0);
+  const pages = Math.max(1, Math.ceil(total / AIR_PAGE_SIZE));
+  if (q.page > pages) { q.page = pages; return flightOperationsHTML(model); }
+  const from = total ? (q.page - 1) * AIR_PAGE_SIZE + 1 : 0, to = Math.min(total, q.page * AIR_PAGE_SIZE);
+  const facets = data.facets || {};
+  const segments = [...new Set(model.flights.map(airSegment))].sort((a, b) => a.localeCompare(b, 'es'));
+  const select = (key, label, values, placeholder, labelOf = (v) => v) => `<label class="fops__filter"><span>${label}</span><select data-air-operation-filter="${key}">${[['', placeholder], ...values.map((v) => [v, labelOf(v)])].map(([v, l]) => `<option value="${esc(v)}"${q[key] === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+  const sortKey = q.sort.replace(/-(asc|desc)$/, ''), sortDir = q.sort.endsWith('desc') ? 'desc' : 'asc';
+  const heads = AIR_OPS_COLUMNS.map(([label, key, align], i) => {
+    const active = key && sortKey === key;
+    const inner = `${label}${active ? `<span aria-hidden="true">${sortDir === 'asc' ? '↑' : '↓'}</span>` : ''}`;
+    return `<th scope="col" class="${align === 'r' ? 'r' : ''}${i === 0 ? ' fops__sticky' : ''}"${active ? ` aria-sort="${sortDir === 'asc' ? 'ascending' : 'descending'}"` : ''}>${key ? `<button type="button" data-air-sort="${key}" class="${active ? 'is-active' : ''}">${inner}</button>` : `<span>${label}</span>`}</th>`;
+  }).join('');
+  const body = (data.rows || []).map(airOperationRow).join('');
+  const filtered = ['query', 'segment', 'origin', 'airline', 'connection'].some((k) => q[k]);
+  return `<article class="fops${q.fullscreen ? ' is-fullscreen' : ''}" id="airOperationsCard">
+    <div class="fops__head"><div><strong>Operación aérea</strong><span>${nEs(total)} de ${nEs(model.flights.length)} opciones</span></div>
+      <div class="fops__tools"><button type="button" class="btn btn--sm" data-air-export>Exportar CSV</button><button type="button" class="btn btn--sm" data-air-operations-fullscreen aria-pressed="${q.fullscreen}">${q.fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button></div></div>
+    <div class="fops__filters" role="group" aria-label="Filtros de opciones aéreas">
+      <label class="fops__filter fops__filter--search"><span>Buscar</span><input type="search" id="airOperationsSearch" value="${esc(q.query)}" placeholder="Aerolínea, vuelo, avión o aeropuerto" autocomplete="off"></label>
+      ${select('segment', 'Mercado', segments, 'Todos')}
+      ${select('origin', 'Ruta', model.routes.map((r) => r.code), 'Todas', (v) => `${v} → LPA`)}
+      ${select('airline', 'Aerolínea', facets.airlines || [], 'Todas')}
+      <label class="fops__filter"><span>Conexión</span><select data-air-operation-filter="connection"><option value=""${!q.connection ? ' selected' : ''}>Todas</option><option value="direct"${q.connection === 'direct' ? ' selected' : ''}>Solo directos</option><option value="non_direct"${q.connection === 'non_direct' ? ' selected' : ''}>Con escala</option></select></label>
+      <button type="button" class="fops__reset" data-air-operation-reset${filtered || q.sort !== 'date-asc' ? '' : ' disabled'}>Restablecer</button>
+    </div>
+    <div class="fops__scroll" tabindex="0" role="region" aria-label="Opciones de vuelo: desplazamiento horizontal y vertical">
+      <table class="fops__table" id="airOperationsTable"><caption class="sr-only">Opciones de vuelo capturadas, con conexión, precio, posición frente al rango típico, índice de accesibilidad y duración</caption>
+        <colgroup>${AIR_OPS_COLUMNS.map((c) => `<col style="width:${c[3]}px">`).join('')}</colgroup>
+        <thead><tr>${heads}</tr></thead><tbody>${body}</tbody></table>
+      ${body ? '' : '<div class="fops__empty"><strong>Ninguna opción coincide</strong><span>Cambia los filtros o restablécelos.</span></div>'}
+    </div>
+    <div class="fops__pager"><span>${total ? `${from}–${to} de ${nEs(total)} · página ${q.page}/${pages}` : '0 resultados'}</span><div><button type="button" class="btn btn--xs" data-air-operation-page="prev"${q.page <= 1 ? ' disabled' : ''}>← Anterior</button><button type="button" class="btn btn--xs" data-air-operation-page="next"${q.page >= pages ? ' disabled' : ''}>Siguiente →</button></div></div>
+  </article>`;
+}
+
+async function exportAirOperations() {
+  const rows = [];
+  for (let page = 1; page <= 50; page++) {
+    const data = await api(`/api/air-data/options?${airOperationParams({ page: String(page), pageSize: '200' })}`);
+    rows.push(...(data.rows || []));
+    if (rows.length >= Number(data.total || 0) || !(data.rows || []).length) break;
+  }
+  const safe = (value) => { const text = String(value ?? ''); return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text; };
+  const head = ['Mercado', 'Ciudad', 'Origen', 'Destino', 'Fecha', 'Días', 'Aerolínea', 'Vuelo', 'Avión', 'Clase', 'Salida', 'Llegada', 'Conexión', 'Duración (min)', 'Precio (€)', 'Posición', 'AAI', 'Vuelta', 'Captura'];
+  const lines = rows.map((r) => [airSegment(r), r.market, r.origin, r.destination, r.outbound_date, r.days_ahead, r.main_airline, (r.flight_numbers || []).join(' · '), (r.aircraft_models || []).join(' · '), (r.travel_classes || []).join(' · '), r.departure_time, r.arrival_time,
+    r.is_direct ? 'Directo' : `${r.num_layovers || 1} escala ${(r.layover_airports || []).join(' ')}`.trim(), r.total_duration_min, r.price == null ? '' : String(r.price).replace('.', ','), r.price_quality_label, r.air_accessibility_index == null ? '' : String(r.air_accessibility_index).replace('.', ','), r.return_date || '', r.capture_run_at || r.search_datetime || '']
+    .map((v) => `"${safe(v).replace(/"/g, '""')}"`).join(';'));
+  const blob = new Blob([`﻿${[head.join(';'), ...lines].join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'operacion-aerea.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(`CSV exportado · ${rows.length} opciones`, 'ok');
+}
+
+function toggleAirOperationsFullscreen(force) {
+  const next = typeof force === 'boolean' ? force : !State.airOperations.fullscreen;
+  State.airOperations.fullscreen = next;
+  document.body.classList.toggle('air-operations-fullscreen', next);
+  const card = $('#airOperationsCard');
+  if (card) card.classList.toggle('is-fullscreen', next);
+  const button = $('[data-air-operations-fullscreen]');
+  if (button) { button.setAttribute('aria-pressed', String(next)); button.textContent = next ? 'Salir de pantalla completa' : 'Pantalla completa'; button.focus(); }
+}
+
+async function paintAirOperations({ focusSearch = false } = {}) {
+  const panel = $('#flPanel');
+  if (!panel || !State.flightModel) return;
+  const requestId = ++State.airOperations.requestId;
+  try {
+    const html = await flightOperationsHTML(State.flightModel);
+    if (requestId !== State.airOperations.requestId || !panel.isConnected) return;
+    panel.innerHTML = `${State.airOperations.fullscreen ? '<div class="fops__backdrop" data-air-operations-fullscreen></div>' : ''}${html}`;
+    persistAirOperationsQuery();
+    if (focusSearch) { const input = $('#airOperationsSearch'); input?.focus(); input?.setSelectionRange(input.value.length, input.value.length); }
+  } catch (e) { if (panel.isConnected) panel.innerHTML = `<div class="inline-error">No se pudieron cargar las opciones aéreas: ${esc(e.message)}</div>`; }
+}
+
+function updateAirOperationsQuery(key, value, focusSearch = false) {
+  const q = State.airOperations;
+  q[key] = value;
+  q.page = 1;
+  void paintAirOperations({ focusSearch });
+}
+
+function resetAirOperationsQuery() {
+  Object.assign(State.airOperations, { page: 1, query: '', segment: '', origin: '', airline: '', connection: '', sort: 'date-asc' });
+  void paintAirOperations({ focusSearch: true });
+}
+
+function setAirSort(key) {
+  const q = State.airOperations;
+  const [current, dir] = [q.sort.replace(/-(asc|desc)$/, ''), q.sort.endsWith('desc') ? 'desc' : 'asc'];
+  q.sort = `${key}-${current === key && dir === 'asc' ? 'desc' : 'asc'}`;
+  q.page = 1;
+  void paintAirOperations().then(() => $(`[data-air-sort="${key}"]`)?.focus());
+}
+
+/* ---- captura aérea (desplegable de la cabecera) */
 async function estimateAirCapture() {
-  const start = $('#airCaptureStart')?.value;
-  const maxQueries = Number($('#airCaptureBudget')?.value || 500);
-  const status = $('#airCaptureEstimate');
-  const startButton = $('[data-air-capture-start]');
-  if (!start || !status) return;
-  status.textContent = 'Calculando consultas…';
-  if (startButton) startButton.disabled = true;
+  const st = State.flight;
+  const requestId = (st.estimateRequest = (st.estimateRequest || 0) + 1);
+  st.estimate = null;
+  repaintFlightPlan();
   try {
     const estimate = await api('/api/air-data/capture/estimate', {
       method: 'POST',
-      body: JSON.stringify({ areaIds: ['gran-canaria'], routeKeys: [], countryIds: [], direct: true, outboundDate: start, dailyDays: 14, weeklyUntilDays: 90, maxQueries: maxQueries }),
+      body: JSON.stringify({ areaIds: ['gran-canaria'], routeKeys: [], countryIds: [], direct: true, outboundDate: st.firstDate, dailyDays: 14, weeklyUntilDays: 90, maxQueries: Number(st.budget) || 0 }),
     });
-    State.airCaptureEstimate = estimate;
-    const configured = estimate.serpapiConfigured !== false;
-    const tone = estimate.withinBudget && configured ? 'is-valid' : 'is-invalid';
-    status.className = `air-capture-estimate ${tone}`;
-    const providerMessage = configured ? '' : ' · falta configurar SERPAPI_API_KEY';
-    status.innerHTML = `<strong>${nEs(estimate.queries)} consultas estimadas</strong><span>${nEs(estimate.routes)} rutas · ${nEs(estimate.dateCount)} fechas · ${estimate.withinBudget ? 'dentro' : 'fuera'} del presupuesto de ${nEs(estimate.maxQueries)}${providerMessage}</span>`;
-    if (startButton) startButton.disabled = !estimate.withinBudget || !configured;
+    if (requestId !== st.estimateRequest) return;
+    st.estimate = estimate;
   } catch (error) {
-    State.airCaptureEstimate = null;
-    status.className = 'air-capture-estimate is-invalid';
-    status.textContent = error.message;
+    if (requestId !== st.estimateRequest) return;
+    st.estimate = { error: error.message };
   }
+  repaintFlightPlan();
+}
+
+function repaintFlightPlan() {
+  const plan = $('#flPlan');
+  if (!plan || !State.flightModel) return;
+  const focusId = document.activeElement && plan.contains(document.activeElement) ? document.activeElement.id : null;
+  plan.outerHTML = flightPlanHTML(State.flightModel);
+  if (focusId) $(`#${focusId}`)?.focus();
 }
 
 async function startAirCapture() {
-  const estimate = State.airCaptureEstimate;
-  const status = $('#airCaptureEstimate');
-  if (!estimate || !estimate.withinBudget || !status) return;
-  const startButton = $('[data-air-capture-start]');
-  const maxQueries = Number($('#airCaptureBudget')?.value || 500);
-  if (startButton) startButton.disabled = true;
-  status.className = 'air-capture-estimate';
-  status.textContent = 'Enviando captura manual…';
+  const st = State.flight, estimate = st.estimate;
+  if (!estimate || !estimate.withinBudget) return;
+  const button = $('[data-air-capture-start]');
+  if (button) button.disabled = true;
   try {
     const response = await api('/api/jobs/air-capture', {
       method: 'POST',
-      body: JSON.stringify({ areaIds: ['gran-canaria'], routeKeys: [], countryIds: [], direct: true, outboundDate: $('#airCaptureStart').value, dailyDays: 14, weeklyUntilDays: 90, maxQueries: maxQueries }),
+      body: JSON.stringify({ areaIds: ['gran-canaria'], routeKeys: [], countryIds: [], direct: true, outboundDate: st.firstDate, dailyDays: 14, weeklyUntilDays: 90, maxQueries: Number(st.budget) || 0 }),
     });
-    status.className = 'air-capture-estimate is-valid';
-    status.innerHTML = `<strong>Captura en cola</strong><span>Trabajo ${esc(response.job?.id || '—')} · consulta Operación aérea para seguir el progreso.</span>`;
-    State.airCaptureEstimate = null;
+    st.planOpen = false;
+    st.estimate = null;
+    $('#flPlan')?.remove();
+    $('[data-fl-plan]')?.setAttribute('aria-expanded', 'false');
+    toast(`Captura aérea en cola · ${nEs(estimate.queries)} consultas${response.job?.id ? ` · trabajo ${response.job.id}` : ''}`, 'ok');
   } catch (error) {
-    status.className = 'air-capture-estimate is-invalid';
-    status.textContent = error.message;
-    if (startButton) startButton.disabled = false;
+    toast(`No se pudo iniciar la captura: ${error.message}`, 'warn');
+    if (button) button.disabled = false;
   }
 }
 
-/* ================================================================== VUELOS */
+/* ---- mapa de rutas */
+function flightArc(a, b) {
+  const pts = [];
+  const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, dx = b[0] - a[0], dy = b[1] - a[1];
+  const cx = mx - dy * 0.22, cy = my + dx * 0.22;
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    pts.push([(1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * cx + t * t * b[0], (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * cy + t * t * b[1]]);
+  }
+  return pts;
+}
+
+function flightWidthExpr() {
+  const st = State.flight;
+  const v = st.mapMode === 'options' ? ['get', 'opts'] : st.mapMode === 'airlines' ? ['*', ['get', 'air'], 22] : ['/', 40000, ['get', 'price']];
+  return ['case', ['==', ['get', 'code'], st.focus || ''], ['+', 2.5, ['/', v, 14]], ['+', 1, ['/', v, 22]]];
+}
+
+function paintFlightMap() {
+  const map = State.flightMap;
+  if (!map) return;
+  if (map.getLayer && map.getLayer('fl-routes')) {
+    map.setPaintProperty('fl-routes', 'line-width', flightWidthExpr());
+    map.setPaintProperty('fl-routes', 'line-opacity', ['case', ['==', ['get', 'code'], State.flight.focus || ''], 1, 0.5]);
+  }
+  $$('[data-fl-label]').forEach((el) => el.classList.toggle('is-focus', el.dataset.flLabel === State.flight.focus));
+}
+
+async function renderFlightMap(model) {
+  const frame = $('#flMapFrame'), container = $('#flMap');
+  if (!frame || !container) return;
+  const routes = model.routes.filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+  if (!routes.length) { mapFrameStatus(frame, 'No hay aeropuertos con coordenadas en la foto aérea.'); return; }
+  try { await loadMapLibre(); } catch (_) { if (frame.isConnected) mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
+  if (!frame.isConnected || State.view !== 'flights') return;
+  destroyFlightMap();
+  let map;
+  try { map = createAtlasMap(container, { center: [-1.5, 43], zoom: 3.05 }); } catch (_) { mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
+  State.flightMap = map;
+  const ml = window.maplibregl;
+  const geo = { type: 'FeatureCollection', features: routes.map((r) => ({ type: 'Feature', properties: { code: r.code, color: AIR_TIER_COLORS[r.tier], opts: r.options, air: r.airlines.length, price: r.avgP }, geometry: { type: 'LineString', coordinates: flightArc([r.lng, r.lat], [AIR_LPA.lng, AIR_LPA.lat]) } })) };
+  const addLayers = () => {
+    if (map.getSource('fl-routes')) return;
+    map.addSource('fl-routes', { type: 'geojson', data: geo });
+    map.addLayer({ id: 'fl-routes', type: 'line', source: 'fl-routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': flightWidthExpr(), 'line-opacity': 0.6 } });
+    paintFlightMap();
+  };
+  map._atlasRestyle = addLayers;
+  map.once('style.load', addLayers);
+  map.on('click', 'fl-routes', (e) => { const code = e.features?.[0]?.properties?.code; if (code) setFlightFocus(code); });
+  map.on('mouseenter', 'fl-routes', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'fl-routes', () => { map.getCanvas().style.cursor = ''; });
+  routes.forEach((r) => {
+    const label = mapPinElement(`<button type="button" class="fl-label" data-fl-label="${esc(r.code)}" data-fl-route="${esc(r.code)}" aria-label="${esc(`${r.code} → LPA · desde ${eur(r.minP)}`)}">${esc(r.code)} · ${eur(r.minP)}</button>`);
+    State.flightMarkers.push(new ml.Marker({ element: label, anchor: 'bottom', offset: [0, -4] }).setLngLat([r.lng, r.lat]).addTo(map));
+    const dot = mapPinElement(`<span class="fl-dot" style="background:${AIR_TIER_COLORS[r.tier]}"></span>`);
+    State.flightMarkers.push(new ml.Marker({ element: dot }).setLngLat([r.lng, r.lat]).addTo(map));
+  });
+  const hub = mapPinElement('<span class="fl-hub"><i></i><b>LPA</b></span>');
+  State.flightMarkers.push(new ml.Marker({ element: hub, anchor: 'left', offset: [-7, 0] }).setLngLat([AIR_LPA.lng, AIR_LPA.lat]).addTo(map));
+  paintFlightMap();
+}
+
+function destroyFlightMap() {
+  (State.flightMarkers || []).forEach((m) => m.remove());
+  State.flightMarkers = [];
+  if (State.flightMap) { State.flightMap.remove(); State.flightMap = null; }
+}
+
+function setFlightFocus(code) {
+  const st = State.flight, model = State.flightModel;
+  if (!model || !model.routes.some((r) => r.code === code)) return;
+  st.focus = code;
+  const card = $('#flRoute');
+  if (card) card.innerHTML = flightRouteCardHTML(model, model.routes.find((r) => r.code === code));
+  const heat = $('#flHeat');
+  if (heat) heat.innerHTML = flightHeatHTML(model, code);
+  paintFlightMap();
+}
+
+async function renderFlights() {
+  const host = mount('flights');
+  const st = restoreFlightState();
+  destroyFlightMap();
+  if (st.tab !== 'operations' && State.airOperations.fullscreen) toggleAirOperationsFullscreen(false);
+  skeleton(host, 'list');
+  let data, comparison;
+  try {
+    [data, comparison] = await Promise.all([
+      State.air || api('/api/air-data?direction=arrival'),
+      State.airComparison || api('/api/air-data/comparison?direction=arrival').catch(() => ({ points: [] })),
+    ]);
+    State.air = data; State.airComparison = comparison;
+  } catch (e) { host.innerHTML = `<div class="page">${pageHead('Vuelos', 'Conectividad aérea hacia Gran Canaria', '')}<div class="inline-error">No se pudo cargar la conectividad aérea: ${esc(e.message)}</div></div>`; return; }
+  if (State.view !== 'flights') return;
+  const model = flightModel(data, comparison);
+  State.flightModel = model;
+  host.innerHTML = `<div class="page fl">${flightHeaderHTML(model)}<div id="flPanel" role="tabpanel" aria-labelledby="flTab-${st.tab}" class="fl-panel"></div></div>`;
+  const panel = $('#flPanel');
+  if (st.tab === 'overview') { panel.innerHTML = flightOverviewHTML(model); void renderFlightMap(model); }
+  else if (st.tab === 'routes') panel.innerHTML = flightRoutesHTML(model);
+  else await paintAirOperations();
+  if (st.planOpen) void estimateAirCapture();
+}
+
+function setFlightTab(tab) {
+  if (!FLIGHT_TABS.includes(tab)) return;
+  State.flight.tab = tab;
+  writePref(FLIGHT_TAB_KEY, tab);
+  void renderFlights().then(() => $(`#flTab-${tab}`)?.focus());
+}
+
+function handleFlightClick(e) {
+  const t = e.target instanceof Element ? e.target : null;
+  if (!t || !State.flight || !t.closest('#view-flights')) {
+    if (State.flight?.planOpen && t && !t.closest('#flPlan') && !t.closest('[data-fl-plan]') && $('#flPlan')) { State.flight.planOpen = false; $('#flPlan').remove(); $('[data-fl-plan]')?.setAttribute('aria-expanded', 'false'); }
+    return false;
+  }
+  const st = State.flight;
+  if (st.planOpen && !t.closest('#flPlan') && !t.closest('[data-fl-plan]')) { st.planOpen = false; $('#flPlan')?.remove(); $('[data-fl-plan]')?.setAttribute('aria-expanded', 'false'); }
+  const tab = t.closest('[data-flight-tab]');
+  if (tab) { if (tab.dataset.flightTab !== st.tab) setFlightTab(tab.dataset.flightTab); return true; }
+  if (t.closest('[data-fl-plan]')) {
+    st.planOpen = !st.planOpen;
+    $('[data-fl-plan]').setAttribute('aria-expanded', String(st.planOpen));
+    if (st.planOpen) { $('.fl-head').insertAdjacentHTML('beforeend', flightPlanHTML(State.flightModel)); $('#airCaptureStart')?.focus(); void estimateAirCapture(); } else $('#flPlan')?.remove();
+    return true;
+  }
+  if (t.closest('[data-air-capture-start]')) { void startAirCapture(); return true; }
+  const mode = t.closest('[data-fl-mode]');
+  if (mode) {
+    st.mapMode = mode.dataset.flMode;
+    $$('[data-fl-mode]').forEach((b) => { const on = b.dataset.flMode === st.mapMode; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', String(on)); });
+    $('#flMapLegend').textContent = { options: 'Número de opciones observadas', airlines: 'Número de aerolíneas', price: 'Más gruesa = más barata' }[st.mapMode];
+    paintFlightMap();
+    return true;
+  }
+  const route = t.closest('[data-fl-route]');
+  if (route) { setFlightFocus(route.dataset.flRoute); return true; }
+  const routeOpen = t.closest('[data-fl-route-open]');
+  if (routeOpen) { st.focus = routeOpen.dataset.flRouteOpen; setFlightTab('overview'); return true; }
+  const ops = t.closest('[data-fl-ops]');
+  if (ops) { Object.assign(State.airOperations, { page: 1, query: '', segment: '', airline: '', connection: '', origin: ops.dataset.flOps }); setFlightTab('operations'); return true; }
+  const ask = t.closest('[data-fl-ask]');
+  if (ask) { askCopilot(ask.dataset.flAsk); return true; }
+  const sort = t.closest('[data-air-sort]');
+  if (sort) { setAirSort(sort.dataset.airSort); return true; }
+  const page = t.closest('[data-air-operation-page]');
+  if (page) { State.airOperations.page = Math.max(1, State.airOperations.page + (page.dataset.airOperationPage === 'next' ? 1 : -1)); void paintAirOperations(); return true; }
+  if (t.closest('[data-air-operation-reset]')) { resetAirOperationsQuery(); return true; }
+  if (t.closest('[data-air-operations-fullscreen]')) { toggleAirOperationsFullscreen(); void paintAirOperations(); return true; }
+  if (t.closest('[data-air-export]')) { void exportAirOperations(); return true; }
+  return false;
+}
+
+function handleFlightInput(e) {
+  const t = e.target;
+  if (!(t instanceof Element) || !State.flight) return false;
+  if (t.id === 'airOperationsSearch') {
+    clearTimeout(airOperationsSearchTimer);
+    const value = t.value.slice(0, 120);
+    airOperationsSearchTimer = setTimeout(() => updateAirOperationsQuery('query', value, true), 220);
+    return true;
+  }
+  if (t.id === 'airCaptureStart' || t.id === 'airCaptureBudget') {
+    if (t.id === 'airCaptureStart') State.flight.firstDate = t.value; else State.flight.budget = t.value;
+    clearTimeout(airPlanTimer);
+    airPlanTimer = setTimeout(() => void estimateAirCapture(), 260);
+    return true;
+  }
+  return false;
+}
+
+function handleFlightChange(e) {
+  const t = e.target;
+  if (!(t instanceof Element) || !State.flight) return false;
+  if (t.id === 'flRouteSelect') { setFlightFocus(t.value); $('#flRouteSelect')?.focus(); return true; }
+  const filter = t.closest('[data-air-operation-filter]');
+  if (filter) { updateAirOperationsQuery(filter.dataset.airOperationFilter, filter.value); return true; }
+  return false;
+}
+
+function handleFlightOver(e) {
+  const bar = e.target instanceof Element ? e.target.closest('[data-fl-bar]') : null;
+  const readout = $('#flBarReadout');
+  if (bar && readout) readout.textContent = bar.dataset.flBar;
+}
+
 /* ---------------------------------------------------- hotel reputation */
 function reputationKeyPath(key, suffix) {
   const bytes = new TextEncoder().encode(String(key));
@@ -3709,95 +3931,6 @@ function wireHotelReputationEvents() {
         .catch((error)=>setStatus(error.message,'error'));
     }
   });
-}
-
-async function renderFlights() {
-  if (State.flightTab === 'operations') return renderAirOperations();
-  const host = mount('flights');
-  skeleton(host, 'list');
-  let d, comparison;
-  try {
-    [d, comparison] = await Promise.all([
-      State.air || api('/api/air-data?direction=arrival'),
-      api('/api/air-data/comparison?direction=arrival').catch(() => ({ points: [], comparable: 0 })),
-    ]);
-    State.air = d;
-  }
-  catch (e) { host.innerHTML = `<div class="page">${flightsPageHeader('Conectividad del destino.')}<div class="inline-error">No se pudo cargar la conectividad aérea: ${esc(e.message)}</div></div>`; return; }
-
-  const sum = d.summary || {};
-  const routes = (d.routes || []);
-  const flights = (d.flights || []);
-  const dist = sum.price_quality_distribution || {};
-
-  const dumb = routes.slice().sort((a, b) => (b.avg_price || 0) - (a.avg_price || 0)).slice(0, 8).map((r) => ({
-    label: `${r.origin} → ${r.destination}`, market: r.market, min: r.lowest_price || 0, avg: r.avg_price || 0,
-  })).filter((r) => r.avg > 0);
-
-  const fbody = flights.slice(0, 40).map((f) => {
-    const q = (f.price_quality_label || '').toLowerCase();
-    const chip = q.includes('barat') ? 'chip--good' : q.includes('caro') ? 'chip--bad' : 'tag';
-    const conn = f.is_direct ? '<span class="chip chip--direct">Directo</span>' : `<span class="dim">${f.num_layovers || 1} escala${(f.num_layovers || 1) > 1 ? 's' : ''}</span>`;
-    return `<tr>
-      <td class="mono">${esc(f.origin)} → ${esc(f.destination)}</td>
-      <td class="name">${airlineCell(f)}</td>
-      <td>${airMarketCell(f)}</td>
-      <td class="mono">${esc(airDate(f.outbound_date))}</td>
-      <td>${conn}</td>
-      <td class="num" style="font-weight:700;">${eur(f.price)}</td>
-      <td><span class="${chip === 'tag' ? 'tag' : 'chip ' + chip}">${esc(f.price_quality_label || 'Normal')}</span></td>
-    </tr>`;
-  }).join('');
-
-  host.innerHTML = `<div class="page">
-    ${flightsPageHeader('Conectividad, precio y calidad de las rutas que alimentan el destino.')}
-
-    <div class="grid grid--5 mb12">
-      ${kpiSm('Rutas de llegada', sum.total_routes || routes.length, '', `${flights.length} opciones observadas`)}
-      ${kpiSm('Precio de acceso', Math.round(sum.avg_lowest_price || 0), ' €', 'mínimo medio · 1 adulto')}
-      ${kpiSmRaw('Variación entre fotos', comparison.comparable ? signPct(comparison.points.filter((p) => p.changePct != null).reduce((a, p) => a + p.changePct, 0) / comparison.comparable) : '—', '', `${comparison.comparable || 0} parejas comparables`)}
-      ${kpiSm('Cobertura de rutas', sum.total_routes ? Math.round((routes.length / sum.total_routes) * 100) : 0, '%', 'rutas con resultado agregado')}
-      ${kpiSm('Vuelos directos', Math.round((sum.direct_pct || 0) * 100), '%', 'filtro de llegada aplicado')}
-    </div>
-
-    <article class="card card--pad mb12 air-capture-plan">
-      <div class="card__head" style="margin-bottom:10px;"><div><div class="card__kicker">Captura manual</div><h2>Preparar una foto de conectividad</h2><p>SerpAPI · 1 adulto · turista · solo ida · próximas 14 fechas diarias y después una fecha semanal hasta 90 días.</p></div><span class="tag">sin recurrencia</span></div>
-      <div class="air-capture-plan__controls"><label><span>Primera salida</span><input class="input" type="date" id="airCaptureStart" value="${airCaptureStartDate()}" /></label><label><span>Presupuesto de consultas</span><input class="input" type="number" id="airCaptureBudget" min="1" max="5000" step="1" value="500" /></label><button type="button" class="btn btn--quiet" data-air-capture-estimate>Estimar consumo</button><button type="button" class="btn btn--primary" data-air-capture-start disabled>Iniciar captura</button></div>
-      <div id="airCaptureEstimate" class="air-capture-estimate" role="status">Calcula el consumo antes de iniciar.</div>
-    </article>
-
-    <article class="card card--pad mb12">
-      <div class="card__head" style="margin-bottom:16px;">
-        <div><div class="card__kicker" style="margin-bottom:5px;">Precio de entrada vs. medio</div><h2>Amplitud de tarifa por ruta</h2><p>Diferencia entre la tarifa mínima y la media de las ofertas observadas; no son precios de billetes vendidos.</p></div>
-        <div class="legend"><span><i style="background:var(--card); border:2px solid var(--ac);"></i>mínimo</span><span><i style="background:var(--ink);"></i>medio</span></div>
-      </div>
-      ${dumbbellSVG(dumb)}
-    </article>
-
-    <article class="card card--pad mb12 air-comparison-card">
-      <div class="card__head" style="margin-bottom:10px;">
-        <div><div class="card__kicker">Comparación de fotos</div><h2>Precio mínimo por fecha de salida</h2><p>Dos fotos SerpAPI · misma ruta y fecha · cada punto resume la mediana de las rutas comparables.</p></div>
-        <div class="legend"><span><i style="background:var(--ac);"></i>última foto</span><span><i style="background:#9aa4b2;"></i>foto anterior</span></div>
-      </div>
-      ${airComparisonSVG(comparison.points, comparison.comparisonStatus)}
-      <div class="air-chart-readouts">${airComparisonReadout(comparison.points)}</div>
-      <div class="air-chart-reading"><span><b>Eje X</b> Fecha de salida del vuelo</span><span><b>Eje Y</b> Precio observado por viajero</span><span><b>Línea</b> Azul: última foto · gris: foto anterior</span></div>
-      <p class="air-data-disclaimer">Precio observado en SerpAPI/Google Flights. No representa reservas confirmadas, ocupación aérea ni demanda hotelera.</p>
-    </article>
-
-    <article class="card table-card">
-      <div class="table-card__head">
-        <div class="title"><strong>Opciones capturadas</strong><span class="count">${flights.length} filas</span></div>
-      </div>
-      <div class="table-scroll">
-        <table class="t" style="min-width:820px;">
-          <thead><tr><th>Ruta</th><th>Compañía</th><th>Mercado</th><th>Salida</th><th>Conexión</th><th class="r">Precio</th><th>Señal</th></tr></thead>
-          <tbody>${fbody || `<tr><td colspan="7" class="empty">Sin vuelos capturados todavía.</td></tr>`}</tbody>
-        </table>
-      </div>
-    </article>
-  </div>`;
-  runCounters(host);
 }
 
 /* ================================================================= CAPTURAS */
@@ -5293,6 +5426,7 @@ function wireEvents() {
     if (item && Number(item.dataset.paletteIndex) !== State.palette.index) setPaletteIndex(Number(item.dataset.paletteIndex), false);
     handleDashboardOver(e);
     handleBiOver(e);
+    handleFlightOver(e);
   });
   document.addEventListener('focusin', (e) => {
     if (e.target instanceof Element && !e.target.closest('.market-switch')) closeMarketMenu();
@@ -5302,6 +5436,7 @@ function wireEvents() {
   document.addEventListener('click', async (e) => {
     if (!e.target.closest('.market-switch')) closeMarketMenu();
     if (handleDashboardClick(e)) return;
+    if (handleFlightClick(e)) return;
     if (e.target.closest('[data-side-close]')) { closeSidePanel(); return; }
     if (handleBiClick(e)) return;
     if (handleHotelSheetClick(e)) return;
@@ -5354,19 +5489,6 @@ function wireEvents() {
     if (mk) { selectMarket(mk.dataset.market); return; }
     const capMk = e.target.closest('[data-cap-market]');
     if (capMk) { selectMarket(capMk.dataset.capMarket); return; }
-    const flightTab = e.target.closest('[data-flight-tab]');
-    if (flightTab) { State.flightTab = flightTab.dataset.flightTab === 'operations' ? 'operations' : 'overview'; renderFlights(); return; }
-    if (e.target.closest('[data-air-capture-estimate]')) { void estimateAirCapture(); return; }
-    if (e.target.closest('[data-air-capture-start]')) { void startAirCapture(); return; }
-    const airOperationPage = e.target.closest('[data-air-operation-page]');
-    if (airOperationPage) {
-      const delta = airOperationPage.dataset.airOperationPage === 'next' ? 1 : -1;
-      State.airOperations.page = Math.max(1, State.airOperations.page + delta);
-      renderAirOperations();
-      return;
-    }
-    if (e.target.closest('[data-air-operation-reset]')) { resetAirOperationsQuery(); return; }
-    if (e.target.closest('[data-air-operations-fullscreen]')) { toggleAirOperationsFullscreen(); return; }
     if (e.target.closest('#launchCapture')) { launchCapture(); return; }
     if (e.target.closest('#lockBtn')) { void lockSession(); return; }
     if (e.target.closest('#unlockBtn')) { void unlockSession(); return; }
@@ -5452,6 +5574,7 @@ function wireEvents() {
     if (e.key === 'Escape' && State.airOperations.fullscreen) {
       e.preventDefault();
       toggleAirOperationsFullscreen(false);
+      void paintAirOperations();
       return;
     }
     if (e.key === 'Enter' && e.target && e.target.id === 'chatInput' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendChat(e.target.value); }
@@ -5490,33 +5613,16 @@ function wireEvents() {
     }
     if (e.target && e.target.id === 'hotelSearch') { State.hotelSearch = e.target.value.slice(0, 160); paintHotelSheet(); }
     if (e.target && e.target.id === 'captureHotelSearch') { State.captureHotelSearch = e.target.value; filterCaptureHotelTable(); }
-    if (e.target && e.target.id === 'airOperationsSearch') {
-      clearTimeout(airOperationsSearchTimer);
-      const value = e.target.value;
-      airOperationsSearchTimer = setTimeout(() => updateAirOperationsQuery('query', value, true), 220);
-    }
+    if (handleFlightInput(e)) return;
   });
   document.addEventListener('change', (e) => {
-    if (e.target && (e.target.id === 'airCaptureStart' || e.target.id === 'airCaptureBudget')) {
-      State.airCaptureEstimate = null;
-      const status = $('#airCaptureEstimate');
-      const startButton = $('[data-air-capture-start]');
-      if (status) { status.className = 'air-capture-estimate'; status.textContent = 'Vuelve a estimar el consumo con esta configuración.'; }
-      if (startButton) startButton.disabled = true;
-      return;
-    }
+    if (handleFlightChange(e)) return;
     const workspaceContextSelect = e.target && e.target.closest('[data-workspace-context]');
     if (workspaceContextSelect) {
       setWorkspaceContext(workspaceContextSelect.dataset.workspaceContext, workspaceContextSelect.value);
       return;
     }
     if (e.target && e.target.id === 'hotelGroup' && SHEET_GROUPS.some((g) => g.id === e.target.value)) { State.hotelGroup = e.target.value; paintHotelSheet(); }
-    const airFilter = e.target && e.target.closest('[data-air-operation-filter]');
-    if (airFilter) {
-      const key = airFilter.dataset.airOperationFilter;
-      const value = key === 'pageSize' ? Number(airFilter.value) : airFilter.value;
-      updateAirOperationsQuery(key, value);
-    }
   });
 }
 

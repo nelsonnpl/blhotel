@@ -1838,6 +1838,7 @@ def _filter_air_option_rows(rows: list[dict], args) -> list[dict]:
         "origin": args.get("origin") or "",
         "destination": args.get("destination") or "",
         "airline": args.get("airline") or "",
+        "segment": args.get("segment") or "",
         "price": args.get("price") or "",
         "signal": args.get("signal") or "",
         "connection": args.get("connection") or "",
@@ -1855,6 +1856,8 @@ def _filter_air_option_rows(rows: list[dict], args) -> list[dict]:
         if query and query not in haystack:
             continue
         if filters["market"] and row.get("market") != filters["market"]:
+            continue
+        if filters["segment"] and row.get("market_segment") != filters["segment"]:
             continue
         if filters["origin"] and row.get("origin") != filters["origin"]:
             continue
@@ -1897,8 +1900,15 @@ def _sort_air_option_rows(rows: list[dict], sort: str) -> list[dict]:
         present = [row for row in rows if row.get(field) is not None]
         missing = [row for row in rows if row.get(field) is None]
         return sorted(present, key=lambda row: row[field], reverse=descending) + missing
-    if sort == "date-asc":
-        return sorted(rows, key=lambda row: (not bool(row.get("outbound_date")), row.get("outbound_date") or ""))
+    if sort in {"date-asc", "date-desc"}:
+        dated = [row for row in rows if row.get("outbound_date")]
+        undated = [row for row in rows if not row.get("outbound_date")]
+        key = lambda row: (row["outbound_date"], row.get("departure_time") or "")  # noqa: E731
+        return sorted(dated, key=key, reverse=sort == "date-desc") + undated
+    if sort in {"origin-asc", "origin-desc"}:
+        known = [row for row in rows if row.get("origin")]
+        unknown = [row for row in rows if not row.get("origin")]
+        return sorted(known, key=lambda row: (str(row["origin"]), row.get("price") or 0), reverse=sort == "origin-desc") + unknown
     if sort == "airline-asc":
         return sorted(rows, key=lambda row: (not bool(row.get("main_airline")), str(row.get("main_airline") or "").casefold()))
     return _sort_air_option_rows(rows, "price-asc")

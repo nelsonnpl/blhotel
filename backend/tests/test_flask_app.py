@@ -253,6 +253,23 @@ def test_air_payload_can_split_summary_from_paged_options() -> None:
     assert body["pageSize"] == 2
 
 
+def test_air_option_rows_sort_by_origin_and_date_and_filter_by_segment() -> None:
+    from backend.app.flask_app import _filter_air_option_rows, _sort_air_option_rows
+
+    rows = [
+        {"origin": "MAN", "market_segment": "Británico", "outbound_date": "2026-10-08", "departure_time": "09:00", "price": 90},
+        {"origin": "AMS", "market_segment": "Neerlandés", "outbound_date": "2026-10-06", "departure_time": "14:55", "price": 180},
+        {"origin": "LGW", "market_segment": "Británico", "outbound_date": "2026-10-06", "departure_time": "07:10", "price": 120},
+        {"origin": None, "market_segment": None, "outbound_date": None, "price": 50},
+    ]
+    assert [r["origin"] for r in _sort_air_option_rows(rows, "origin-asc")] == ["AMS", "LGW", "MAN", None]
+    assert [r["origin"] for r in _sort_air_option_rows(rows, "origin-desc")] == ["MAN", "LGW", "AMS", None]
+    assert [r["origin"] for r in _sort_air_option_rows(rows, "date-asc")] == ["LGW", "AMS", "MAN", None]
+    assert [r["origin"] for r in _sort_air_option_rows(rows, "date-desc")] == ["MAN", "AMS", "LGW", None]
+    british = _filter_air_option_rows(rows, {"segment": "Británico"})
+    assert [r["origin"] for r in british] == ["MAN", "LGW"]
+
+
 def test_photo_detail_not_found_returns_json_404() -> None:
     client = app.test_client()
     response = client.get("/api/photos/999999")
