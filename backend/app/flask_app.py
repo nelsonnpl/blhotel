@@ -56,6 +56,7 @@ from .external_data import (
 )
 from .external_sources import public_source_catalog
 from .graphql_scraper import scrape_rate_details
+from . import rate_calendar
 from .weather_providers import OpenMeteoClient, WeatherProviderError
 from .weather_market import cluster_market_rows
 from .jobs import BackgroundJobWorker, JobCancelled
@@ -1160,6 +1161,22 @@ def hotel_price_history():
     target_id = parse_int_arg("targetId", minimum=1) if request.args.get("targetId") is not None else None
     limit = parse_int_arg("limit", default=24, minimum=1, maximum=100)
     return ok({"history": db.hotel_price_history(hotel_key, target_id=target_id, limit=limit)})
+
+
+@app.get("/api/hotels/rate-calendar")
+def hotel_rate_calendar():
+    """Precio por hotel y fecha de entrada, con cierres y cupo bajo (panel de análisis)."""
+    target_id = parse_int_arg("targetId", minimum=1)
+    days = parse_int_arg("days", default=90, minimum=1, maximum=rate_calendar.MAX_DAYS)
+    try:
+        start = rate_calendar.parse_start(request.args.get("from"))
+    except ValueError:
+        return error_response("from debe ser una fecha AAAA-MM-DD", 400)
+    board = (request.args.get("board") or "all").strip()[:60] or "all"
+    family = (request.args.get("roomFamily") or "all").strip()[:40] or "all"
+    if family != "all" and family not in rate_calendar.ROOM_FAMILIES:
+        return error_response("roomFamily no reconocido", 400)
+    return ok(rate_calendar.build_rate_calendar(db, target_id, start, days, board, family))
 
 
 @app.get("/api/hotels/inventory")

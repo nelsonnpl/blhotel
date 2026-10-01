@@ -324,6 +324,132 @@ function hotelSheetCsv(list) {
 }
 /* <<< hoja-de-mercado:logica */
 
+/* >>> panel-bi:logica — funciones puras del panel de análisis (sin DOM ni State), probadas en tests/hotel-bi.test.cjs */
+const BI_HORIZONS = [14, 30, 60, 90];
+const BI_TARGET = { min: 25, max: 90, step: 5, initial: 60 };
+const BI_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const BI_WEEKDAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const BI_MAP_COLORS = { low: '#1f7a52', mid: '#c98a1e', high: '#b94f50', closed: '#8b91a3' };
+const BI_CLOSURE_WINDOW = 14; // «Cierres»: dos o más fechas cerradas en los próximos 14 días
+
+/* Cuantil con interpolación lineal (el mismo método que el backend). */
+function biQuantile(values, q) {
+  const data = (values || []).filter((v) => v != null && Number.isFinite(Number(v))).map(Number).sort((a, b) => a - b);
+  if (!data.length) return null;
+  const pos = (data.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+  return data[lo] + (data[hi] - data[lo]) * (pos - lo);
+}
+
+function biDate(iso) { const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
+function biDayLabel(iso) { const s = String(iso || ''); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : '—'; }
+function biDayLong(iso) { return iso ? `${BI_WEEKDAYS[biDate(iso).getUTCDay()]} ${biDayLabel(iso)}` : '—'; }
+function biDaysBetween(fromIso, toIso) { return Math.round((biDate(toIso) - biDate(fromIso)) / 86400000); }
+function biSigned(value, decimals = 1) {
+  if (value == null || !Number.isFinite(Number(value))) return '—';
+  const v = Number(value);
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${nEs(Math.abs(v), decimals)}`;
+}
+
+/* Value score (README §3B): clamp(0, 100, round(50 + (nota − medianaNota) × 22 − (precio / mediana − 1) × 60)). */
+function biValueScore(nota, price, dayMedian, medianNota) {
+  if (nota == null || medianNota == null || !(price > 0) || !(dayMedian > 0)) return null;
+  return Math.max(0, Math.min(100, Math.round(50 + (Number(nota) - Number(medianNota)) * 22 - (Number(price) / Number(dayMedian) - 1) * 60)));
+}
+
+/* Celda de calor: alfa proporcional a la desviación frente a la mediana del día, máximo 0,6. */
+function biHeat(price, dayMedian) {
+  if (!(price > 0) || !(dayMedian > 0)) return null;
+  const r = price / dayMedian - 1;
+  if (Math.abs(r) < 0.05) return { bg: 'var(--line-soft)', r };
+  const a = Math.min(0.6, 0.14 + Math.abs(r) * 0.9).toFixed(2);
+  return { bg: r < 0 ? `rgba(31,122,82,${a})` : `rgba(185,79,80,${a})`, r };
+}
+
+/* Semáforo del mapa de precios: ≤ −15 % verde, en la mediana ámbar, ≥ +15 % rojo; cerrado gris. */
+function biMapTone(price, dayMedian) {
+  if (!(price > 0) || !(dayMedian > 0)) return 'closed';
+  const r = price / dayMedian;
+  return r <= 0.85 ? 'low' : r < 1.15 ? 'mid' : 'high';
+}
+
+function biPinSize(reviews) { return Math.round(Math.min(24, 10 + Math.sqrt(Math.max(0, Number(reviews) || 0)) / 5)); }
+function biDotSize(reviews) { return Math.round(Math.min(22, 8 + Math.sqrt(Math.max(0, Number(reviews) || 0)) / 5)); }
+
+/* Cabecera del calendario: con ≤ 30 días el número de día; con más, el mes el día 1 (y en la primera
+   columna) y el número de los lunes salvo que caigan a 2 días o menos de un cambio de mes. */
+function biCalendarHead(dates) {
+  const H = dates.length;
+  return dates.map((iso, i) => {
+    const d = biDate(iso);
+    const day = d.getUTCDate();
+    const first = day === 1 || i === 0;
+    if (H <= 30) return { text: String(day), month: first };
+    const near = [-2, -1, 1, 2].some((k) => i + k >= 0 && i + k < H && biDate(dates[i + k]).getUTCDate() === 1);
+    if (first) return { text: BI_MONTHS[d.getUTCMonth()].toUpperCase(), month: true };
+    if (d.getUTCDay() === 1 && !near) return { text: String(day), month: false };
+    return { text: '', month: false };
+  });
+}
+
+/* Puesto de un hotel en una fecha: 1 = el más caro, como en el prototipo. */
+function biRankAt(hotels, key, index) {
+  const priced = hotels.filter((h) => h.prices[index] != null).sort((a, b) => b.prices[index] - a.prices[index]);
+  const position = priced.findIndex((h) => h.key === key);
+  return position < 0 ? null : { rank: position + 1, of: priced.length };
+}
+
+/* Tarifa sugerida (README §3B): suma de seis componentes en euros sobre la mediana del día. */
+function biRecommendation({ openPrices, dayMedian, targetPct, valueScore, closed, low, scopeSize, deltas, leadDays }) {
+  if (!(dayMedian > 0) || !openPrices.length) return null;
+  const M = dayMedian;
+  const Pt = biQuantile(openPrices, targetPct / 100);
+  const vs = valueScore == null ? 50 : valueScore;
+  const closedShare = (closed + low * 0.5) / Math.max(1, scopeSize);
+  const movement = deltas.reduce((sum, d) => sum + (Number(d) || 0), 0) / Math.max(1, scopeSize) / 100;
+  const leadFactor = leadDays < 21 ? 0.03 : leadDays > 60 ? -0.02 : 0;
+  const parts = [
+    { id: 'median', value: M, base: true, n: openPrices.length },
+    { id: 'target', value: Pt - M, pct: targetPct, price: Pt },
+    { id: 'value', value: ((vs - 50) / 50) * 0.05 * M, score: vs },
+    { id: 'scarcity', value: Math.min(0.08, closedShare * 0.35) * M, closed, low },
+    { id: 'movement', value: movement * M, movement: movement * 100 },
+    { id: 'lead', value: leadFactor * M, lead: leadDays },
+  ];
+  return { parts, suggested: Math.round(parts.reduce((sum, p) => sum + p.value, 0)) };
+}
+
+/* Semanas del horizonte con la proporción de celdas cerradas y con cupo bajo. Solo cuentan las
+   celdas observadas (abiertas, cupo bajo o cerradas): una semana sin captura queda sin dato. */
+function biWeeks(dates, hotels) {
+  const weeks = [];
+  for (let start = 0; start < dates.length; start += 7) {
+    let closed = 0, low = 0, total = 0;
+    for (let i = start; i < Math.min(dates.length, start + 7); i++) {
+      hotels.forEach((h) => {
+        const s = h.status[i];
+        if (s === 'closed') { closed++; total++; } else if (s === 'low') { low++; total++; } else if (s === 'ok') total++;
+      });
+    }
+    weeks.push({ start: dates[start], closed, low, total });
+  }
+  return weeks;
+}
+
+/* Alertas de competidores ordenadas por relevancia (peso del prototipo). */
+function biAlerts(hotels) {
+  const list = [];
+  hotels.forEach((h) => {
+    if (h.isNew) list.push({ type: 'mov', tag: 'Nuevo', tone: 'ac', key: h.key, name: h.name, text: `Entra en el set con ${eur(h.adr)}`, value: eur(h.adr), weight: 50 });
+    else if (h.delta != null && h.delta <= -3) list.push({ type: 'mov', tag: 'Bajada', tone: 'bad', key: h.key, name: h.name, text: `${eur(h.prevAdr)} → ${eur(h.adr)}`, value: `${biSigned(h.delta)} %`, weight: 80 + Math.abs(h.delta) });
+    else if (h.delta != null && h.delta >= 5) list.push({ type: 'mov', tag: 'Subida', tone: 'good', key: h.key, name: h.name, text: `${eur(h.prevAdr)} → ${eur(h.adr)}`, value: `${biSigned(h.delta)} %`, weight: 60 + h.delta });
+    if (h.latestUnits === 1) list.push({ type: 'disp', tag: 'Queda 1', tone: 'bad', key: h.key, name: h.name, text: 'Última unidad en la estancia capturada', value: eur(h.adr), weight: 70 });
+    const closures = h.status.slice(0, BI_CLOSURE_WINDOW).filter((s) => s === 'closed').length;
+    if (closures >= 2) list.push({ type: 'disp', tag: 'Cierres', tone: 'warn', key: h.key, name: h.name, text: `${closures} fechas cerradas en los próximos ${BI_CLOSURE_WINDOW} días`, value: `${closures} d`, weight: 40 + closures });
+  });
+  return list.sort((a, b) => b.weight - a.weight);
+}
+/* <<< panel-bi:logica */
+
 /* ------------------------------------------------- preferencias de interfaz */
 const PREFS = { theme: 'atlas.theme', density: 'atlas.density', sidebar: 'atlas.sidebar', view: 'atlas.view' };
 const THEMES = ['claro', 'oscuro'];
@@ -406,7 +532,8 @@ const State = {
   hotelExpanded: {},            // hotelKey → fila de tarifas por habitación desplegada
   hotelSelectedKey: null,       // hotel seleccionado en la variante B
   hotelPinnedKey: null,         // hotel fijado para comparar (variante B)
-  hotelTab: 'sheet',            // pestaña de Hoteles: hoja de mercado o panel de análisis
+  hotelTab: 'bi',               // pestaña de Hoteles: panel de análisis (por defecto) u hoja de mercado
+  bi: null,                     // panel de análisis: filtros, fecha activa, hotel propio y datos del calendario
   hotelSheet: null,             // modelo calculado de la hoja activa
   hotelRateDetails: {},
   hotelRateDetailPromises: {},
@@ -664,6 +791,12 @@ function createAtlasMap(container, options) {
   const frame = container.closest('.map-frame');
   const timer = window.setTimeout(() => { if (!map._removed && !map.isStyleLoaded()) mapFrameStatus(frame, MAP_FAILED_TEXT); }, MAP_LOAD_TIMEOUT_MS);
   map.once('load', () => { window.clearTimeout(timer); mapFrameStatus(frame, null); });
+  // Un listener propio sustituye al console.error por defecto de MapLibre: las peticiones canceladas al
+  // destruir o recrear el mapa no son errores; si falla el estilo antes de cargar, se muestra el aviso.
+  map.on('error', (event) => {
+    if (event?.error?.name === 'AbortError') return;
+    if (!map.isStyleLoaded()) mapFrameStatus(frame, MAP_FAILED_TEXT);
+  });
   map.on('remove', () => { window.clearTimeout(timer); });
   return map;
 }
@@ -1234,7 +1367,7 @@ function defaultHotelSort() { return { key: 'adr', dir: -1 }; }
 
 function restoreHotelQuery(targetId) {
   State.hotelVariant = readPref(HOTEL_VARIANT_KEY, ['A', 'B'], 'A');
-  State.hotelTab = readPref(HOTEL_TAB_KEY, ['sheet', 'bi'], 'sheet');
+  State.hotelTab = readPref(HOTEL_TAB_KEY, ['sheet', 'bi'], 'bi');
   if (State.hotelQueryTargetId === targetId) return;
   let saved = {};
   try {
@@ -1425,7 +1558,9 @@ async function ensureHotelRateDetails(key) {
   if (State.hotelRateDetailPromises[`${targetId}:${key}`]) return State.hotelRateDetailPromises[`${targetId}:${key}`];
   cache[key] = { status: 'loading' };
   paintHotelRooms(key);
-  const snapshotId = State.snapshots[targetId]?.latest?.snapshot?.id;
+  const latest = State.snapshots[targetId]?.latest;
+  // la evidencia vinculada solo existe para hoteles de la última foto; el resto usa su detalle independiente
+  const snapshotId = latest?.rows?.some((row) => row.hotelKey === key) ? latest.snapshot?.id : null;
   const promise = api(`/api/hotels/rate-details?targetId=${targetId}&hotelKey=${encodeURIComponent(key)}${snapshotId ? `&snapshotId=${snapshotId}` : ''}`)
     .then((payload) => { cache[key] = { status: payload.rows?.length ? 'loaded' : 'empty', rows: payload.rows || [], provenance: payload.provenance }; })
     .catch((error) => { cache[key] = { status: 'error', message: error.message }; })
@@ -1579,6 +1714,7 @@ async function renderHotels() {
   }
   const targetId = State.targetId;
   restoreHotelQuery(targetId);
+  destroyBiMap();
   skeleton(host, 'list');
   let s, m, stabilityPayload;
   try { [s, m, stabilityPayload] = await Promise.all([getSnapshot(targetId), getMetrics(targetId), getHotelStability(targetId)]); }
@@ -1595,12 +1731,7 @@ async function renderHotels() {
 
   const isSheet = State.hotelTab === 'sheet';
   const tabs = [['sheet', 'Hoja de mercado', `${model.hotels.length} hoteles`], ['bi', 'Panel de análisis', 'BI · rate shopping']];
-  const biPanel = `<div class="pending-card">
-      <i aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></i>
-      <strong>El panel de análisis llega en la siguiente fase</strong>
-      <p>Calendario de tarifas, mapa de precios, tarifa sugerida y value score. Mientras tanto, la hoja de mercado reúne las tarifas y condiciones del set.</p>
-      <button type="button" class="btn btn--primary" data-hotel-tab="sheet">Ver la hoja de mercado</button>
-    </div>`;
+  const biPanel = '<div id="biHost"></div>';
   host.innerHTML = `<div class="page hsheet-page">
     <div class="page-head">
       <div><h1>Hoteles</h1><p>Tarifas y condiciones del set competitivo · ${esc(target ? target.name : 'Mercado activo')}</p></div>
@@ -1646,7 +1777,7 @@ async function renderHotels() {
 ` : biPanel}
     </div>
   </div>`;
-  if (!isSheet) return;
+  if (!isSheet) { void renderHotelsBI($('#biHost'), model, m); return; }
   paintHotelSheet();
 }
 
@@ -1785,6 +1916,748 @@ function openHotelInHotels(name) {
   State.hotelSearch = String(name || '');
   persistHotelQuery();
   setView('hotels');
+}
+
+/* ======================================================= HOTELES · PANEL DE ANÁLISIS */
+function biOwnKey(targetId = State.targetId) { return `atlas.ownHotel.${targetId}`; }
+
+function biReset(targetId) {
+  const own = (() => { try { return localStorage.getItem(biOwnKey(targetId)) || ''; } catch (_) { return ''; } })();
+  State.bi = {
+    targetId, own, horizon: 90, board: 'all', fam: 'all', zone: null, seg: null, chain: null, focus: null,
+    boxMode: 'zone', alertTab: 'all', target: BI_TARGET.initial, data: null, sheet: null, metrics: null,
+    markers: {}, fitKey: null, drawer: null, error: null,
+  };
+}
+
+async function loadBiData(force = false) {
+  const st = State.bi;
+  const key = `${st.targetId}|${st.board}|${st.fam}`;
+  if (!force && st.data && st.dataKey === key) return st.data;
+  const params = new URLSearchParams({ targetId: String(st.targetId), from: localIsoDate(), days: '90', board: st.board, roomFamily: st.fam });
+  const data = await api(`/api/hotels/rate-calendar?${params}`);
+  if (State.bi !== st) return null;
+  st.data = data;
+  st.dataKey = key;
+  return data;
+}
+
+/* Modelo calculado del panel para el horizonte, los filtros cruzados y la fecha activa. */
+function biModel() {
+  const st = State.bi, data = st.data;
+  const H = st.horizon;
+  const dates = data.dates.slice(0, H);
+  const coverage = data.coverage.dates.slice(0, H);
+  const sheetByKey = new Map((st.sheet?.hotels || []).map((h) => [h.key, h]));
+  const all = data.hotels.map((h) => {
+    const s = sheetByKey.get(h.key);
+    return {
+      ...h, prices: h.prices.slice(0, H), status: h.status.slice(0, H), units: h.units.slice(0, H),
+      segment: h.adultsOnly ? 'Adults only' : 'Familiar y mixto', nota: h.rating == null ? null : Number(h.rating),
+      delta: s ? s.delta : null, isNew: s ? s.isNew : false, prevAdr: s ? s.prevAdr : null, adr: s ? s.adr : null,
+      latestUnits: s ? s.units : null, beach: s ? s.row.beachDistance : null,
+    };
+  });
+  const inScope = (h) => (!st.zone || h.zone === st.zone) && (!st.seg || h.segment === st.seg) && (!st.chain || h.chain === st.chain);
+  const hs = all.filter(inScope);
+  const dayMeds = [], dayQ1 = [], dayQ3 = [];
+  for (let i = 0; i < H; i++) {
+    const ps = hs.map((h) => h.prices[i]).filter((v) => v != null);
+    dayMeds.push(biQuantile(ps, 0.5)); dayQ1.push(biQuantile(ps, 0.25)); dayQ3.push(biQuantile(ps, 0.75));
+  }
+  const captured = coverage.map((c, i) => (c ? i : null)).filter((i) => i != null);
+  const latestIdx = data.latestCheckIn ? dates.indexOf(data.latestCheckIn) : -1;
+  const defaultFi = latestIdx >= 0 && coverage[latestIdx] ? latestIdx : captured.length ? captured[0] : 0;
+  const chosen = st.focus ? dates.indexOf(st.focus) : -1;
+  const fi = chosen >= 0 ? chosen : defaultFi;
+  const fMed = dayMeds[fi];
+  const open = hs.filter((h) => h.prices[fi] != null).map((h) => ({ h, p: h.prices[fi] }));
+  const notes = hs.map((h) => h.nota).filter((v) => v != null);
+  const own = all.find((h) => h.key === st.own) || null;
+  return {
+    H, dates, coverage, all, hs, dayMeds, dayQ1, dayQ3, captured, fi, defaultFi, fMed, open,
+    closedToday: hs.filter((h) => h.status[fi] === 'closed').length,
+    lowToday: hs.filter((h) => h.status[fi] === 'low').length,
+    mNota: biQuantile(notes, 0.5), own, ownP: own ? own.prices[fi] : null,
+    vscore: (h, price) => biValueScore(h.nota, price, fMed, biQuantile(notes, 0.5)),
+  };
+}
+
+function biFocusLabel(m) { return biDayLong(m.dates[m.fi]); }
+
+function biFiltersHTML(m) {
+  const st = State.bi, data = st.data;
+  const options = [...data.hotels].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es')).map((h) => `<option value="${esc(h.key)}"${h.key === st.own ? ' selected' : ''}>${esc(h.name)}</option>`).join('');
+  const horizons = BI_HORIZONS.map((n) => `<button type="button" class="${st.horizon === n ? 'is-active' : ''}" data-bi-horizon="${n}" aria-pressed="${st.horizon === n}">${n} días</button>`).join('');
+  const boards = (data.facets?.boards || []).map((b) => `<option value="${esc(b)}"${st.board === b ? ' selected' : ''}>${esc(b)}</option>`).join('');
+  const fams = (data.facets?.roomFamilies || []).map((f) => `<option value="${esc(f)}"${st.fam === f ? ' selected' : ''}>${esc(f)}</option>`).join('');
+  return `<label class="bi-field bi-field--own"><span>Hotel propio</span><select id="biOwn" class="bi-select${st.own ? ' is-set' : ''}" aria-label="Hotel propio"><option value=""${st.own ? '' : ' selected'}>Ninguno · vista de mercado</option>${options}</select></label>
+    <div class="bi-field"><span>Fechas de entrada</span><div class="seg seg--sm bi-horizons" role="group" aria-label="Horizonte de fechas de entrada">${horizons}</div></div>
+    <label class="bi-field"><span>Régimen</span><select id="biBoard" class="bi-select" aria-label="Régimen"><option value="all"${st.board === 'all' ? ' selected' : ''}>Todos los regímenes</option>${boards}</select></label>
+    <label class="bi-field"><span>Tipo de habitación</span><select id="biFam" class="bi-select" aria-label="Tipo de habitación"><option value="all"${st.fam === 'all' ? ' selected' : ''}>Todas las habitaciones</option>${fams}</select></label>
+    <span class="bi-filters__spacer"></span>
+    <div class="bi-chips" id="biChips">${biChipsHTML(m)}</div>`;
+}
+
+function biChipsHTML(m) {
+  const st = State.bi;
+  const chips = [];
+  if (st.zone) chips.push(['zone', `Zona: ${st.zone}`]);
+  if (st.seg) chips.push(['seg', st.seg]);
+  if (st.chain) chips.push(['chain', `Cadena: ${st.chain}`]);
+  if (m.fi !== m.defaultFi) chips.push(['focus', `Entrada ${biDayLabel(m.dates[m.fi])}`]);
+  return `${chips.map(([kind, label]) => `<button type="button" class="bi-chip" data-bi-clear="${kind}" aria-label="Quitar filtro ${esc(label)}">${esc(label)}<span aria-hidden="true">×</span></button>`).join('')}${chips.length ? '<button type="button" class="bi-clear" data-bi-clear="all">Limpiar</button>' : ''}<span class="bi-scope">${m.hs.length} de ${m.all.length} hoteles</span>`;
+}
+
+function biKpisHTML(m) {
+  const st = State.bi, mv = st.metrics?.movement || {};
+  const up = m.hs.filter((h) => h.delta > 0).length, down = m.hs.filter((h) => h.delta < 0).length;
+  const latestId = st.metrics?.latestSnapshot?.id;
+  const movement = { label: 'Movimiento del set', value: `▲${up} ▼${down}`, foot: mv.isComparable && mv.previousSnapshotId ? `foto #${mv.previousSnapshotId} → #${latestId}` : 'sin foto comparable' };
+  const noCapture = !m.coverage[m.fi];
+  const day = biDayLabel(m.dates[m.fi]);
+  let cells;
+  if (m.own) {
+    const rank = biRankAt(m.hs, m.own.key, m.fi);
+    const status = m.own.status[m.fi];
+    const vs = m.vscore(m.own, m.ownP);
+    cells = [
+      { label: `Tu tarifa · ${day}`, value: m.ownP != null ? nEs(m.ownP) : status === 'closed' ? 'Cerrado' : '—', unit: m.ownP != null ? '€' : '', foot: rank ? `puesto ${rank.rank} de ${rank.of}` : noCapture ? 'sin captura ese día' : 'sin disponibilidad', tone: 'ac' },
+      { label: 'Índice de precio', value: m.ownP != null && m.fMed ? nEs((m.ownP / m.fMed) * 100) : '—', foot: 'mediana del set = 100' },
+      { label: 'Mediana del set', value: m.fMed ? nEs(m.fMed) : '—', unit: m.fMed ? '€' : '', foot: noCapture ? 'sin captura ese día' : `${m.open.length} hoteles con tarifa` },
+      { label: 'Value score', value: vs ?? '—', unit: vs == null ? '' : '/100', foot: m.own.nota != null && m.mNota != null ? `nota ${nEs(m.own.nota, 1)} vs mediana ${nEs(m.mNota, 1)}` : 'sin nota publicada' },
+      { label: 'Competidores cerrados', value: noCapture ? '—' : nEs(m.closedToday), foot: noCapture ? 'sin captura ese día' : `${m.lowToday} con cupo bajo ese día` },
+      movement,
+    ];
+  } else {
+    const meds = m.dayMeds.filter((v) => v != null);
+    cells = [
+      { label: `Mediana · ${day}`, value: m.fMed ? nEs(m.fMed) : '—', unit: m.fMed ? '€' : '', foot: m.fMed ? `P25 ${eur(m.dayQ1[m.fi])} · P75 ${eur(m.dayQ3[m.fi])}` : 'sin captura ese día' },
+      { label: 'Dispersión', value: m.dayQ1[m.fi] > 0 ? nEs((m.dayQ3[m.fi] / m.dayQ1[m.fi] - 1) * 100) : '—', unit: m.dayQ1[m.fi] > 0 ? '%' : '', foot: 'P75 sobre P25' },
+      { label: 'Hoteles en el alcance', value: nEs(m.hs.length), foot: noCapture ? 'sin captura ese día' : `${m.open.length} con tarifa ese día` },
+      { label: 'Cerrados ese día', value: noCapture ? '—' : nEs(m.closedToday), foot: noCapture ? 'sin captura ese día' : `${m.lowToday} con cupo bajo` },
+      { label: `Mediana ${m.H} días`, value: meds.length ? nEs(biQuantile(meds, 0.5)) : '—', unit: meds.length ? '€' : '', foot: meds.length ? `rango ${eur(Math.min(...meds))}–${eur(Math.max(...meds))}` : 'sin capturas en el horizonte' },
+      movement,
+    ];
+  }
+  return cells.map((k) => `<div class="kpi-strip__cell"><span class="kpi-strip__label">${esc(k.label)}</span><div class="kpi-strip__value"><strong class="${k.tone === 'ac' ? 'ac' : ''}">${esc(String(k.value))}</strong>${k.unit ? `<span>${esc(k.unit)}</span>` : ''}</div><span class="kpi-strip__foot">${esc(k.foot)}</span></div>`).join('');
+}
+
+function biZonesHTML(m) {
+  const st = State.bi;
+  const names = [...new Set(m.all.map((h) => h.zone).filter(Boolean))];
+  const zones = names.map((z) => {
+    const zs = m.all.filter((h) => h.zone === z && (!st.seg || h.segment === st.seg) && (!st.chain || h.chain === st.chain));
+    const ps = zs.map((h) => h.prices[m.fi]).filter((v) => v != null);
+    const med = biQuantile(ps, 0.5);
+    return { z, n: zs.length, med, tone: med == null || !m.fMed ? 'none' : biMapTone(med, m.fMed) };
+  }).filter((z) => z.n).sort((a, b) => (b.med ?? -1) - (a.med ?? -1));
+  if (!zones.length) return '';
+  return `<div class="bi-zones__head"><span>Zona</span><span>Htl · mediana</span></div>${zones.map((z) => `<button type="button" class="bi-zone${st.zone === z.z ? ' is-active' : ''}" data-bi-zone="${esc(z.z)}" aria-pressed="${st.zone === z.z}"><span class="bi-zone__name"><i class="tone-${z.tone}"></i><span>${esc(z.z)}</span></span><span class="bi-zone__meta">${z.n} · <b>${z.med == null ? '—' : eur(z.med)}</b></span></button>`).join('')}`;
+}
+
+function biRecoHTML(m) {
+  const st = State.bi, own = m.own;
+  const day = biDayLabel(m.dates[m.fi]);
+  const capture = m.coverage[m.fi];
+  const age = capture ? dataAgeDays(capture.scrapedAt) : null;
+  const reco = biRecommendation({
+    openPrices: m.open.map((x) => x.p), dayMedian: m.fMed, targetPct: st.target, valueScore: m.vscore(own, m.ownP),
+    closed: m.closedToday, low: m.lowToday, scopeSize: m.hs.length, deltas: m.hs.map((h) => h.delta), leadDays: biDaysBetween(localIsoDate(), m.dates[m.fi]),
+  });
+  const head = `<div class="bi-reco__kicker"><span class="card__kicker">Tarifa sugerida · entrada ${esc(biFocusLabel(m))}</span>${reco ? `<span class="chip chip--warn" title="${esc(`${m.open.length} hoteles con tarifa · datos de hace ${age ?? '—'} días`)}">Confianza ${m.open.length < 6 ? 'baja' : (age > 14 || m.open.length < 15) ? 'media-baja' : 'media'}</span>` : ''}</div><div class="bi-reco__name">${esc(own.name)}</div>`;
+  if (!reco) return `<div class="bi-card bi-reco"><div class="bi-reco__top">${head}</div><div class="bi-reco__empty">${capture ? 'Ningún hotel del alcance tiene tarifa en esta fecha.' : 'Sin captura para esta fecha de entrada. Elige una fecha capturada en el calendario.'}</div></div>`;
+  const cur = m.ownP;
+  const diff = cur ? (reco.suggested / cur - 1) * 100 : null;
+  const label = {
+    median: () => ['Mediana del set', `${reco.parts[0].n} hoteles con tarifa el ${day}`],
+    target: (p) => [`Posición objetivo P${p.pct}`, `precio del percentil ${p.pct}: ${eur(p.price)}`],
+    value: (p) => [`Value score ${p.score}`, p.score >= 50 ? 'tu nota permite cobrar más' : 'nota por debajo del set'],
+    scarcity: (p) => ['Escasez de la competencia', `${p.closed} cerrados · ${p.low} con cupo bajo`],
+    movement: (p) => ['Movimiento reciente del set', `media ${biSigned(p.movement)} % entre fotos`],
+    lead: (p) => [`Antelación ${p.lead} días`, p.lead < 21 ? 'entrada cercana: margen al alza' : p.lead > 60 ? 'entrada lejana: prudencia' : 'ventana central'],
+  };
+  const maxAbs = Math.max(...reco.parts.filter((p) => !p.base).map((p) => Math.abs(p.value)), 1);
+  const rows = reco.parts.map((p) => {
+    const [k, why] = label[p.id](p);
+    if (p.base) return `<div class="bi-part"><span class="bi-part__label"><span>${esc(k)}</span><small>${esc(why)}</small></span><span class="bi-part__bar"><i class="bi-part__axis"></i></span><strong class="bi-part__value is-base">${eur(p.value)}</strong></div>`;
+    const w = (Math.abs(p.value) / maxAbs) * 50;
+    const tone = p.value >= 0 ? 'pos' : 'neg';
+    return `<div class="bi-part"><span class="bi-part__label"><span>${esc(k)}</span><small>${esc(why)}</small></span><span class="bi-part__bar"><i class="bi-part__axis"></i><i class="bi-part__fill is-${tone}" style="left:${p.value >= 0 ? 50 : 50 - w}%;width:${w.toFixed(1)}%"></i></span><strong class="bi-part__value ${tone}">${p.value >= 0 ? '+' : '−'}${nEs(Math.abs(Math.round(p.value)))} €</strong></div>`;
+  }).join('');
+  st.recoText = `Explica la tarifa sugerida de ${reco.suggested} € para ${own.name} el ${day}. Componentes: ${reco.parts.map((p) => `${label[p.id](p)[0]} ${Math.round(p.value)} €`).join('; ')}`;
+  st.recoValue = reco.suggested;
+  return `<div class="bi-card bi-reco">
+    <div class="bi-reco__top">${head}
+      <div class="bi-reco__values"><div><span class="bi-reco__lab">Sugerida</span><strong class="bi-reco__sug">${nEs(reco.suggested)}<span> €</span></strong></div>
+      <div class="bi-reco__cur"><span class="bi-reco__lab">Actual ${cur != null ? eur(cur) : `— (${m.own.status[m.fi] === 'closed' ? 'cerrado' : 'sin captura'})`}</span>${diff == null ? '' : `<span class="bi-reco__diff ${diff >= 0 ? 'pos' : 'neg'}">${biSigned(diff)} %</span>`}</div></div>
+    </div>
+    <div class="bi-reco__parts">${rows}</div>
+    <div class="bi-reco__foot">
+      <div class="bi-reco__target"><label for="biTarget">Posición objetivo en el set</label><strong>P${st.target}</strong></div>
+      <input type="range" id="biTarget" min="${BI_TARGET.min}" max="${BI_TARGET.max}" step="${BI_TARGET.step}" value="${st.target}" aria-label="Percentil objetivo">
+      <div class="bi-reco__actions"><button type="button" class="btn btn--primary" data-bi-copy>Copiar tarifa</button><button type="button" class="btn" data-bi-ask-reco>Explicar con Copilot</button></div>
+      <span class="bi-reco__note">Basada en precios públicos de hace ${age ?? '—'} ${age === 1 ? 'día' : 'días'}. No incluye ocupación, pickup ni restricciones propias.</span>
+    </div>
+  </div>`;
+}
+
+function biDayHTML(m) {
+  const st = State.bi;
+  const sorted = [...m.open].sort((a, b) => a.p - b.p);
+  const options = [...st.data.hotels].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es')).map((h) => `<option value="${esc(h.key)}">${esc(h.name)}</option>`).join('');
+  const invite = `<div class="bi-card bi-invite"><strong>Tarifa sugerida</strong><span>Elige tu hotel arriba y verás la tarifa recomendada para cada fecha, desglosada en mediana, posición objetivo, valor, escasez, movimiento y antelación.</span><select id="biOwnInvite" class="bi-select is-invite" aria-label="Elegir hotel propio"><option value="">Elegir hotel propio…</option>${options}</select></div>`;
+  if (!sorted.length) {
+    return `<div class="bi-card bi-day"><span class="card__kicker">Mercado · entrada ${esc(biFocusLabel(m))}</span><div class="bi-day__big"><strong>—</strong><span>€ mediana</span></div><p class="bi-day__empty">${m.coverage[m.fi] ? 'Ningún hotel del alcance tiene tarifa en esta fecha.' : 'Sin captura para esta fecha de entrada.'}</p></div>${invite}`;
+  }
+  const min = sorted[0].p, max = sorted.at(-1).p;
+  const X = (v) => (max > min ? ((v - min) / (max - min)) * 100 : 50);
+  const best = [...m.open].map((x) => ({ ...x, vs: m.vscore(x.h, x.p) })).filter((x) => x.vs != null).sort((a, b) => b.vs - a.vs)[0];
+  const short = (name) => String(name).split(' - ')[0];
+  const facts = [
+    ['Más barato', `${short(sorted[0].h.name)} · ${eur(sorted[0].p)}`, sorted[0].h.key],
+    ['Más caro', `${short(sorted.at(-1).h.name)} · ${eur(sorted.at(-1).p)}`, sorted.at(-1).h.key],
+    ['Mejor value score', best ? `${short(best.h.name)} · ${best.vs}` : '—', best ? best.h.key : null],
+  ].map(([k, v, key]) => key ? `<button type="button" class="bi-fact" data-bi-open="${esc(key)}"><span>${esc(k)}</span><b>${esc(v)}</b></button>` : `<div class="bi-fact"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
+  return `<div class="bi-card bi-day"><span class="card__kicker">Mercado · entrada ${esc(biFocusLabel(m))}</span>
+    <div class="bi-day__big"><strong>${nEs(m.fMed)}</strong><span>€ mediana</span></div>
+    <div class="bi-box" aria-hidden="true"><i class="bi-box__line"></i><i class="bi-box__iqr" style="left:${X(m.dayQ1[m.fi]).toFixed(1)}%;width:${(X(m.dayQ3[m.fi]) - X(m.dayQ1[m.fi])).toFixed(1)}%"></i><i class="bi-box__med" style="left:${X(m.fMed).toFixed(1)}%"></i></div>
+    <div class="bi-box__scale"><span>${eur(min)}</span><span>P25 ${eur(m.dayQ1[m.fi])} · P75 ${eur(m.dayQ3[m.fi])}</span><span>${eur(max)}</span></div>
+    <div class="bi-facts">${facts}<div class="bi-fact"><span>Cerrados</span><b>${m.closedToday} hoteles · ${m.lowToday} con cupo bajo</b></div></div>
+  </div>${invite}`;
+}
+
+function biCalendarHTML(m) {
+  const st = State.bi;
+  const H = m.H;
+  const cols = `270px repeat(${H}, minmax(0, 1fr))`;
+  const showText = H <= 30;
+  const head = biCalendarHead(m.dates).map((c, i) => `<span class="${i === m.fi ? 'is-focus' : c.month ? 'is-month' : ''}${m.coverage[i] ? '' : ' is-empty'}">${c.text}</span>`).join('');
+  const meds = m.dayMeds.filter((v) => v != null);
+  const mMax = meds.length ? Math.max(...meds) : 1, mMin = meds.length ? Math.min(...meds) : 0;
+  const medRow = m.dayMeds.map((v, i) => (v == null ? `<span class="bi-cal__med" data-d="${i}"></span>`
+    : `<span class="bi-cal__med" data-d="${i}" role="button" tabindex="0" aria-label="${esc(`Entrada ${biDayLong(m.dates[i])} · mediana ${eur(v)}`)}" aria-pressed="${i === m.fi}"><i style="height:${(30 + ((v - mMin) / Math.max(1, mMax - mMin)) * 70).toFixed(0)}%"></i></span>`)).join('');
+  let rankRow = '';
+  if (m.own) {
+    rankRow = `<div class="bi-cal__row bi-cal__rank" style="grid-template-columns:${cols}"><span class="bi-cal__label is-own">Rank del hotel propio</span>${m.dates.map((_, i) => {
+      const r = biRankAt(m.hs, m.own.key, i);
+      const s = m.own.status[i];
+      if (r) { const pct = (r.rank - 1) / Math.max(1, r.of - 1); return `<span data-d="${i}" class="${pct < 0.34 ? 'is-top' : pct < 0.67 ? 'is-mid' : 'is-low'}">${showText ? r.rank : ''}</span>`; }
+      return s === 'closed' ? `<span data-d="${i}" class="is-closed">${showText ? '×' : ''}</span>` : `<span data-d="${i}" class="is-none"></span>`;
+    }).join('')}</div>`;
+  }
+  const rows = [...m.hs].sort((a, b) => (b.key === st.own) - (a.key === st.own) || (b.prices[m.fi] ?? -1) - (a.prices[m.fi] ?? -1) || String(a.name).localeCompare(String(b.name), 'es'));
+  const body = rows.map((h, ri) => {
+    const cells = m.dates.map((_, i) => {
+      const s = h.status[i], p = h.prices[i];
+      if (p != null) {
+        const heat = biHeat(p, m.dayMeds[i]);
+        return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell${s === 'low' ? ' is-low' : ''}${heat && Math.abs(heat.r) > 0.45 ? ' is-strong' : ''}" style="background:${heat ? heat.bg : 'var(--line-soft)'}">${showText ? nEs(p) : ''}</span>`;
+      }
+      if (s === 'closed') return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-closed"></span>`;
+      return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-empty"></span>`;
+    }).join('');
+    const isOwn = h.key === st.own;
+    return `<div class="bi-cal__row${isOwn ? ' is-own' : ''}" style="grid-template-columns:${cols}"><button type="button" class="bi-cal__name" data-bi-open="${esc(h.key)}"><span class="bi-cal__pos">${ri + 1}</span><span>${esc(h.name)}</span></button>${cells}</div>`;
+  }).join('');
+  const captured = m.captured.length;
+  return `<div class="bi-card__head bi-cal__head"><div class="bi-card__title"><span class="card__kicker">Rate calendar · entradas ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><h2>Tarifa por hotel y fecha de entrada</h2></div>
+      <div class="bi-cal__aside"><span class="bi-cal__readout" id="biCalReadout" aria-live="polite">Pasa el cursor por el calendario</span>
+      <div class="bi-legend"><span class="bi-legend__scale" aria-hidden="true"><i style="background:rgba(31,122,82,.55)"></i><i style="background:rgba(31,122,82,.22)"></i><i style="background:var(--line-soft)"></i><i style="background:rgba(185,79,80,.22)"></i><i style="background:rgba(185,79,80,.55)"></i></span><span>vs mediana del día</span><i class="bi-legend__closed" aria-hidden="true"></i><span>cerrado</span><i class="bi-legend__low" aria-hidden="true"></i><span>cupo bajo</span><i class="bi-legend__empty" aria-hidden="true"></i><span>sin captura</span></div></div></div>
+    <div class="bi-cal__body">
+      <div class="bi-cal__grid" id="biCalGrid">
+        <div class="bi-cal__row bi-cal__days" style="grid-template-columns:${cols}"><span></span>${head}</div>
+        <div class="bi-cal__row bi-cal__medrow" style="grid-template-columns:${cols}"><span class="bi-cal__label">Mediana del set</span>${medRow}</div>
+        ${rankRow}
+        <div class="bi-cal__rows">${body || '<div class="bi-cal__nohotels">Ningún hotel tiene tarifas con estos filtros. Prueba otro régimen o tipo de habitación.</div>'}</div>
+        <div class="bi-cal__focus" style="left:calc(270px + 1px + (100% - 271px) * ${(m.fi / H).toFixed(5)});width:calc((100% - 271px) / ${H})" aria-hidden="true"></div>
+      </div>
+      <div class="bi-cal__foot"><span>Pulsa una fecha para recalcular mapa, KPIs, distribución y tarifa sugerida. Pulsa un hotel para abrir su ficha.</span><span class="mono">entrada ${biDayLabel(m.dates[m.fi])} seleccionada · ${m.open.length} con tarifa · ${m.closedToday} cerrados · ${captured} ${captured === 1 ? 'fecha capturada' : 'fechas capturadas'} de ${H}</span></div>
+    </div>`;
+}
+
+function biCalendarReadout(m, key, d) {
+  if (d == null || Number.isNaN(d)) return 'Pasa el cursor por el calendario';
+  const iso = m.dates[d];
+  if (!key) {
+    if (!m.coverage[d]) return `${biDayLong(iso)} · sin captura`;
+    return `${biDayLong(iso)} · mediana ${eur(m.dayMeds[d])} · P25–P75 ${eur(m.dayQ1[d])}–${eur(m.dayQ3[d])}`;
+  }
+  const h = m.all.find((x) => x.key === key);
+  if (!h) return '';
+  const p = h.prices[d], s = h.status[d];
+  const short = String(h.name).split(' - ')[0];
+  if (p != null) return `${short} · ${biDayLong(iso)} · ${eur(p)} · ${biSigned((p / m.dayMeds[d] - 1) * 100, 0)} % vs mediana (${eur(m.dayMeds[d])})${s === 'low' ? ' · cupo bajo' : ''}`;
+  const why = { closed: 'cerrado', unknown: 'no aparece en una captura parcial', nomatch: 'sin tarifa con estos filtros' }[s] || 'sin captura';
+  return `${short} · ${biDayLong(iso)} · ${why}`;
+}
+
+/* Gráfica de líneas con huecos: une solo los puntos con dato y dibuja cada punto. */
+function biPolyline(points) { return points.filter(Boolean).map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '); }
+function biBand(top, bottom) {
+  const valid = top.map((p, i) => (p && bottom[i] ? i : null)).filter((i) => i != null);
+  if (valid.length < 2) return '';
+  return [...valid.map((i) => top[i]), ...valid.map((i) => bottom[i]).reverse()].map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+}
+
+function biIndexHTML(m) {
+  const st = State.bi, H = m.H;
+  const X = (i) => 40 + i * (760 / Math.max(1, H - 1));
+  let kicker, title, summary, line, band, refY = null, yl, leg1, leg2, dots;
+  if (m.own) {
+    const vals = m.dayMeds.map((med, i) => (m.own.prices[i] != null && med ? (m.own.prices[i] / med) * 100 : null));
+    const b1 = m.dayQ1.map((v, i) => (v != null && m.dayMeds[i] ? (v / m.dayMeds[i]) * 100 : null));
+    const b3 = m.dayQ3.map((v, i) => (v != null && m.dayMeds[i] ? (v / m.dayMeds[i]) * 100 : null));
+    const pool = [...vals, ...b1, ...b3, 100].filter((v) => v != null);
+    const lo = Math.min(...pool) - 5, hi = Math.max(...pool) + 5;
+    const Y = (v) => 180 - ((v - lo) / (hi - lo)) * 170;
+    const pts = vals.map((v, i) => (v == null ? null : [X(i), Y(v)]));
+    const avg = vals.filter((v) => v != null);
+    const closedDays = m.own.status.filter((s) => s === 'closed').length;
+    kicker = `Índice de precio (ARI) · ${H} días`; title = `${String(m.own.name).split(' - ')[0]} frente al set`;
+    summary = avg.length ? `media ${nEs(avg.reduce((a, v) => a + v, 0) / avg.length)} · ${closedDays} ${closedDays === 1 ? 'día' : 'días'} cerrado` : 'sin tarifa del hotel en el horizonte';
+    line = biPolyline(pts); dots = pts; band = biBand(b3.map((v, i) => (v == null ? null : [X(i), Y(v)])), b1.map((v, i) => (v == null ? null : [X(i), Y(v)])));
+    refY = Y(100); yl = [nEs(hi), nEs((hi + lo) / 2), nEs(lo)]; leg1 = 'Índice del hotel (100 = mediana)'; leg2 = 'Banda P25–P75 del set';
+  } else {
+    const pool = [...m.dayQ1, ...m.dayQ3].filter((v) => v != null);
+    const lo = (pool.length ? Math.min(...pool) : 0) - 10, hi = (pool.length ? Math.max(...pool) : 100) + 10;
+    const Y = (v) => 180 - ((v - lo) / (hi - lo)) * 170;
+    const meds = m.dayMeds.filter((v) => v != null);
+    kicker = `Índice de precio del mercado · ${H} días`; title = 'Mediana y banda central por fecha';
+    summary = meds.length ? `mín ${eur(Math.min(...meds))} · máx ${eur(Math.max(...meds))}` : 'sin capturas en el horizonte';
+    const pts = m.dayMeds.map((v, i) => (v == null ? null : [X(i), Y(v)]));
+    line = biPolyline(pts); dots = pts; band = biBand(m.dayQ3.map((v, i) => (v == null ? null : [X(i), Y(v)])), m.dayQ1.map((v, i) => (v == null ? null : [X(i), Y(v)])));
+    yl = [eur(hi), eur((hi + lo) / 2), eur(lo)]; leg1 = 'Mediana del set'; leg2 = 'P25–P75';
+  }
+  const xl = m.dates.map((iso, i) => ({ iso, i })).filter(({ iso, i }) => i === 0 || biDate(iso).getUTCDate() === 1 || (H <= 30 && i % 7 === 0)).map(({ iso, i }) => `<text x="${X(i).toFixed(1)}" y="202" text-anchor="middle">${biDayLabel(iso)}</text>`).join('');
+  const circles = dots.map((p) => (p ? `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="var(--card)" stroke="var(--ac)" stroke-width="2"></circle>` : '')).join('');
+  return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">${esc(kicker)}</span><h2>${esc(title)}</h2></div><span class="bi-card__summary">${esc(summary)}</span></div>
+    <svg class="bi-chart" viewBox="0 0 800 210" role="img" aria-label="${esc(title)}"><line x1="40" x2="800" y1="10" y2="10" stroke="var(--line)"></line><line x1="40" x2="800" y1="95" y2="95" stroke="var(--line)"></line><line x1="40" x2="800" y1="180" y2="180" stroke="var(--line)"></line>
+      <g class="bi-svg-text"><text x="34" y="13" text-anchor="end">${yl[0]}</text><text x="34" y="98" text-anchor="end">${yl[1]}</text><text x="34" y="183" text-anchor="end">${yl[2]}</text>${xl}</g>
+      ${band ? `<polygon points="${band}" fill="var(--accent-soft)" opacity=".9"></polygon>` : ''}
+      ${refY != null ? `<line x1="40" x2="800" y1="${refY.toFixed(1)}" y2="${refY.toFixed(1)}" stroke="var(--ink)" stroke-dasharray="4 4" opacity=".5"></line>` : ''}
+      ${line ? `<polyline points="${line}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linejoin="round"></polyline>` : ''}${circles}
+      <line x1="${X(m.fi).toFixed(1)}" x2="${X(m.fi).toFixed(1)}" y1="6" y2="184" stroke="var(--ac)" stroke-width="1" opacity=".6"></line></svg>
+    <div class="bi-legend bi-legend--chart"><span><i class="is-line"></i>${esc(leg1)}</span><span><i class="is-band"></i>${esc(leg2)}</span></div>`;
+}
+
+function biEvolutionHTML(m) {
+  const st = State.bi;
+  const caps = st.data.extractions || [];
+  const head = (summary) => `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Evolución por extracción</span><h2>Cómo se ha movido la tarifa del set</h2></div><span class="bi-card__summary">${esc(summary)}</span></div>`;
+  const keys = new Set(m.hs.map((h) => h.key));
+  const stats = caps.map((e) => {
+    const ps = Object.entries(e.prices || {}).filter(([k]) => keys.has(k)).map(([, v]) => v);
+    return { e, med: biQuantile(ps, 0.5), q1: biQuantile(ps, 0.25), q3: biQuantile(ps, 0.75), own: m.own ? e.prices?.[m.own.key] ?? null : null };
+  });
+  const valid = stats.filter((s) => s.med != null);
+  if (valid.length < 2) return `${head('se necesitan dos fotos')}<div class="empty">Se necesitan dos fotos con tarifas del alcance para dibujar la evolución.</div>`;
+  const pool = [...stats.flatMap((s) => [s.q1, s.q3]), ...stats.map((s) => s.own)].filter((v) => v != null);
+  const lo = Math.min(...pool) - 10, hi = Math.max(...pool) + 10;
+  const X = (k) => 40 + k * (760 / Math.max(1, caps.length - 1));
+  const Y = (v) => 180 - ((v - lo) / (hi - lo)) * 170;
+  const medPts = stats.map((s, k) => (s.med == null ? null : [X(k), Y(s.med)]));
+  const ownPts = stats.map((s, k) => (s.own == null ? null : [X(k), Y(s.own)]));
+  const band = biBand(stats.map((s, k) => (s.q3 == null ? null : [X(k), Y(s.q3)])), stats.map((s, k) => (s.q1 == null ? null : [X(k), Y(s.q1)])));
+  const first = valid[0].med, last = valid.at(-1).med;
+  const points = [
+    ...stats.map((s, k) => (s.med == null ? '' : `<circle cx="${X(k).toFixed(1)}" cy="${Y(s.med).toFixed(1)}" r="3.5" fill="var(--card)" stroke="var(--mid)" stroke-width="2"><title>Foto #${s.e.snapshotId} · entrada ${biDayLabel(s.e.checkIn)} · mediana ${eur(s.med)}</title></circle>`)),
+    ...stats.map((s, k) => (s.own == null ? '' : `<circle cx="${X(k).toFixed(1)}" cy="${Y(s.own).toFixed(1)}" r="3.5" fill="var(--card)" stroke="var(--ac)" stroke-width="2"><title>Foto #${s.e.snapshotId} · ${eur(s.own)}</title></circle>`)),
+  ].join('');
+  const xl = caps.map((e, k) => `<text x="${X(k).toFixed(1)}" y="202" text-anchor="middle">#${e.snapshotId}</text>`).join('');
+  return `${head(`mediana ${eur(first)} → ${eur(last)} · ${biSigned((last / first - 1) * 100)} %`)}
+    <svg class="bi-chart" viewBox="0 0 800 210" role="img" aria-label="Mediana del set por foto"><line x1="40" x2="800" y1="10" y2="10" stroke="var(--line)"></line><line x1="40" x2="800" y1="180" y2="180" stroke="var(--line)"></line>
+      <g class="bi-svg-text"><text x="34" y="13" text-anchor="end">${eur(hi)}</text><text x="34" y="183" text-anchor="end">${eur(lo)}</text>${xl}</g>
+      ${band ? `<polygon points="${band}" fill="var(--accent-soft)" opacity=".9"></polygon>` : ''}
+      <polyline points="${biPolyline(medPts)}" fill="none" stroke="var(--mid)" stroke-width="2" stroke-linejoin="round"></polyline>
+      ${m.own ? `<polyline points="${biPolyline(ownPts)}" fill="none" stroke="var(--ac)" stroke-width="2.4" stroke-linejoin="round"></polyline>` : ''}${points}</svg>
+    <div class="bi-legend bi-legend--chart"><span><i class="is-mid"></i>Mediana del set</span><span><i class="is-band"></i>P25–P75</span>${m.own ? '<span><i class="is-line"></i>Hotel propio</span>' : ''}</div>`;
+}
+
+function biGroupKey(mode, h) { return mode === 'zone' ? h.zone : mode === 'segment' ? h.segment : h.chain; }
+
+function biBoxesHTML(m) {
+  const st = State.bi;
+  const modes = [['zone', 'Zona'], ['segment', 'Segmento'], ['chain', 'Cadena']].map(([id, label]) => `<button type="button" class="${st.boxMode === id ? 'is-active' : ''}" data-bi-box-mode="${id}" aria-pressed="${st.boxMode === id}">${label}</button>`).join('');
+  const groups = new Map();
+  m.open.forEach(({ h, p }) => { const g = biGroupKey(st.boxMode, h); if (!g) return; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(p); });
+  const all = m.open.map((x) => x.p);
+  const bmin = all.length ? Math.min(...all) : 0, bmax = all.length ? Math.max(...all) : 1;
+  const BX = (v) => ((v - bmin) / Math.max(1, bmax - bmin)) * 100;
+  const active = st.boxMode === 'zone' ? st.zone : st.boxMode === 'segment' ? st.seg : st.chain;
+  const rows = [...groups.entries()].filter(([, a]) => st.boxMode !== 'chain' || a.length > 1).map(([g, a]) => {
+    const mn = Math.min(...a), mx = Math.max(...a), q1 = biQuantile(a, 0.25), q3 = biQuantile(a, 0.75), md = biQuantile(a, 0.5);
+    const ownHere = m.own && m.ownP != null && biGroupKey(st.boxMode, m.own) === g;
+    return { g, n: a.length, md, html: `<button type="button" class="bi-group${active === g ? ' is-active' : ''}" data-bi-group="${esc(g)}" aria-pressed="${active === g}"><span class="bi-group__name">${esc(g)} <small>${a.length}</small></span><span class="bi-group__plot"><i class="bi-group__whisker" style="left:${BX(mn).toFixed(1)}%;width:${(BX(mx) - BX(mn)).toFixed(1)}%"></i><i class="bi-group__iqr" style="left:${BX(q1).toFixed(1)}%;width:${Math.max(0.8, BX(q3) - BX(q1)).toFixed(1)}%"></i><i class="bi-group__med" style="left:${BX(md).toFixed(1)}%"></i>${ownHere ? `<i class="bi-group__own" style="left:${BX(m.ownP).toFixed(1)}%" title="Tu hotel · ${eur(m.ownP)}"></i>` : ''}</span><span class="bi-group__value">${eur(md)}</span></button>` };
+  }).sort((a, b) => b.md - a.md).map((r) => r.html).join('');
+  return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Distribución · entrada ${esc(biFocusLabel(m))}</span><h2>Rango de precios por grupo</h2></div><div class="seg seg--sm" role="group" aria-label="Agrupar por">${modes}</div></div>
+    <div class="bi-groups">${rows || `<div class="empty">${m.open.length ? 'No hay grupos con dos o más hoteles.' : 'Sin tarifas en esta fecha.'}</div>`}</div>`;
+}
+
+function biScatterHTML(m) {
+  const st = State.bi;
+  const pts = m.open.filter(({ h }) => h.nota != null);
+  const head = `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Reputación vs precio · value score</span><h2>Quién ofrece más por su precio</h2></div><span class="bi-card__summary" id="biScatterReadout">tamaño = reseñas · pulsa para abrir ficha</span></div>`;
+  if (pts.length < 2 || !m.fMed || m.mNota == null) return `${head}<div class="empty">Se necesitan al menos dos hoteles con tarifa y nota en esta fecha.</div>`;
+  const xs = pts.map((x) => x.p), ys = pts.map((x) => x.h.nota);
+  const xlo = Math.min(...xs, 100) * 0.92, xhi = Math.max(...xs, 200) * 1.04;
+  const ylo = Math.min(...ys, 7.5) - 0.15, yhi = Math.max(...ys, 9) + 0.1;
+  const SX = (v) => ((v - xlo) / (xhi - xlo)) * 100, SY = (v) => ((v - ylo) / (yhi - ylo)) * 100;
+  const dots = pts.map(({ h, p }) => {
+    const own = h.key === st.own, vs = m.vscore(h, p), size = biDotSize(h.reviews);
+    const tone = own ? 'own' : vs >= 60 ? 'good' : vs <= 40 ? 'bad' : 'mid';
+    const readout = `${String(h.name).split(' - ')[0]} · ${eur(p)} · nota ${nEs(h.nota, 1)} · value ${vs}`;
+    return `<button type="button" class="bi-dot is-${tone}" style="left:${SX(p).toFixed(2)}%;bottom:${SY(h.nota).toFixed(2)}%;width:${size}px;height:${size}px" data-bi-open="${esc(h.key)}" data-bi-readout="${esc(readout)}" aria-label="${esc(readout)}"></button>`;
+  }).join('');
+  return `${head}<div class="bi-scatter"><div class="bi-scatter__plot">
+      <i class="bi-scatter__good" style="width:${SX(m.fMed).toFixed(2)}%;height:${(100 - SY(m.mNota)).toFixed(2)}%"></i>
+      <i class="bi-scatter__vx" style="left:${SX(m.fMed).toFixed(2)}%"></i><i class="bi-scatter__hy" style="top:${(100 - SY(m.mNota)).toFixed(2)}%"></i>
+      <span class="bi-q bi-q--tl">Valor alto</span><span class="bi-q bi-q--tr">Premium justificado</span><span class="bi-q bi-q--bl">Económico</span><span class="bi-q bi-q--br">Caro para su nota</span>
+      ${dots}</div>
+    <span class="bi-scatter__ymax">${nEs(yhi, 1)}</span><span class="bi-scatter__ymin">${nEs(ylo, 1)}</span>
+    <div class="bi-scatter__x"><span>${eur(xlo)}</span><span>precio por noche · nota Booking</span><span>${eur(xhi)}</span></div></div>`;
+}
+
+function biAlertsHTML(m) {
+  const st = State.bi, mv = st.metrics?.movement || {};
+  const list = biAlerts(m.hs);
+  const tabs = [['all', 'Todas'], ['mov', 'Precio'], ['disp', 'Disponibilidad']].map(([id, label]) => `<button type="button" class="${st.alertTab === id ? 'is-active' : ''}" data-bi-alert-tab="${id}" aria-pressed="${st.alertTab === id}">${label}<b>${list.filter((a) => id === 'all' || a.type === id).length}</b></button>`).join('');
+  const shown = list.filter((a) => st.alertTab === 'all' || a.type === st.alertTab);
+  const title = mv.isComparable && mv.previousSnapshotId ? `Movimientos entre la foto #${mv.previousSnapshotId} y la #${st.metrics.latestSnapshot?.id}` : 'Movimientos de la última foto';
+  return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Alertas de competidores</span><h2>${esc(title)}</h2></div><div class="seg seg--sm" role="group" aria-label="Tipo de alerta">${tabs}</div></div>
+    <div class="bi-alerts">${shown.map((a) => `<button type="button" class="bi-alert" data-bi-open="${esc(a.key)}"><span class="bi-alert__tag is-${a.tone}">${esc(a.tag)}</span><span class="bi-alert__body"><b>${esc(a.name)}</b><small>${esc(a.text)}</small></span><strong class="is-${a.tone}">${esc(a.value)}</strong></button>`).join('') || '<div class="empty">Sin alertas con los filtros actuales.</div>'}</div>`;
+}
+
+function biAvailabilityHTML(m) {
+  const weeks = biWeeks(m.dates, m.hs);
+  const bars = weeks.map((w) => {
+    if (!w.total) return `<div class="bi-week is-empty" title="Semana del ${biDayLabel(w.start)} · sin captura"><span>—</span><div></div><div></div></div>`;
+    const pc = w.closed / w.total, pl = w.low / w.total;
+    return `<div class="bi-week" title="Semana del ${biDayLabel(w.start)} · ${nEs(pc * 100)} % cerrado · ${nEs(pl * 100)} % cupo bajo"><span>${nEs((pc + pl) * 100)} %</span><div class="bi-week__low" style="height:${Math.min(100, pl * 300).toFixed(1)}%"></div><div class="bi-week__closed" style="height:${Math.min(100, pc * 300).toFixed(1)}%"></div></div>`;
+  }).join('');
+  const labels = weeks.map((w) => `<span>${biDayLabel(w.start)}</span>`).join('');
+  const closers = m.hs.map((h) => ({ h, c: h.status.filter((s) => s === 'closed').length, l: h.status.filter((s) => s === 'low').length }))
+    .filter((x) => x.c + x.l > 0).sort((a, b) => (b.c * 2 + b.l) - (a.c * 2 + a.l)).slice(0, 6)
+    .map((x) => { const s = x.h.status[m.fi]; const now = s === 'closed' ? 'cerrado' : s === 'low' ? 'cupo bajo' : s === 'ok' ? 'abierto' : 'sin dato'; return `<button type="button" class="bi-closer" data-bi-open="${esc(x.h.key)}"><span>${esc(x.h.name)}</span><span class="neg">${x.c} d</span><span class="warn">${x.l} d</span><span>${now}</span></button>`; }).join('');
+  return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Disponibilidad y cierres · entradas ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><h2>Presión de ocupación en el set</h2></div><div class="bi-legend"><span><i class="bi-sw is-closed"></i>cerrado</span><span><i class="bi-sw is-low"></i>cupo bajo</span></div></div>
+    <div class="bi-weeks">${bars}</div><div class="bi-weeks__labels">${labels}</div>
+    <div class="bi-closers"><div class="bi-closer bi-closer--head"><span>Hotel</span><span>Cerrado</span><span>Cupo bajo</span><span>Hoy</span></div>${closers || '<div class="empty">Sin cierres ni cupo bajo en las fechas capturadas.</div>'}</div>`;
+}
+
+/* ---- pintado */
+function paintBi() {
+  const st = State.bi;
+  const root = $('#biRoot');
+  if (!root || !st.data) return;
+  const m = biModel();
+  st.model = m;
+  $('#biChips').innerHTML = biChipsHTML(m);
+  $('#biKpis').innerHTML = biKpisHTML(m);
+  $('#biMapKicker').textContent = `Mapa de precios · entrada ${biFocusLabel(m)}`;
+  $('#biZones').innerHTML = biZonesHTML(m);
+  $('#biSide').innerHTML = m.own ? biRecoHTML(m) : biDayHTML(m);
+  $('#biCal').innerHTML = biCalendarHTML(m);
+  $('#biIndex').innerHTML = biIndexHTML(m);
+  $('#biEvo').innerHTML = biEvolutionHTML(m);
+  $('#biBoxes').innerHTML = biBoxesHTML(m);
+  $('#biScatter').innerHTML = biScatterHTML(m);
+  $('#biAlerts').innerHTML = biAlertsHTML(m);
+  $('#biAvail').innerHTML = biAvailabilityHTML(m);
+  syncBiMarkers(m);
+  if (st.drawer) paintBiDrawer();
+}
+
+async function renderHotelsBI(panel, sheetModel, metrics) {
+  const targetId = State.targetId;
+  if (!State.bi || State.bi.targetId !== targetId) biReset(targetId);
+  const st = State.bi;
+  st.sheet = sheetModel;
+  st.metrics = metrics;
+  destroyBiMap();
+  panel.innerHTML = '<div class="bi" aria-busy="true"><div class="sk" style="height:62px"></div><div class="sk" style="height:84px"></div><div class="sk" style="height:560px"></div></div>';
+  try { await loadBiData(); }
+  catch (e) { if (panel.isConnected) panel.innerHTML = `<div class="inline-error">No se pudo cargar el panel de análisis: ${esc(e.message)}</div>`; return; }
+  if (!panel.isConnected || State.bi !== st || State.hotelTab !== 'bi' || State.targetId !== targetId) return;
+  const m = biModel();
+  panel.innerHTML = `<div class="bi" id="biRoot">
+    <div class="bi-filters" id="biFilters">${biFiltersHTML(m)}</div>
+    <section class="kpi-strip kpi-strip--bi" id="biKpis" aria-label="Indicadores del set en la fecha activa"></section>
+    <div class="bi-flow">
+      <div class="bi-card bi-map-card"><div class="bi-card__head bi-map-card__head"><div class="bi-card__title"><span class="card__kicker" id="biMapKicker"></span><h2>Dónde está caro y dónde barato</h2></div>
+        <div class="bi-legend"><span><i class="bi-sw is-dot tone-low"></i>−15 % o menos</span><span><i class="bi-sw is-dot tone-mid"></i>en la mediana</span><span><i class="bi-sw is-dot tone-high"></i>+15 % o más</span><span>· tamaño = reseñas</span></div></div>
+        <div class="map-frame bi-map" id="biMapFrame"><div class="map-frame__canvas" id="biMap" aria-label="Mapa de precios del set en la fecha activa"></div><div class="bi-zones" id="biZones" role="group" aria-label="Filtrar por zona"></div></div></div>
+      <div class="bi-side" id="biSide"></div>
+      <section class="bi-card bi-cal" id="biCal" aria-label="Calendario de tarifas"></section>
+      <section class="bi-card bi-chart-card" id="biIndex"></section>
+      <section class="bi-card bi-chart-card" id="biEvo"></section>
+      <section class="bi-card bi-boxes" id="biBoxes"></section>
+      <section class="bi-card bi-scatter-card" id="biScatter"></section>
+      <section class="bi-card bi-alerts-card" id="biAlerts"></section>
+      <section class="bi-card bi-avail" id="biAvail"></section>
+    </div>
+  </div>`;
+  paintBi();
+  void renderBiMap();
+}
+
+/* ---- mapa de precios */
+function destroyBiMap() {
+  const st = State.bi;
+  if (st) Object.values(st.markers || {}).forEach((item) => item.marker.remove());
+  if (st) { st.markers = {}; st.fitKey = null; }
+  if (State.biMap) { State.biMap.remove(); State.biMap = null; }
+}
+
+async function renderBiMap() {
+  const st = State.bi;
+  const frame = $('#biMapFrame'), container = $('#biMap');
+  if (!frame || !container || !st?.data) return;
+  const request = {};
+  frame._mapRequest = request;
+  const points = st.data.hotels.filter((h) => validLngLat({ latitude: h.lat, longitude: h.lng }));
+  if (!points.length) { mapFrameStatus(frame, 'No hay hoteles con coordenadas en el alcance.'); return; }
+  try { await loadMapLibre(); } catch (_) { if (frame.isConnected) mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
+  if (!frame.isConnected || frame._mapRequest !== request || State.bi !== st) return;
+  destroyBiMap();
+  let map;
+  try { map = createAtlasMap(container, { center: [-15.66, 27.782], zoom: 10.8 }); }
+  catch (_) { mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
+  State.biMap = map;
+  const ml = window.maplibregl;
+  points.forEach((h) => {
+    const root = mapPinElement(`<button type="button" class="bi-pin" data-bi-open="${esc(h.key)}" aria-label="${esc(h.name)}"></button><span class="bi-pin__label"></span>`);
+    const marker = new ml.Marker({ element: root }).setLngLat(validLngLat({ latitude: h.lat, longitude: h.lng })).addTo(map);
+    st.markers[h.key] = { marker, root, pin: root.querySelector('.bi-pin'), label: root.querySelector('.bi-pin__label') };
+  });
+  if (st.model) syncBiMarkers(st.model);
+}
+
+function syncBiMarkers(m) {
+  const st = State.bi;
+  if (!State.biMap || !st.markers) return;
+  const visible = new Set(m.hs.map((h) => h.key));
+  m.all.forEach((h) => {
+    const item = st.markers[h.key];
+    if (!item) return;
+    const price = h.prices[m.fi];
+    const own = h.key === st.own;
+    const size = biPinSize(h.reviews);
+    item.root.hidden = !visible.has(h.key);
+    item.pin.style.width = `${size}px`;
+    item.pin.style.height = `${size}px`;
+    item.pin.style.background = BI_MAP_COLORS[price != null && m.fMed ? biMapTone(price, m.fMed) : 'closed'];
+    item.pin.classList.toggle('is-closed', price == null);
+    item.pin.classList.toggle('is-own', own);
+    item.label.classList.toggle('is-own', own);
+    item.label.textContent = own ? `Tu hotel · ${price != null ? eur(price) : 'cerrado'}` : `${String(h.name).split(' - ')[0]} · ${price != null ? eur(price) : 'cerrado'}`;
+    item.pin.setAttribute('aria-label', `${h.name} · ${price != null ? eur(price) : h.status[m.fi] === 'closed' ? 'cerrado' : 'sin tarifa'}. Abrir ficha`);
+    item.root.style.zIndex = own ? '3' : '';
+  });
+  const fitKey = `${st.zone || ''}|${st.seg || ''}|${st.chain || ''}`;
+  if (st.fitKey !== fitKey) {
+    const first = st.fitKey == null;
+    st.fitKey = fitKey;
+    const coords = m.hs.map((h) => validLngLat({ latitude: h.lat, longitude: h.lng })).filter(Boolean);
+    if (coords.length) {
+      const bounds = coords.reduce((b, c) => b.extend(c), new window.maplibregl.LngLatBounds(coords[0], coords[0]));
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      State.biMap.fitBounds(bounds, { padding: { top: 60, bottom: 40, left: 60, right: 290 }, maxZoom: 13.5, duration: first || reduce ? 0 : 700 });
+    }
+  }
+}
+
+/* ---- ficha lateral */
+function biDrawerHTML(m, key) {
+  const st = State.bi;
+  const h = m.all.find((x) => x.key === key);
+  if (!h) return '';
+  const price = h.prices[m.fi];
+  const rank = biRankAt(m.hs, h.key, m.fi);
+  const vs = m.vscore(h, price);
+  const cached = State.hotelRateDetails[State.targetId]?.[key] || null;
+  const rates = cached && cached.rows ? cached.rows : [];
+  const genius = !rates.length ? null : rates.some((r) => r.genius === true) ? 'Participa' : rates.every((r) => r.genius === false) ? 'No' : null;
+  const sub = [h.chain, h.zone, h.adultsOnly ? 'Adults only' : '', h.beach ? `playa a ${h.beach}` : ''].filter(Boolean).join(' · ');
+  const status = h.status[m.fi];
+  const kpis = [
+    [`Tarifa ${biDayLabel(m.dates[m.fi])}`, price != null ? eur(price) : status === 'closed' ? 'Cerrado' : '—', 'ac'],
+    ['Índice', price != null && m.fMed ? nEs((price / m.fMed) * 100) : '—', ''],
+    ['Value score', vs ?? '—', ''],
+    ['Nota', h.nota != null ? `${nEs(h.nota, 1)}${h.reviews != null ? ` · ${nEs(h.reviews)}` : ''}` : '—', ''],
+    ['Δ foto', h.isNew ? 'Nuevo' : h.delta != null ? `${biSigned(h.delta)} %` : '—', h.delta > 0 ? 'pos' : h.delta < 0 ? 'neg' : ''],
+    ['Genius', genius || '—', ''],
+  ].map(([k, v, tone]) => `<div><span>${esc(k)}</span><strong class="${tone}">${esc(String(v))}</strong></div>`).join('');
+  const caps = st.data.extractions || [];
+  const series = caps.map((e) => e.prices?.[key] ?? null);
+  const setSeries = caps.map((e) => e.median);
+  const pool = [...series, ...setSeries].filter((v) => v != null);
+  let chart = '<div class="bi-drawer__empty">Sin tarifas del hotel en las fotos disponibles.</div>';
+  if (pool.length && series.filter((v) => v != null).length >= 1) {
+    const lo = Math.min(...pool) - 10, hi = Math.max(...pool) + 10;
+    const DX = (k) => (caps.length > 1 ? k * (440 / (caps.length - 1)) : 220), DY = (v) => 100 - ((v - lo) / (hi - lo)) * 90;
+    const line = biPolyline(series.map((v, k) => (v == null ? null : [DX(k), DY(v)])));
+    const setLine = biPolyline(setSeries.map((v, k) => (v == null ? null : [DX(k), DY(v)])));
+    const dots = series.map((v, k) => (v == null ? '' : `<circle cx="${DX(k).toFixed(1)}" cy="${DY(v).toFixed(1)}" r="2.5" fill="var(--ac)"><title>Foto #${caps[k].snapshotId} · ${eur(v)}</title></circle>`)).join('');
+    chart = `<svg class="bi-drawer__chart" viewBox="0 0 440 120" role="img" aria-label="Tarifa del hotel por extracción"><line x1="0" x2="440" y1="10" y2="10" stroke="var(--line)"></line><line x1="0" x2="440" y1="100" y2="100" stroke="var(--line)"></line><polyline points="${setLine}" fill="none" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="4 4"></polyline><polyline points="${line}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linejoin="round"></polyline>${dots}<g class="bi-svg-text"><text x="0" y="118">#${caps[0]?.snapshotId ?? ''}</text><text x="440" y="118" text-anchor="end">#${caps.at(-1)?.snapshotId ?? ''}</text></g></svg><div class="bi-drawer__legend"><span>— hotel</span><span>- - mediana del set</span></div>`;
+  }
+  const cal = m.dates.map((iso, i) => {
+    const p = h.prices[i], s = h.status[i];
+    const heat = p != null ? biHeat(p, m.dayMeds[i]) : null;
+    const cls = p != null ? '' : s === 'closed' ? ' is-closed' : ' is-empty';
+    return `<span class="bi-mini${cls}${s === 'low' ? ' is-low' : ''}${i === m.fi ? ' is-focus' : ''}" style="${heat ? `background:${heat.bg}` : ''}" title="${esc(`${biDayLong(iso)} · ${p != null ? eur(p) : s === 'closed' ? 'cerrado' : 'sin captura'}`)}"></span>`;
+  }).join('');
+  const rooms = !cached || cached.status === 'loading' ? '<p class="bi-drawer__empty">Comprobando tarifas capturadas…</p>'
+    : cached.status === 'error' ? `<p class="bi-drawer__empty neg">${esc(cached.message || 'No se pudo cargar el desglose.')}</p>`
+    : hotelRateGroups(rates).map((g) => {
+      const nightly = g.rates.map(rateNightly).filter((v) => v != null);
+      const units = g.rates.map((r) => r.unitsLeft).filter((v) => v != null && v > 0);
+      const program = g.rates.find((r) => r.program);
+      const tag = units.length ? (Math.min(...units) === 1 ? 'Queda 1' : `Quedan ${Math.min(...units)}`) : program ? (/genius/i.test(program.program) ? 'Genius' : 'Oferta') : 'Disponible';
+      const tone = units.length ? 'warn' : program ? 'ac' : 'plain';
+      return `<div class="bi-room"><span class="bi-room__name"><span>${esc(g.roomType || 'Habitación sin identificar')}</span><small>${g.maxOccupancy != null ? `máx. ${nEs(g.maxOccupancy)} pers. · ` : ''}${g.rates.length} ${g.rates.length === 1 ? 'tarifa' : 'tarifas'}</small></span><span class="hstock hstock--${tone}">${esc(tag)}</span><strong class="mono">${nightly.length ? `desde ${eur(Math.min(...nightly))}` : '—'}</strong></div>`;
+    }).join('') || '<p class="bi-drawer__empty">No hay tarifas de detalle capturadas para este hotel.</p>';
+  const isOwn = st.own === key;
+  return `<div class="bi-drawer__head"><div><span class="card__kicker">Ficha · puesto ${rank ? rank.rank : '—'} de ${rank ? rank.of : m.hs.length}</span><h2 id="sidePanelTitle">${esc(h.name)}</h2>${sub ? `<span class="bi-drawer__sub">${esc(sub)}</span>` : ''}</div><button type="button" class="icon-x icon-x--lg" data-side-close aria-label="Cerrar ficha">×</button></div>
+    <div class="bi-drawer__body">
+      <div class="bi-drawer__kpis">${kpis}</div>
+      <section class="bi-drawer__section"><span class="card__kicker">Tarifa por extracción</span>${chart}</section>
+      <section class="bi-drawer__section"><span class="card__kicker">Calendario · entradas ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><div class="bi-minical">${cal}</div></section>
+      <section class="bi-drawer__section bi-drawer__rooms"><span class="card__kicker">Habitaciones y tarifas</span>${rooms}</section>
+    </div>
+    <div class="bi-drawer__foot"><button type="button" class="btn btn--primary" data-bi-set-own="${esc(key)}"${isOwn ? ' disabled' : ''}>${isOwn ? 'Es tu hotel propio' : 'Fijar como hotel propio'}</button><button type="button" class="btn" data-bi-sheet="${esc(h.name)}">Ver en hoja de mercado</button></div>`;
+}
+
+function paintBiDrawer() {
+  const st = State.bi;
+  const body = $('#sidePanelBody');
+  if (!st?.drawer || !body || $('#sidePanel').dataset.kind !== 'bi' || !st.model) return;
+  const keepFocus = document.activeElement?.matches?.('#sidePanelBody [data-side-close]');
+  body.innerHTML = biDrawerHTML(st.model, st.drawer);
+  if (keepFocus) $('[data-side-close]', body)?.focus();
+}
+
+function openBiDrawer(key) {
+  const st = State.bi;
+  if (!st?.model) return;
+  st.drawer = key;
+  openSidePanel('bi', 'side-panel--bi');
+  paintBiDrawer();
+  $('#sidePanelBody [data-side-close]')?.focus();
+  const targetId = State.targetId;
+  void ensureHotelRateDetails(key).then(() => { if (State.bi === st && st.drawer === key && State.targetId === targetId) paintBiDrawer(); });
+}
+
+function setBiOwn(key) {
+  const st = State.bi;
+  st.own = key || '';
+  try { if (st.own) localStorage.setItem(biOwnKey(), st.own); else localStorage.removeItem(biOwnKey()); } catch (_) { /* preferencia opcional */ }
+  const select = $('#biOwn');
+  if (select) { select.value = st.own; select.classList.toggle('is-set', Boolean(st.own)); }
+  paintBi();
+}
+
+async function setBiDataFilter(kind, value) {
+  const st = State.bi;
+  st[kind] = value;
+  const root = $('#biRoot');
+  root?.setAttribute('aria-busy', 'true');
+  try { await loadBiData(); } catch (e) { toast(`No se pudo recalcular: ${e.message}`, 'warn'); }
+  root?.removeAttribute('aria-busy');
+  if (State.bi !== st || !$('#biRoot')) return;
+  $('#biFilters').innerHTML = biFiltersHTML(biModel());
+  $(`#${kind === 'board' ? 'biBoard' : 'biFam'}`)?.focus();
+  destroyBiMap();
+  paintBi();
+  void renderBiMap();
+}
+
+function handleBiClick(e) {
+  const t = e.target instanceof Element ? e.target : null;
+  const st = State.bi;
+  if (!t || !st || !(t.closest('#biRoot') || t.closest('#sidePanel[data-kind="bi"]'))) return false;
+  const open = t.closest('[data-bi-open]');
+  if (open) { openBiDrawer(open.dataset.biOpen); return true; }
+  const horizon = t.closest('[data-bi-horizon]');
+  if (horizon) { st.horizon = Number(horizon.dataset.biHorizon); if (st.focus && st.data.dates.indexOf(st.focus) >= st.horizon) st.focus = null; $$('[data-bi-horizon]').forEach((b) => { const on = Number(b.dataset.biHorizon) === st.horizon; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', String(on)); }); paintBi(); return true; }
+  const zone = t.closest('[data-bi-zone]');
+  if (zone) { st.zone = st.zone === zone.dataset.biZone ? null : zone.dataset.biZone; paintBi(); return true; }
+  const group = t.closest('[data-bi-group]');
+  if (group) { const g = group.dataset.biGroup; const k = st.boxMode === 'zone' ? 'zone' : st.boxMode === 'segment' ? 'seg' : 'chain'; st[k] = st[k] === g ? null : g; paintBi(); return true; }
+  const clear = t.closest('[data-bi-clear]');
+  if (clear) { const k = clear.dataset.biClear; if (k === 'all') Object.assign(st, { zone: null, seg: null, chain: null, focus: null }); else st[k] = null; paintBi(); $('#biChips button, #biOwn')?.focus(); return true; }
+  const mode = t.closest('[data-bi-box-mode]');
+  if (mode) { st.boxMode = mode.dataset.biBoxMode; $('#biBoxes').innerHTML = biBoxesHTML(st.model); $(`[data-bi-box-mode="${st.boxMode}"]`)?.focus(); return true; }
+  const tab = t.closest('[data-bi-alert-tab]');
+  if (tab) { st.alertTab = tab.dataset.biAlertTab; $('#biAlerts').innerHTML = biAlertsHTML(st.model); $(`[data-bi-alert-tab="${st.alertTab}"]`)?.focus(); return true; }
+  const day = t.closest('#biCalGrid [data-d]');
+  if (day) { st.focus = st.model.dates[Number(day.dataset.d)] || null; if (st.focus === st.model.dates[st.model.defaultFi]) st.focus = null; paintBi(); return true; }
+  if (t.closest('[data-bi-copy]')) {
+    const value = st.recoValue;
+    navigator.clipboard?.writeText(String(value)).catch(() => {});
+    toast(`Tarifa sugerida ${nEs(value)} € copiada · ${biDayLabel(st.model.dates[st.model.fi])}`, 'ok');
+    return true;
+  }
+  if (t.closest('[data-bi-ask-reco]')) { askCopilot(st.recoText); return true; }
+  const setOwn = t.closest('[data-bi-set-own]');
+  if (setOwn) { const h = st.model.all.find((x) => x.key === setOwn.dataset.biSetOwn); closeSidePanel(); setBiOwn(setOwn.dataset.biSetOwn); if (h) toast(`${h.name} fijado como hotel propio`, 'ok'); return true; }
+  const sheet = t.closest('[data-bi-sheet]');
+  if (sheet) { closeSidePanel({ restoreFocus: false }); openHotelInHotels(sheet.dataset.biSheet); return true; }
+  return false;
+}
+
+function handleBiOver(e) {
+  const t = e.target instanceof Element ? e.target : null;
+  const st = State.bi;
+  if (!t || !st?.model || State.hotelTab !== 'bi') return;
+  const readout = $('#biCalReadout');
+  if (readout) {
+    const cell = t.closest('#biCalGrid [data-d]');
+    const key = cell ? `${cell.dataset.h || ''}:${cell.dataset.d}` : null;
+    if (key !== st.hoverKey) { st.hoverKey = key; readout.textContent = cell ? biCalendarReadout(st.model, cell.dataset.h || null, Number(cell.dataset.d)) : 'Pasa el cursor por el calendario'; }
+  }
+  const scatter = $('#biScatterReadout');
+  if (scatter) {
+    const dot = t.closest('.bi-dot');
+    const text = dot ? dot.dataset.biReadout : 'tamaño = reseñas · pulsa para abrir ficha';
+    if (scatter.textContent !== text) scatter.textContent = text;
+  }
+}
+
+function handleBiChange(e) {
+  const t = e.target;
+  if (!(t instanceof Element) || !State.bi) return false;
+  if (t.id === 'biOwn' || t.id === 'biOwnInvite') { setBiOwn(t.value); if (t.id === 'biOwnInvite') $('#biOwn')?.focus(); return true; }
+  if (t.id === 'biBoard') { void setBiDataFilter('board', t.value || 'all'); return true; }
+  if (t.id === 'biFam') { void setBiDataFilter('fam', t.value || 'all'); return true; }
+  return false;
+}
+
+function handleBiInput(e) {
+  if (!(e.target instanceof Element) || e.target.id !== 'biTarget' || !State.bi?.model) return false;
+  State.bi.target = Number(e.target.value);
+  const side = $('#biSide');
+  if (side) { side.innerHTML = biRecoHTML(State.bi.model); $('#biTarget')?.focus(); }
+  return true;
+}
+
+/* ---- panel lateral genérico (ficha BI, configuración de Reputación) */
+function openSidePanel(kind, modifier) {
+  const overlay = $('#sidePanel');
+  if (!overlay) return;
+  overlay.dataset.kind = kind;
+  $('#sidePanelBody').className = `side-panel ${modifier || ''}`.trim();
+  openOverlay('sidePanel', '[data-side-close]');
+}
+
+function closeSidePanel(options) {
+  const overlay = $('#sidePanel');
+  if (!overlay || overlay.hidden) return false;
+  const kind = overlay.dataset.kind;
+  if (kind === 'bi' && State.bi) State.bi.drawer = null;
+  closeOverlay('sidePanel', options);
+  $('#sidePanelBody').innerHTML = '';
+  overlay.dataset.kind = '';
+  return true;
 }
 
 function kpiSm(label, count, unit, foot) {
@@ -4044,7 +4917,7 @@ function openOverlay(id, focusSelector) {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       else if (!items.includes(document.activeElement)) { event.preventDefault(); first.focus(); }
     });
-    overlay.addEventListener('mousedown', (event) => { if (event.target === overlay) closeOverlay(id); });
+    overlay.addEventListener('mousedown', (event) => { if (event.target === overlay) { if (id === 'sidePanel') closeSidePanel(); else closeOverlay(id); } });
     overlay.dataset.trapWired = '1';
   }
   ($(focusSelector, overlay) || overlayFocusable(overlay)[0])?.focus();
@@ -4243,6 +5116,7 @@ async function openCaptureDialog() {
 function invalidateTargetData(targetId) {
   delete State.snapshots[targetId]; delete State.metrics[targetId]; delete State.demandCurves[targetId]; delete State.hotelStability[targetId]; delete State.photoHistories[targetId]; delete State.captureHistories[targetId];
   delete State.hotelPriceHistories[targetId]; delete State.hotelRateDetails[targetId];
+  if (State.bi && State.bi.targetId === targetId) State.bi.data = null;
   State.workspaceSemanticData = {};
   State.selectedPhotoId = null; State.captureHotelSearch = ''; State.captureComparisonOpen = false;
 }
@@ -4399,6 +5273,7 @@ function chromeLayerOpen() { return Boolean($('.overlay:not([hidden])')) || !$('
 function closeTopOverlay() {
   if (closePalette()) return true;
   if (closeOverlay('captureDialog')) { State.captureDialogParams = null; return true; }
+  if (closeSidePanel()) return true;
   return closeMarketMenu(true);
 }
 
@@ -4417,14 +5292,18 @@ function wireEvents() {
     const item = e.target instanceof Element ? e.target.closest('.palette__item') : null;
     if (item && Number(item.dataset.paletteIndex) !== State.palette.index) setPaletteIndex(Number(item.dataset.paletteIndex), false);
     handleDashboardOver(e);
+    handleBiOver(e);
   });
   document.addEventListener('focusin', (e) => {
     if (e.target instanceof Element && !e.target.closest('.market-switch')) closeMarketMenu();
     handleDashboardOver(e);
+    handleBiOver(e);
   });
   document.addEventListener('click', async (e) => {
     if (!e.target.closest('.market-switch')) closeMarketMenu();
     if (handleDashboardClick(e)) return;
+    if (e.target.closest('[data-side-close]')) { closeSidePanel(); return; }
+    if (handleBiClick(e)) return;
     if (handleHotelSheetClick(e)) return;
     const tickerHotel = e.target.closest('[data-ticker-hotel]');
     if (tickerHotel) { openHotelInHotels(tickerHotel.dataset.tickerHotel); return; }
@@ -4552,6 +5431,8 @@ function wireEvents() {
     const locked = $('#lock')?.classList.contains('is-visible');
     if (handleHotelSheetKey(e)) return;
     if (!locked && e.key === 'Escape' && closeTopOverlay()) { e.preventDefault(); return; }
+    const biDay = (e.key === 'Enter' || e.key === ' ') && e.target instanceof Element ? e.target.closest('#biCalGrid [data-d][role="button"]') : null;
+    if (biDay) { e.preventDefault(); biDay.click(); $(`#biCalGrid [data-d="${biDay.dataset.d}"][role="button"]`)?.focus(); return; }
     if (!locked && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); togglePalette(); return; }
     if (e.target && e.target.id === 'paletteInput') {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setPaletteIndex(State.palette.index + (e.key === 'ArrowDown' ? 1 : -1)); return; }
@@ -4583,6 +5464,7 @@ function wireEvents() {
     if ((e.metaKey || e.ctrlKey) && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); setView('copilot'); }
   });
   document.addEventListener('change', (e) => {
+    if (handleBiChange(e)) return;
     if (e.target && e.target.id === 'copilotMode') { State.copilotMode = e.target.value; return; }
     if (e.target && e.target.id === 'chatFile' && e.target.files?.[0]) {
       void uploadCopilotAttachment(e.target.files[0]); e.target.value = '';
@@ -4590,6 +5472,7 @@ function wireEvents() {
   });
 
   document.addEventListener('input', (e) => {
+    if (handleBiInput(e)) return;
     if (e.target && e.target.id === 'paletteInput') { State.palette.query = e.target.value.slice(0, 200); State.palette.index = 0; renderPalette(); return; }
     if (e.target && e.target.id === 'copilotSessionSearch') {
       State.copilotSessionQuery = e.target.value;

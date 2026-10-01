@@ -10,9 +10,9 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 - [x] §Tokens · `:root` claro con los 26 tokens del README · hecho · css:`:root`
 - [x] §Tokens · bloque `html[data-theme="oscuro"]` con los valores oscuros · hecho · css:`html[data-theme="oscuro"]`
 - [x] §Tokens · mapas cambian de estilo positron ↔ dark-matter con `setStyle` (no filtros CSS) · hecho · js:`atlasMapStyle`, `restyleMaps`
-- [ ] §Tokens · semáforo fijo de mapas `#1f7a52 / #c98a1e / #b94f50` en Dashboard y BI · falta · js:`renderDashboardHotelMap`, `renderBiMap`
+- [x] §Tokens · semáforo fijo de mapas `#1f7a52 / #c98a1e / #b94f50` en Dashboard y BI · hecho · js:`renderDashboardHotelMap`, `renderBiMap`
 - [ ] §Tokens · tramos de ruta aérea `#9bcfaf / #e7c66c / #df9898` · falta · css:`.air-position__*`
-- [ ] §Tokens · celdas de calor con alfa ≤ .6 (verde bajo / rojo sobre / `--line-soft` ±5 %) · falta · js:`biHeatBg`
+- [x] §Tokens · celdas de calor con alfa ≤ .6 (verde bajo / rojo sobre / `--line-soft` ±5 %) · hecho · js:`biHeatBg`
 - [x] §Tokens · densidad `--rp` 8/13/18 px con `body[data-density]` · hecho · css:`body[data-density]`
 - [x] §Tokens · tipografía Archivo + Space Mono con los roles de la tabla · hecho · css
 - [x] §Tokens · radios (14/12/8–9/9–7/5/999/10/14) · hecho · css
@@ -76,7 +76,7 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 
 ## 3 Hoteles (cabecera y pestañas)
 - [x] §3 · h1, subtítulo, conmutador de variante y Exportar CSV solo en la Hoja · hecho · js:`renderHotels`
-- [ ] §3 · pestañas con subrayado, guardadas en localStorage; desde otra vista con hotel buscado se abre la Hoja · parcial (la pestaña por defecto es la Hoja mientras no hay BI) · js:`setHotelTab`
+- [x] §3 · pestañas con subrayado, guardadas en localStorage (por defecto, Panel de análisis); desde otra vista con hotel buscado se abre la Hoja · hecho · js:`setHotelTab`, `openHotelInHotels`
 
 ## 3A Hoja de mercado
 - [x] §3A · tira de KPIs (7) · hecho · js:`hotelSheetKpisHTML`
@@ -88,33 +88,37 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
   - **Nota:** Genius sin nivel y distancia a la playa «—» cuando la captura no trae el dato.
 
 ## 3B Panel de análisis (BI)
-- [ ] §3B · backend `GET /api/hotels/rate-calendar` (dates, hotels, medians, p25, p75, coverage; closed/low/null) con tests · falta · py:`hotels_rate_calendar`, `backend/app/rate_calendar.py`
-- [ ] §3B · barra de filtros fija (`top:60px`): hotel propio (localStorage, borde de acento), 14/30/60/90 días, régimen, tipo de habitación · falta · js:`biFiltersHTML`
-- [ ] §3B · chips de filtros cruzados (Zona, segmento, Cadena, Entrada) con ×, «Limpiar» y «N de M hoteles» · falta · js:`biFiltersHTML`
-- [ ] §3B · precio efectivo = tarifa mínima que cumple régimen y tipo de habitación · falta · py:`rate_calendar`
-- [ ] §3B · fecha activa (por defecto, la estancia capturada) · falta · js:`biState`
-- [ ] §3B · tira de 6 KPIs con hotel propio · falta · js:`biKpisHTML`
-- [ ] §3B · tira de 6 KPIs sin hotel propio · falta · js:`biKpisHTML`
-- [ ] §3B · mapa de precios 560 px: color vs mediana del día, tamaño por reseñas, hotel propio con anillo y etiqueta fija, etiqueta al pasar el cursor, pulsar abre la ficha · falta · js:`renderBiMap`, `syncBiMarkers`
-- [ ] §3B · panel de zonas superpuesto (250 px) que filtra y hace `fitBounds` (padding derecho 290) · falta · js:`biZonesHTML`
-- [ ] §3B · marcadores con hijo `position:relative` (sin position inline en la raíz) · falta · js:`renderBiMap`
-- [ ] §3B · Tarifa sugerida: cabecera, chip de confianza, valor 40 px, actual y diferencia · falta · js:`biRecoHTML`
-- [ ] §3B · desglose de 6 factores con barra divergente (fórmulas del README) · falta · js:`biRecommendation`
-- [ ] §3B · deslizador P25–P90 (paso 5, por defecto P60), «Copiar tarifa», «Explicar con Copilot» y nota de antigüedad · falta · js:`biRecoHTML`
-- [ ] §3B · Mercado en la fecha (sin hotel propio): mediana 40 px, caja, datos y tarjeta de invitación con select · falta · js:`biDayHTML`
-- [ ] §3B · Calendario de tarifas: rejilla `270px repeat(H,1fr)`, cabecera por horizonte, fila de mediana, fila de rank, filas de hoteles · falta · js:`biCalendarHTML`
-- [ ] §3B · calendario: cerrado rayado, cupo bajo `inset 0 -3px 0 #c98a1e`, precio con ≤ 30 días · falta · js:`biCalendarHTML`
-- [ ] §3B · calendario: un único listener (`mouseover` + `data-h`/`data-d`) con lectura, columna activa superpuesta, pulsar cambia la fecha, nombre abre ficha · falta · js:`handleBiCalendarOver`
-- [ ] §3B · calendario: leyenda (5 colores, cerrado, cupo bajo, **sin captura**) y pie · falta · js:`biCalendarHTML`
-- [ ] §3B · Índice de precio (con y sin hotel propio) · falta · js:`biIndexHTML`
-- [ ] §3B · Evolución por extracción (mediana, P25–P75, hotel propio) · falta · js:`biEvolutionHTML`
-- [ ] §3B · Rango de precios por grupo (Zona / Segmento / Cadena ≥ 2), filas que aplican filtro cruzado · falta · js:`biBoxesHTML`
-- [ ] §3B · Reputación vs precio con cuadrantes y value score · falta · js:`biScatterHTML`
-- [ ] §3B · Alertas de competidores (Todas / Precio / Disponibilidad) · falta · js:`biAlerts`
-- [ ] §3B · Disponibilidad y cierres por semana + tabla de 6 hoteles · falta · js:`biAvailabilityHTML`
-- [ ] §3B · Ficha lateral de 500 px (KPIs 3×2, tarifa por extracción, calendario de una fila, habitaciones, fijar como propio, ver en hoja) · falta · js:`biDrawerHTML`
-- [ ] §3B · adaptación estrecha (flex-wrap, mínimos 200–220 px) · falta · css:`.bi-*`
-- [ ] §3B · pestaña por defecto = Panel de análisis · falta · js:`HOTEL_TAB_KEY`
+- [x] §3B · backend `GET /api/hotels/rate-calendar` (dates, hotels, medians, p25, p75, coverage, facets, extractions) con tests · hecho · py:`hotel_rate_calendar`, `backend/app/rate_calendar.py`, `backend/tests/test_rate_calendar.py`
+  - **Nota:** estados `ok`/`low`/`closed`/`null` como pide el prompt, más `unknown` (el hotel no aparece en una captura **parcial**: su ausencia no prueba un cierre) y `nomatch` (hay tarifa pero ninguna cumple régimen/habitación). Ambos se pintan vacíos.
+  - **Nota:** hoy hay 4 fechas capturadas en Gran Canaria (Sur) y 1 en General dentro de los próximos 90 días; el resto de columnas sale vacía con la leyenda «sin captura».
+- [x] §3B · barra de filtros fija (`top:60px`): hotel propio (localStorage, borde de acento), 14/30/60/90 días, régimen, tipo de habitación · hecho · js:`biFiltersHTML`
+- [x] §3B · chips de filtros cruzados (Zona, segmento, Cadena, Entrada) con ×, «Limpiar» y «N de M hoteles» · hecho · js:`biFiltersHTML`
+- [x] §3B · precio efectivo = tarifa mínima que cumple régimen y tipo de habitación · hecho · py:`rate_calendar._cell`
+  - **Nota:** se usa el detalle de tarifas vinculado a la foto cuando existe; si no, la tarifa de la búsqueda. Las opciones de régimen y habitación salen de los datos (no se ofrece «Todo incluido Premium» si no existe). Habitación sin pista en el nombre = «Otra», no «Doble».
+- [x] §3B · fecha activa (por defecto, la estancia capturada) · hecho · js:`biState`
+- [x] §3B · tira de 6 KPIs con hotel propio · hecho · js:`biKpisHTML`
+- [x] §3B · tira de 6 KPIs sin hotel propio · hecho · js:`biKpisHTML`
+- [x] §3B · mapa de precios 560 px: color vs mediana del día, tamaño por reseñas, hotel propio con anillo y etiqueta fija, etiqueta al pasar el cursor, pulsar abre la ficha · hecho · js:`renderBiMap`, `syncBiMarkers`
+- [x] §3B · panel de zonas superpuesto (250 px) que filtra y hace `fitBounds` (padding derecho 290) · hecho · js:`biZonesHTML`
+- [x] §3B · marcadores con hijo `position:relative` (sin position inline en la raíz) · hecho · js:`renderBiMap`
+- [x] §3B · Tarifa sugerida: cabecera, chip de confianza, valor 40 px, actual y diferencia · hecho · js:`biRecoHTML`
+  - **Nota:** el chip de confianza se deriva de reglas explícitas (baja con < 6 hoteles con tarifa; media-baja con datos de > 14 días o < 15 hoteles; si no, media), visibles en su `title`.
+- [x] §3B · desglose de 6 factores con barra divergente (fórmulas del README) · hecho · js:`biRecommendation`
+- [x] §3B · deslizador P25–P90 (paso 5, por defecto P60), «Copiar tarifa», «Explicar con Copilot» y nota de antigüedad · hecho · js:`biRecoHTML`
+- [x] §3B · Mercado en la fecha (sin hotel propio): mediana 40 px, caja, datos y tarjeta de invitación con select · hecho · js:`biDayHTML`
+- [x] §3B · Calendario de tarifas: rejilla `270px repeat(H,1fr)`, cabecera por horizonte, fila de mediana, fila de rank, filas de hoteles · hecho · js:`biCalendarHTML`
+- [x] §3B · calendario: cerrado rayado, cupo bajo `inset 0 -3px 0 #c98a1e`, precio con ≤ 30 días · hecho · js:`biCalendarHTML`
+- [x] §3B · calendario: un único listener (`mouseover` + `data-h`/`data-d`) con lectura, columna activa superpuesta, pulsar cambia la fecha, nombre abre ficha · hecho · js:`handleBiCalendarOver`
+- [x] §3B · calendario: leyenda (5 colores, cerrado, cupo bajo, **sin captura**) y pie · hecho · js:`biCalendarHTML`
+- [x] §3B · Índice de precio (con y sin hotel propio) · hecho · js:`biIndexHTML`
+- [x] §3B · Evolución por extracción (mediana, P25–P75, hotel propio) · hecho · js:`biEvolutionHTML`
+- [x] §3B · Rango de precios por grupo (Zona / Segmento / Cadena ≥ 2), filas que aplican filtro cruzado · hecho · js:`biBoxesHTML`
+- [x] §3B · Reputación vs precio con cuadrantes y value score · hecho · js:`biScatterHTML`
+- [x] §3B · Alertas de competidores (Todas / Precio / Disponibilidad) · hecho · js:`biAlerts`
+- [x] §3B · Disponibilidad y cierres por semana + tabla de 6 hoteles · hecho · js:`biAvailabilityHTML`
+- [x] §3B · Ficha lateral de 500 px (panel lateral genérico `#sidePanel` con trampa de foco) (KPIs 3×2, tarifa por extracción, calendario de una fila, habitaciones, fijar como propio, ver en hoja) · hecho · js:`biDrawerHTML`
+- [x] §3B · adaptación estrecha (flex-wrap, mínimos 200–220 px) · hecho · css:`.bi-*`
+- [x] §3B · pestaña por defecto = Panel de análisis · hecho · js:`HOTEL_TAB_KEY`
 
 ## 4 Reputación
 - [ ] §4 · cabecera con «Configurar captura» (icono) y «Capturar inventario» (primario) · falta · js:`renderHotelReputationCatalog`
@@ -173,7 +177,7 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 ## State Management
 - [x] §State · global: view, market, theme, density, sidebarCollapsed, palette, toasts, captureJob, lastExtractionAt, hotelSearch, copilotPrompt · hecho · js:`State`
 - [x] §State · Hoja: tab, savedView, chips, search, sort, group, expanded, selectedId · hecho · js:`State.hotel*`
-- [ ] §State · Panel: ownHotelId, horizon, board, roomFamily, zone, segment, chain, focusDate, hover, drawerHotelId, boxMode, alertTab, targetPercentile · falta · js:`State.bi`
+- [x] §State · Panel: ownHotelId (`atlas.ownHotel.<mercado>`), horizon, board, roomFamily, zone, segment, chain, focusDate, hover, drawerHotelId, boxMode, alertTab, targetPercentile · hecho · js:`State.bi`
 - [ ] §State · Vuelos: tab, focusRoute, mapMode, filtros, sort, page, fullscreen, planOpen, budget, firstDate · parcial · js:`State.flight*`
 - [ ] §State · Reputación: selected, tab, q, configOpen, config · parcial · js:`State.reputation`
 - [ ] §State · Copilot: conversations, active, typing, draft, traceOpen · parcial · js:`State.copilot*`
@@ -182,9 +186,9 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 ## Datos y backend
 - [x] §Datos · hoteles, ADR, pers, Δ, estabilidad, nota, reseñas, cancelación, disponibilidad desde la API · hecho · `/api/snapshots/latest`, `/api/dashboard/metrics`
 - [x] §Datos · cadena y «adults only» derivados del nombre con tests · hecho · `backend/app/hotel_traits.py`
-- [ ] §Datos · calendario por `check_in` y hotel (`rate-calendar`) · falta · py:`hotels_rate_calendar`
-- [ ] §Datos · cierres (sin tarifa en fecha capturada) y cupo bajo (`unitsLeft ≤ 2`) · falta · `backend/app/rate_calendar.py`
-- [ ] §Datos · value score y tarifa sugerida en el cliente con las fórmulas del README · falta · js:`biValueScore`, `biRecommendation`
+- [x] §Datos · calendario por `check_in` y hotel (`rate-calendar`) · hecho · py:`hotels_rate_calendar`
+- [x] §Datos · cierres (sin tarifa en fecha capturada) y cupo bajo (`unitsLeft ≤ 2`) · hecho · `backend/app/rate_calendar.py`
+- [x] §Datos · value score y tarifa sugerida en el cliente con las fórmulas del README · hecho · js:`biValueScore`, `biRecommendation`
 - [ ] §Datos · vuelos desde la API aérea actual · parcial · js:`renderFlights`
 - [x] §Datos · inventario de reputación desde la API actual · hecho · `/api/hotel-reviews/catalog`
 
