@@ -507,6 +507,8 @@ const State = {
     catalog: [],
     selectedKeys: new Set(),
     query: '',
+    repTab: 'all',
+    configDraft: null,
     captureSettings: {google_maps: false, google_hotels: true, booking: true, maxReviews: '1000', unboundedReviews: false, budgetUsd: '', unitCostUsd: '', maxDecisions: '24'},
     reviewRequestId: 0,
     profile: null,
@@ -2607,6 +2609,7 @@ function closeSidePanel(options) {
   if (!overlay || overlay.hidden) return false;
   const kind = overlay.dataset.kind;
   if (kind === 'bi' && State.bi) State.bi.drawer = null;
+  if (kind === 'rep-config') State.reputation.configDraft = null;
   closeOverlay('sidePanel', options);
   $('#sidePanelBody').innerHTML = '';
   overlay.dataset.kind = '';
@@ -3413,34 +3416,122 @@ async function renderHotelReputation() {
   }
 }
 
-function reviewCaptureControls(scope) {
-  const settings = State.reputation.captureSettings;
-  return `<div class="review-capture-controls" data-review-capture-controls="${scope}">
-    <label><input type="checkbox" data-review-source="google_maps" ${settings.google_maps ? 'checked' : ''}> Google Maps</label>
-    <label><input type="checkbox" data-review-source="google_hotels" ${settings.google_hotels ? 'checked' : ''}> Google Hotels</label>
-    <label><input type="checkbox" data-review-source="booking" ${settings.booking ? 'checked' : ''}> Booking</label>
-    <label>Máx. reseñas <input type="number" class="input" data-review-max value="${esc(settings.maxReviews)}" min="1" max="10000" step="1" ${settings.unboundedReviews ? 'disabled' : ''}></label>
-    <label><input type="checkbox" data-review-unbounded ${settings.unboundedReviews ? 'checked' : ''}> Hasta agotar recorrido</label>
-    <label>Tope Jev USD <input type="number" class="input" data-review-budget value="${esc(settings.budgetUsd)}" min="0.001" step="any" placeholder="Por lote"></label>
-    <label>Estimación USD/decisión <input type="number" class="input" data-review-unit-cost value="${esc(settings.unitCostUsd)}" min="0.000001" step="any" placeholder="Configurar precio"></label>
-    <label>Decisiones máx. por hotel <input type="number" class="input" data-review-decisions value="${esc(settings.maxDecisions)}" min="1" max="120" step="1"></label>
-  </div><small>«Hasta agotar» quita el tope numérico. Google Maps conserva un límite técnico de 400 desplazamientos y Booking de 500 páginas; si se alcanza, la captura queda parcial.</small><p class="review-capture-readiness" data-review-capture-readiness="${scope}" role="status"></p>`;
-}
+const REP_TABS = [['all', 'Todos'], ['none', 'Sin captura'], ['maps', 'Maps por revisar']];
+const REP_SOURCES = [['google_maps', 'Google Maps'], ['google_hotels', 'Google Hotels'], ['booking', 'Booking']];
+const REP_NOTICE_KEY = 'atlas.rep.emptyNotice';
 
 function reviewSearchText(value) {
-  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+/* Lectura de una fila del inventario: recuentos capturados, estado del vínculo de Maps y últimas capturas. */
+function reputationRowMeta(row) {
+  const counts = reviewSourceMap(row, 'reviewSources');
+  const runs = reviewSourceMap(row, 'sources');
+  const maps = (row.links || []).find((link) => link.source === 'google_maps');
+  const booking = (row.links || []).find((link) => link.source === 'booking');
+  const google = Number(counts.get('google')?.captured || 0), bookingCount = Number(counts.get('booking')?.captured || 0);
+  return {
+    google, booking: bookingCount, noCapture: !google && !bookingCount,
+    maps: maps?.url && maps.verified ? 'verified' : maps?.url ? 'review' : 'missing',
+    lastMaps: runs.get('google_maps') || null, lastBooking: runs.get('booking') || null, bookingLink: !!booking?.url,
+  };
+}
+
+function reputationKpisHTML(rows, total) {
+  const metas = rows.map(reputationRowMeta);
+  const google = metas.reduce((a, m) => a + m.google, 0), booking = metas.reduce((a, m) => a + m.booking, 0);
+  const verified = metas.filter((m) => m.maps === 'verified').length;
+  const runs = rows.flatMap((row) => row.sources || []).filter((run) => run.startedAt).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
+  const last = runs[0];
+  const withGoogle = metas.filter((m) => m.google).length, withBooking = metas.filter((m) => m.booking).length;
+  const cells = [
+    ['Inventario', nEs(total), 'hoteles en el inventario'],
+    ['Reseñas Google', nEs(google), google ? `${withGoogle} ${withGoogle === 1 ? 'hotel' : 'hoteles'} con reseñas` : 'sin captura'],
+    ['Reseñas Booking', nEs(booking), booking ? `${withBooking} ${withBooking === 1 ? 'hotel' : 'hoteles'} con reseñas` : 'sin captura'],
+    ['Maps verificados', `${nEs(verified)}/${nEs(rows.length)}`, 'fichas revisadas'],
+    ['Última captura', last ? fmtStamp(last.startedAt) : '—', last ? `${hotelSourceLabel(last.source)} · ${reviewRunStatus(last.status)}` : 'ninguna todavía'],
+  ];
+  return cells.map(([label, value, foot]) => `<div class="kpi-strip__cell"><span class="kpi-strip__label">${label}</span><div class="kpi-strip__value"><strong>${esc(value)}</strong></div><span class="kpi-strip__foot">${esc(foot)}</span></div>`).join('');
+}
+
+function reputationSettingsSummary(settings) {
+  const sources = REP_SOURCES.filter(([id]) => settings[id]).map(([, label]) => label);
+  const list = sources.length > 1 ? `${sources.slice(0, -1).join(', ')} y ${sources.at(-1)}` : sources[0] || 'ninguna fuente';
+  return `${list}, ${settings.unboundedReviews ? 'hasta agotar el recorrido' : `hasta ${nEs(Number(settings.maxReviews) || 0)} reseñas por hotel`}`;
+}
+
+function reputationEmptyNoticeHTML(rows) {
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(REP_NOTICE_KEY) === '1'; } catch (_) { /* sin almacenamiento: se muestra */ }
+  if (dismissed || rows.some((row) => !reputationRowMeta(row).noCapture)) return '';
+  return `<div class="rep-notice" id="repNotice"><span class="rep-notice__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3.5 14.6 9l6.1.8-4.4 4.3 1.1 6.1L12 17.3l-5.4 2.9 1-6.1-4.4-4.3L9.3 9z"/></svg></span>
+    <div><strong>Todavía no hay reseñas capturadas</strong><span>Selecciona hoteles en la tabla o captura todo el inventario con la configuración actual: ${esc(reputationSettingsSummary(State.reputation.captureSettings))}.</span></div>
+    <button type="button" class="rep-notice__ok" data-rep-notice-dismiss>Entendido</button></div>`;
+}
+
+function reputationRunCell(run, fallback) {
+  if (!run) return `<span class="dim">${esc(fallback)}</span>`;
+  const tone = ['ok', 'exhausted'].includes(run.status) ? '' : ['error', 'blocked', 'parse_error', 'budget_exhausted'].includes(run.status) ? ' neg' : ' dim';
+  return `<span class="rep-run${tone}" title="${esc(fmtStamp(run.startedAt))}">${esc(reviewRunStatus(run.status))}<small>${esc(fmtStamp(run.startedAt))}</small></span>`;
+}
+
+function reputationRowHTML(row) {
+  const m = reputationRowMeta(row);
+  const on = State.reputation.selectedKeys.has(row.hotel_key);
+  const chip = m.maps === 'verified' ? '<span class="rep-chip rep-chip--ok">Maps · verificado</span>' : m.maps === 'review' ? '<span class="rep-chip">Maps · por revisar</span>' : '<span class="rep-chip rep-chip--warn">Falta Maps</span>';
+  return `<tr class="${on ? 'is-selected' : ''}" data-reputation-row data-rep-none="${m.noCapture}" data-rep-maps="${m.maps}" data-review-row-query="${esc(reviewSearchText(`${row.hotel_name} ${row.city || ''} ${row.address || ''}`))}">
+    <td class="rep-table__check"><input type="checkbox" data-review-select="${esc(row.hotel_key)}" aria-label="Seleccionar ${esc(row.hotel_name)}"${on ? ' checked' : ''}></td>
+    <td><button type="button" class="rep-hotel" data-review-open="${esc(row.hotel_key)}"><strong>${esc(row.hotel_name)}</strong><small>${esc(row.address || row.city || 'Dirección no informada')}${row.stars ? ` · ${nEs(row.stars, 0)}★` : ''}</small></button></td>
+    <td class="r mono${m.google ? '' : ' rep-zero'}">${nEs(m.google)}</td>
+    <td class="r mono${m.booking ? '' : ' rep-zero'}">${nEs(m.booking)}</td>
+    <td>${chip}</td>
+    <td>${reputationRunCell(m.lastMaps, 'Sin captura')}</td>
+    <td>${reputationRunCell(m.lastBooking, m.bookingLink ? 'Disponible' : 'Falta URL')}</td>
+    <td class="r"><button type="button" class="btn btn--xs rep-open" data-review-open="${esc(row.hotel_key)}" aria-label="Abrir ficha de ${esc(row.hotel_name)}">Abrir</button></td>
+  </tr>`;
+}
+
+function renderHotelReputationCatalog(host, total) {
+  const rows = State.reputation.catalog || [];
+  const metas = rows.map(reputationRowMeta);
+  const counts = { all: rows.length, none: metas.filter((m) => m.noCapture).length, maps: metas.filter((m) => m.maps !== 'verified').length };
+  const tab = State.reputation.repTab || 'all';
+  host.innerHTML = `<div class="page rep">
+    <div class="page-head"><div><h1>Inventario y reputación</h1><p>Ficha de hotel, cobertura de fuentes y reseñas</p></div>
+      <div class="actions"><button type="button" class="btn page-head__btn rep-config-btn" data-rep-config><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Configurar captura</button><button type="button" class="btn btn--primary page-head__btn" data-review-capture-all>Capturar inventario</button></div></div>
+    ${reviewJobPanelHTML()}
+    <section class="kpi-strip rep-kpis" aria-label="Cobertura de reseñas">${reputationKpisHTML(rows, total)}</section>
+    ${reputationEmptyNoticeHTML(rows)}
+    <article class="rep-card">
+      <div class="rep-card__bar"><div class="seg rep-tabs" role="tablist" aria-label="Filtrar inventario">${REP_TABS.map(([id, label]) => `<button type="button" role="tab" class="${tab === id ? 'is-active' : ''}" aria-selected="${tab === id}" data-rep-tab="${id}">${label}<span>${nEs(counts[id])}</span></button>`).join('')}</div>
+        <label class="rep-search"><span class="sr-only">Buscar hotel</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" id="reviewCatalogSearch" value="${esc(State.reputation.query)}" placeholder="Nombre, dirección o ciudad" autocomplete="off"></label></div>
+      <div class="rep-table__scroll"><table class="rep-table"><caption class="sr-only">Inventario hotelero con cobertura de reseñas por fuente</caption>
+        <colgroup><col style="width:52px"><col><col style="width:110px"><col style="width:110px"><col style="width:160px"><col style="width:150px"><col style="width:150px"><col style="width:96px"></colgroup>
+        <thead><tr><th scope="col" class="rep-table__check"><input type="checkbox" id="reviewSelectAll" aria-label="Seleccionar visibles"></th><th scope="col">Hotel</th><th scope="col" class="r">Google</th><th scope="col" class="r">Booking</th><th scope="col">Google Maps</th><th scope="col">Último Maps</th><th scope="col">Último Booking</th><th scope="col" class="r">Ficha</th></tr></thead>
+        <tbody>${rows.map(reputationRowHTML).join('')}</tbody></table>
+        <div class="rep-empty" id="repEmpty" hidden><strong>Ningún hotel coincide</strong><span>Revisa la búsqueda o cambia de pestaña.</span></div></div>
+      <div class="rep-card__foot"><span id="reviewCatalogCount"></span>${total > rows.length ? `<span>Se muestran los primeros ${nEs(rows.length)} de ${nEs(total)}</span>` : ''}</div>
+    </article>
+  </div><div id="repSelBar"></div>`;
+  filterHotelReviewCatalog();
 }
 
 function filterHotelReviewCatalog() {
   const query = reviewSearchText(State.reputation.query.trim());
+  const tab = State.reputation.repTab || 'all';
   let visible = 0;
   $$('[data-reputation-row]').forEach((row) => {
-    const match = !query || row.dataset.reviewRowQuery.includes(query);
+    const inTab = tab === 'all' || (tab === 'none' ? row.dataset.repNone === 'true' : row.dataset.repMaps !== 'verified');
+    const match = inTab && (!query || row.dataset.reviewRowQuery.includes(query));
     row.hidden = !match;
+    row.classList.toggle('is-selected', !!row.querySelector('[data-review-select]:checked'));
     if (match) visible++;
   });
   const count = $('#reviewCatalogCount');
-  if (count) count.textContent = `${visible} de ${State.reputation.catalog.length} hoteles`;
+  if (count) count.textContent = `${visible} de ${nEs(State.reputation.catalog.length)} hoteles`;
+  const empty = $('#repEmpty');
+  if (empty) empty.hidden = visible > 0;
   const selectAll = $('#reviewSelectAll');
   if (selectAll) {
     const shown = $$('[data-reputation-row]:not([hidden]) [data-review-select]');
@@ -3449,11 +3540,29 @@ function filterHotelReviewCatalog() {
     selectAll.indeterminate = checked > 0 && checked < shown.length;
     selectAll.disabled = shown.length === 0;
   }
+  paintReputationSelectionBar();
 }
 
-function reviewCaptureAssessment(scope, hotelKeys) {
-  const settings = State.reputation.captureSettings;
-  const sources = ['google_maps', 'google_hotels', 'booking'].filter((source) => settings[source]);
+function reputationSelectionBarHTML() {
+  const n = State.reputation.selectedKeys.size;
+  if (!n) return '';
+  return `<div class="rep-selbar" role="region" aria-label="Acciones sobre la selección"><span><b>${nEs(n)}</b> ${n === 1 ? 'seleccionado' : 'seleccionados'}</span>
+    <button type="button" class="rep-selbar__btn" data-review-compare${n < 2 ? ' disabled title="Selecciona al menos dos hoteles"' : ''}>Comparar</button>
+    <button type="button" class="rep-selbar__btn rep-selbar__btn--primary" data-review-capture-selected>Capturar reseñas</button>
+    <button type="button" class="rep-selbar__x" data-rep-clear aria-label="Quitar selección">×</button></div>`;
+}
+
+function paintReputationSelectionBar() {
+  const bar = $('#repSelBar');
+  if (!bar) return;
+  const had = !!bar.firstElementChild;
+  bar.innerHTML = reputationSelectionBarHTML();
+  bar.firstElementChild?.classList.toggle('is-steady', had);
+}
+
+/* Evaluación de una captura con una configuración dada (la vigente o el borrador del panel). */
+function reviewCaptureAssessment(scope, hotelKeys, settings = State.reputation.captureSettings) {
+  const sources = REP_SOURCES.map(([id]) => id).filter((source) => settings[source]);
   const maxReviews = Number(settings.maxReviews);
   const maxDecisions = Number(settings.maxDecisions);
   const budget = Number(settings.budgetUsd);
@@ -3475,72 +3584,74 @@ function reviewCaptureAssessment(scope, hotelKeys) {
   if (!confirmedGoogle && !confirmedBooking) return {valid: false, message: 'No hay fuentes confirmadas para esta selección. Revisa los vínculos en la ficha.'};
   if (confirmedGoogle) {
     if (!Number.isFinite(budget) || budget <= 0 || !Number.isFinite(unitCost) || unitCost <= 0) {
-      return {valid: false, message: 'Indica un tope Jev y un coste estimado por decisión, ambos mayores que cero.'};
+      return {valid: false, message: `Indica un tope Jev y un coste estimado por decisión, ambos mayores que cero (${confirmedGoogle} capturas Google confirmadas).`};
     }
     const estimatedMaximum = confirmedGoogle * maxDecisions * unitCost;
     if (budget + 1e-9 < estimatedMaximum) {
-      return {valid: false, message: `Tope insuficiente: hasta US$ ${nEs(estimatedMaximum, 4)} para ${confirmedGoogle} capturas Google confirmadas.`};
+      return {valid: false, estimate: estimatedMaximum, message: `Tope insuficiente: hasta US$ ${nEs(estimatedMaximum, 4)} para ${confirmedGoogle} capturas Google confirmadas.`};
     }
-    return {valid: true, message: `${confirmedGoogle} Google · ${confirmedBooking} Booking · ${omitted} fuentes omitidas · máximo Jev estimado US$ ${nEs(estimatedMaximum, 4)}. El recorrido puede ser parcial.`};
+    return {valid: true, estimate: estimatedMaximum, message: `${confirmedGoogle} Google · ${confirmedBooking} Booking · ${omitted} fuentes omitidas por falta de vínculo confirmado. El recorrido puede ser parcial.`};
   }
-  return {valid: true, message: `${confirmedBooking} Booking confirmado${confirmedBooking === 1 ? '' : 's'} · ${omitted} fuentes omitidas · sin gasto Jev.`};
+  return {valid: true, estimate: 0, message: `${confirmedBooking} Booking confirmado${confirmedBooking === 1 ? '' : 's'} · ${omitted} fuentes omitidas · sin gasto Jev.`};
 }
 
-function refreshHotelReviewCaptureControls() {
-  const scope = State.reputation.hotelKey ? 'profile' : 'catalog';
-  const allKeys = (State.reputation.catalog || []).map((item) => item.hotel_key);
-  const selectedKeys = [...State.reputation.selectedKeys];
-  const keys = scope === 'profile' ? [State.reputation.hotelKey] : allKeys;
-  const allAssessment = reviewCaptureAssessment(scope, keys);
-  const selectedAssessment = scope === 'catalog' ? reviewCaptureAssessment(scope, selectedKeys) : allAssessment;
-  const allButton = $('[data-review-capture-all]');
-  const selectedButton = $('[data-review-capture-selected]');
-  const profileButton = $('[data-review-capture-profile]');
-  if (allButton) allButton.disabled = !allAssessment.valid;
-  if (selectedButton) selectedButton.disabled = !selectedAssessment.valid;
-  if (profileButton) profileButton.disabled = !allAssessment.valid;
-  const readiness = $(`[data-review-capture-readiness="${scope}"]`);
-  if (readiness) readiness.textContent = scope === 'catalog' && selectedKeys.length ? selectedAssessment.message : allAssessment.message;
+/* ---- panel lateral «Configuración» */
+function reputationConfigScope() {
+  if (State.reputation.hotelKey) return { scope: 'profile', keys: [State.reputation.hotelKey] };
+  const selected = [...State.reputation.selectedKeys];
+  return { scope: 'catalog', keys: selected.length ? selected : (State.reputation.catalog || []).map((item) => item.hotel_key) };
 }
 
-function renderHotelReputationCatalog(host, total) {
-  const rows = State.reputation.catalog || [];
-  const selectedCount = State.reputation.selectedKeys.size;
-  const tableRows = rows.map((row) => {
-    const counts = reviewSourceMap(row, 'reviewSources');
-    const runs = reviewSourceMap(row);
-    const maps = row.links?.find((link) => link.source === 'google_maps');
-    const booking = row.links?.find((link) => link.source === 'booking');
-    return `<tr data-reputation-row data-review-row-query="${esc(reviewSearchText(`${row.hotel_name} ${row.city || ''} ${row.address || ''}`))}">
-      <td><input type="checkbox" data-review-select="${esc(row.hotel_key)}" aria-label="Seleccionar ${esc(row.hotel_name)}" ${State.reputation.selectedKeys.has(row.hotel_key) ? 'checked' : ''}></td>
-      <td><button type="button" class="review-hotel-link" data-review-open="${esc(row.hotel_key)}"><strong>${esc(row.hotel_name)}</strong><small>${esc(row.city || row.address || 'Zona no informada')}</small></button></td>
-      <td class="num">${nEs(counts.get('google')?.captured || 0)}<small>Google</small></td>
-      <td class="num">${nEs(counts.get('booking')?.captured || 0)}<small>Booking ${row.stars ? `· ${nEs(row.stars, 0)}★` : ''}</small></td>
-      <td>${maps?.verified ? 'Coincidencia confirmada' : maps ? 'Maps · por revisar' : 'Falta Maps'}</td>
-      <td>${runs.get('google_maps') ? reviewRunStatus(runs.get('google_maps').status) : 'Sin captura'}</td>
-      <td>${runs.get('booking') ? reviewRunStatus(runs.get('booking').status) : (booking ? 'Disponible' : 'Falta URL')}</td>
-      <td><button type="button" class="btn btn--sm" data-review-open="${esc(row.hotel_key)}">Abrir ficha</button></td>
-    </tr>`;
-  }).join('');
-  const jobStatus = reviewJobPanelHTML();
-  host.innerHTML = `<div class="page review-page">
-    ${pageHead('Inventario y reputación', 'Ficha de hotel, cobertura de fuentes y análisis de reseñas', `<a class="btn btn--quiet" href="/api/hotel-reviews/catalog?limit=200">${nEs(total)} hoteles</a>`)}
-    ${jobStatus}
-    <section class="review-workbench" aria-label="Acciones de captura y comparación">
-      <div class="review-workbench__top"><label class="review-search"><span>Buscar hotel</span><input type="search" class="input" id="reviewCatalogSearch" value="${esc(State.reputation.query)}" placeholder="Nombre, dirección o ciudad"></label>
-      <div class="review-workbench__actions"><label><input type="checkbox" id="reviewSelectAll"> Seleccionar visibles</label><button type="button" class="btn" data-review-compare ${selectedCount < 2 ? 'disabled' : ''}>Comparar selección (${selectedCount})</button><button type="button" class="btn btn--primary" data-review-capture-selected disabled>Capturar seleccionados</button><button type="button" class="btn" data-review-capture-all disabled>Capturar todo el inventario</button></div></div>
-      ${reviewCaptureControls('catalog')}
-      <small class="review-budget-help">La captura de Google usa Jev con OpenRouter. El tope de gasto y el coste por decisión limitan la navegación asistida; el coste informado por el proveedor prevalece cuando está disponible. Después, la extracción sigue el máximo de reseñas o el límite técnico de la fuente.</small>
-      <div class="review-compare-outlet" id="reviewCompareOutlet" aria-live="polite"></div>
-    </section>
-    <div class="table-scroll review-table-scroll"><table class="t review-catalog-table"><caption class="sr-only">Inventario hotelero con cobertura de reseñas por fuente</caption>
-      <thead><tr><th scope="col"><span class="sr-only">Seleccionar</span></th><th scope="col">Hotel</th><th scope="col" class="r">Capturadas · Google</th><th scope="col" class="r">Capturadas · Booking</th><th scope="col">Google Maps</th><th scope="col">Último Maps</th><th scope="col">Último Booking</th><th scope="col">Ficha</th></tr></thead>
-      <tbody>${tableRows || '<tr><td colspan="8">No hay hoteles en el inventario.</td></tr>'}</tbody>
-    </table></div>
-    <div class="review-list-meta"><span id="reviewCatalogCount">${rows.length} de ${nEs(total)} hoteles</span><span>La ficha procede de Booking y de atributos públicos de Google, con fuente y fecha.</span></div>
-  </div>`;
-  filterHotelReviewCatalog();
-  refreshHotelReviewCaptureControls();
+function reputationEstimateHTML() {
+  const draft = State.reputation.configDraft;
+  const { scope, keys } = reputationConfigScope();
+  const a = reviewCaptureAssessment(scope, keys, draft);
+  const value = a.estimate == null ? '—' : a.estimate === 0 ? 'sin gasto Jev' : `US$ ${nEs(a.estimate, 4)}`;
+  return `<div class="rep-cfg__est"><span>Estimación para ${nEs(keys.length)} ${keys.length === 1 ? 'hotel' : 'hoteles'}</span><strong>${value}</strong></div><p class="rep-cfg__msg${a.valid ? '' : ' is-bad'}">${esc(a.message)}</p>`;
+}
+
+function reputationConfigHTML() {
+  const d = State.reputation.configDraft;
+  const num = (id, label, key, attrs, placeholder = '') => `<label class="rep-cfg__field"><span>${label}</span><input id="${id}" data-rep-cfg="${key}" value="${esc(d[key])}" ${attrs}${placeholder ? ` placeholder="${placeholder}"` : ''}${key === 'maxReviews' && d.unboundedReviews ? ' disabled' : ''}></label>`;
+  return `<div class="bi-drawer__head rep-cfg__head"><div><span class="card__kicker">Captura de reseñas</span><h2 id="sidePanelTitle">Configuración</h2></div><button type="button" class="icon-x icon-x--lg" data-side-close aria-label="Cerrar">×</button></div>
+    <div class="rep-cfg__body">
+      <section class="rep-cfg__group"><strong>Fuentes</strong><div class="rep-cfg__sources">${REP_SOURCES.map(([id, label]) => `<button type="button" class="rep-src${d[id] ? ' is-on' : ''}" data-rep-src="${id}" aria-pressed="${!!d[id]}"><span class="rep-src__box" aria-hidden="true">${d[id] ? '✓' : ''}</span>${label}</button>`).join('')}</div></section>
+      <section class="rep-cfg__group"><strong>Límites por hotel</strong><div class="rep-cfg__grid">${num('repCfgMax', 'Máx. reseñas', 'maxReviews', 'type="number" min="1" max="10000" step="1"')}${num('repCfgDecisions', 'Decisiones máx.', 'maxDecisions', 'type="number" min="1" max="120" step="1"')}</div>
+        <button type="button" class="rep-switch" role="switch" aria-checked="${!!d.unboundedReviews}" data-rep-unbounded><span class="rep-switch__track" aria-hidden="true"><i></i></span>Hasta agotar recorrido</button>
+        <span class="rep-cfg__note">Quita el tope numérico. Se mantiene un límite técnico de 400 desplazamientos en Maps y 500 páginas en Booking; si se alcanza, la captura queda parcial.</span></section>
+      <section class="rep-cfg__group"><strong>Coste de navegación asistida</strong><div class="rep-cfg__grid">${num('repCfgBudget', 'Tope Jev (USD)', 'budgetUsd', 'type="number" min="0.001" step="any" inputmode="decimal"', 'Por lote')}${num('repCfgUnit', 'USD por decisión', 'unitCostUsd', 'type="number" min="0.000001" step="any" inputmode="decimal"', 'Configurar precio')}</div>
+        <span class="rep-cfg__note">Solo aplica a Google (Maps y Hotels), que usa Jev con OpenRouter. Si el proveedor informa del coste real, prevalece sobre la estimación.</span></section>
+      <div id="repCfgEstimate" role="status" aria-live="polite">${reputationEstimateHTML()}</div>
+    </div>
+    <div class="rep-cfg__foot"><button type="button" class="btn" data-side-close>Cancelar</button><button type="button" class="btn btn--primary" data-rep-config-save>Guardar configuración</button></div>`;
+}
+
+function openReputationConfig() {
+  State.reputation.configDraft = { ...State.reputation.captureSettings };
+  $('#sidePanelBody').innerHTML = reputationConfigHTML();
+  openSidePanel('rep-config', 'side-panel--rep');
+}
+
+function paintReputationConfig(focusSelector) {
+  const body = $('#sidePanelBody');
+  if (!body || $('#sidePanel')?.dataset.kind !== 'rep-config') return;
+  body.innerHTML = reputationConfigHTML();
+  if (focusSelector) body.querySelector(focusSelector)?.focus();
+}
+
+function saveReputationConfig() {
+  State.reputation.captureSettings = { ...State.reputation.configDraft };
+  closeSidePanel();
+  toast('Configuración de captura guardada', 'ok');
+  const notice = $('#repNotice span:not(.rep-notice__icon)');
+  if (notice) notice.textContent = `Selecciona hoteles en la tabla o captura todo el inventario con la configuración actual: ${reputationSettingsSummary(State.reputation.captureSettings)}.`;
+}
+
+/* Si la configuración no permite capturar, se abre el panel con el motivo en lugar de fallar en silencio. */
+function requestHotelReviewCapture(hotelKeys, scope) {
+  const assessment = reviewCaptureAssessment(scope, hotelKeys);
+  if (!assessment.valid) { openReputationConfig(); return; }
+  void launchHotelReviewCapture(hotelKeys, scope);
 }
 
 function reviewFactsHTML(profile) {
@@ -3602,13 +3713,11 @@ function renderHotelReputationProfile(host, profile) {
   const tabs = [['profile', 'Ficha'], ['reviews', 'Reseñas'], ['analysis', 'Análisis'], ['notes', 'Notas'], ['captures', 'Capturas']];
   const tabsHtml = tabs.map(([key, label]) => `<button type="button" id="review-tab-${key}" role="tab" class="filter-btn ${State.reputation.tab === key ? 'is-active' : ''}" aria-controls="reviewProfileBody" aria-selected="${State.reputation.tab === key}" tabindex="${State.reputation.tab === key ? 0 : -1}" data-review-profile-tab="${key}">${label}</button>`).join('');
   host.innerHTML = `<div class="page review-page review-profile-page">
-    <div class="review-profile-head"><div><button type="button" class="link-button" data-review-back>← Inventario</button><div class="card__kicker">FICHA DE HOTEL · ${esc(hotel.hotel_key)}</div><h1>${esc(hotel.hotel_name)}</h1><p>${esc([hotel.city, hotel.display_location, hotel.accommodation_type].filter(Boolean).join(' · ') || 'Ubicación no informada')}</p></div><div class="review-profile-head__actions"><a class="btn btn--quiet" href="${reputationKeyPath(hotel.hotel_key, 'export.tsv')}" download>Exportar TSV</a><button type="button" class="btn btn--primary" data-review-capture-profile disabled>Capturar fuentes</button></div></div>
+    <div class="review-profile-head"><div><button type="button" class="link-button" data-review-back>← Inventario</button><div class="card__kicker">FICHA DE HOTEL · ${esc(hotel.hotel_key)}</div><h1>${esc(hotel.hotel_name)}</h1><p>${esc([hotel.city, hotel.display_location, hotel.accommodation_type].filter(Boolean).join(' · ') || 'Ubicación no informada')}</p></div><div class="review-profile-head__actions"><a class="btn btn--quiet" href="${reputationKeyPath(hotel.hotel_key, 'export.tsv')}" download>Exportar TSV</a><button type="button" class="btn" data-rep-config>Configurar captura</button><button type="button" class="btn btn--primary" data-review-capture-profile>Capturar fuentes</button></div></div>
     ${reviewJobPanelHTML()}
-    ${reviewCaptureControls('profile')}
     <div class="review-profile-tabs" role="tablist" aria-label="Secciones de ficha hotelera">${tabsHtml}</div>
     <div id="reviewProfileBody" class="review-profile-body" role="tabpanel" aria-labelledby="review-tab-${State.reputation.tab}" tabindex="0">${renderHotelReputationTab(profile)}</div>
   </div>`;
-  refreshHotelReviewCaptureControls();
 }
 
 function renderHotelReputationTab(profile) {
@@ -3702,10 +3811,8 @@ function openHotelReviewProfile(hotelKey, tab = 'profile') {
 }
 
 async function launchHotelReviewCapture(hotelKeys, scope) {
-  const root = $(`[data-review-capture-controls="${scope}"]`);
-  if (!root) return;
   const assessment = reviewCaptureAssessment(scope, hotelKeys);
-  if (!assessment.valid) { setStatus(assessment.message, 'error'); return; }
+  if (!assessment.valid) { toast(assessment.message, 'warn'); return; }
   const settings = State.reputation.captureSettings;
   const sources = ['google_maps', 'google_hotels', 'booking'].filter((source) => settings[source]);
   const hasGoogle = sources.some((source) => source.startsWith('google_'));
@@ -3727,10 +3834,10 @@ async function launchHotelReviewCapture(hotelKeys, scope) {
     State.reputation.activeJobKind = 'capture';
     State.reputation.job = result.job;
     State.reputation.profile = null;
-    setStatus(`Captura en cola: ${result.queued} hotel/fuente${result.skipped?.length ? ` · ${result.skipped.length} omitidos por falta de vínculo` : ''}. Máximo estimado US$ ${nEs(result.estimatedMaximumUsd, 4)}.`, 'success');
+    toast(`Captura en cola: ${result.queued} hotel/fuente${result.skipped?.length ? ` · ${result.skipped.length} omitidos por falta de vínculo` : ''}. Máximo estimado US$ ${nEs(result.estimatedMaximumUsd, 4)}.`, 'ok');
     await renderHotelReputation();
     void pollHotelReviewJob(result.job.id);
-  } catch (error) { setStatus(error.message, 'error'); }
+  } catch (error) { toast(error.message, 'warn'); }
 }
 
 async function pollHotelReviewJob(jobId) {
@@ -3747,8 +3854,8 @@ async function pollHotelReviewJob(jobId) {
     } else {
       State.reputation.activeJobId = null;
       if (State.view === 'reputation') void renderHotelReputation();
-      if (result.job.status === 'completed') setStatus('Trabajo de reseñas completado. Revisa los estados parciales y la cobertura de cada fuente.', 'success');
-      else setStatus(result.job.error || 'El trabajo de reseñas terminó con incidencias.', 'error');
+      if (result.job.status === 'completed') toast('Trabajo de reseñas completado. Revisa los estados parciales y la cobertura de cada fuente.', 'ok');
+      else toast(result.job.error || 'El trabajo de reseñas terminó con incidencias.', 'warn');
     }
   } catch (_) {
     if (State.reputation.activeJobId === jobId) setTimeout(() => void pollHotelReviewJob(jobId), 3000);
@@ -3758,15 +3865,24 @@ async function pollHotelReviewJob(jobId) {
 async function runHotelReviewComparison() {
   const keys = [...State.reputation.selectedKeys].slice(0, 8);
   if (keys.length < 2) return;
-  const outlet = $('#reviewCompareOutlet');
-  if (outlet) outlet.innerHTML = '<span>Cargando comparación…</span>';
+  const head = `<div class="bi-drawer__head rep-cfg__head"><div><span class="card__kicker">Reputación por plataforma</span><h2 id="sidePanelTitle">Comparar ${keys.length} hoteles</h2></div><button type="button" class="icon-x icon-x--lg" data-side-close aria-label="Cerrar">×</button></div>`;
+  $('#sidePanelBody').innerHTML = `${head}<div class="rep-cfg__body"><div class="empty">Cargando comparación…</div></div>`;
+  openSidePanel('rep-compare');
   try {
     const profiles = await Promise.all(keys.map(async (key) => (await api(reputationKeyPath(key, 'profile'))).profile));
+    if ($('#sidePanel')?.dataset.kind !== 'rep-compare') return;
     State.reputation.comparison = profiles;
     const sources = ['google', 'booking'];
     const rows = profiles.map((profile) => ({profile, bySource: new Map((profile.sources || []).map((entry) => [entry.source, entry]))}));
-    if (outlet) outlet.innerHTML = `<div class="review-compare-table-wrap"><table><caption class="sr-only">Comparación por plataforma con puntuación en escala original y tamaños de muestra</caption><thead><tr><th>Hotel</th>${sources.map((source) => `<th>${hotelSourceLabel(source)} · publicada / muestra</th><th>${hotelSourceLabel(source)} · N</th>`).join('')}</tr></thead><tbody>${rows.map(({profile,bySource}) => `<tr><th>${esc(profile.hotel.hotel_name)}</th>${sources.map((source) => {const item=bySource.get(source); const scale=item?.ratingScale || (source==='google'?5:10); return `<td>${item?.publishedRating == null ? '—' : `${nEs(item.publishedRating,1)}/${scale}`} · ${item?.sampleAverage == null ? '—' : `${nEs(item.sampleAverage,2)}/${scale}`}</td><td>${nEs(item?.captured || 0)} capturadas${item?.latestRun ? ` · ${esc(reviewRunStatus(item.latestRun.status))}` : ''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div><small>Comparación sin filtros: incluye todas las reseñas capturadas de cada hotel y fuente. La cobertura puede diferir.</small>`;
-  } catch (error) { if (outlet) outlet.innerHTML = `<div class="inline-error">No se pudo comparar: ${esc(error.message)}</div>`; }
+    const cell = (item, source) => {
+      const scale = item?.ratingScale || (source === 'google' ? 5 : 10);
+      return `<td class="r mono">${item?.publishedRating == null ? '—' : `${nEs(item.publishedRating, 1)}/${scale}`}</td><td class="r mono">${item?.sampleAverage == null ? '—' : `${nEs(item.sampleAverage, 2)}`}<small>${nEs(item?.captured || 0)} capt.</small></td>`;
+    };
+    $('#sidePanelBody .rep-cfg__body').innerHTML = `<div class="rep-compare"><table><caption class="sr-only">Comparación por plataforma con puntuación en escala original y tamaños de muestra</caption>
+      <thead><tr><th scope="col" rowspan="2">Hotel</th>${sources.map((source) => `<th scope="colgroup" colspan="2">${hotelSourceLabel(source)}</th>`).join('')}</tr><tr>${sources.map(() => '<th scope="col" class="r">Publicada</th><th scope="col" class="r">Muestra</th>').join('')}</tr></thead>
+      <tbody>${rows.map(({profile, bySource}) => `<tr><th scope="row">${esc(profile.hotel.hotel_name)}</th>${sources.map((source) => cell(bySource.get(source), source)).join('')}</tr>`).join('')}</tbody></table></div>
+      <p class="rep-cfg__note">Incluye todas las reseñas capturadas de cada hotel y fuente; la cobertura puede diferir. Google puntúa sobre 5 y Booking sobre 10: no se combinan escalas.</p>`;
+  } catch (error) { const body = $('#sidePanelBody .rep-cfg__body'); if (body) body.innerHTML = `<div class="inline-error">No se pudo comparar: ${esc(error.message)}</div>`; }
 }
 
 async function saveHotelReviewLink(form) {
@@ -3776,9 +3892,9 @@ async function saveHotelReviewLink(form) {
     await api(reputationKeyPath(State.reputation.hotelKey, 'links'), {method: 'PUT', body: JSON.stringify({
       source, url: data.get('url'), externalName: data.get('externalName'), verified: data.get('verified') === 'on',
     })});
-    setStatus(`Vínculo de ${hotelSourceLabel(source)} guardado.`, 'success');
+    toast(`Vínculo de ${hotelSourceLabel(source)} guardado.`, 'ok');
     void renderHotelReputation();
-  } catch (error) { setStatus(error.message, 'error'); }
+  } catch (error) { toast(error.message, 'warn'); }
 }
 
 function wireHotelReputationEvents() {
@@ -3800,18 +3916,9 @@ function wireHotelReputationEvents() {
       filterHotelReviewCatalog();
       return;
     }
-    if (target?.matches('[data-review-capture-controls] input')) {
-      const settings = State.reputation.captureSettings;
-      if (target.hasAttribute('data-review-max')) settings.maxReviews = target.value;
-      else if (target.hasAttribute('data-review-unbounded')) {
-        settings.unboundedReviews = target.checked;
-        const limit = target.closest('[data-review-capture-controls]')?.querySelector('[data-review-max]');
-        if (limit) limit.disabled = target.checked;
-      }
-      else if (target.hasAttribute('data-review-budget')) settings.budgetUsd = target.value;
-      else if (target.hasAttribute('data-review-unit-cost')) settings.unitCostUsd = target.value;
-      else if (target.hasAttribute('data-review-decisions')) settings.maxDecisions = target.value;
-      refreshHotelReviewCaptureControls();
+    if (target?.matches('[data-rep-cfg]') && State.reputation.configDraft) {
+      State.reputation.configDraft[target.dataset.repCfg] = target.value.slice(0, 24);
+      const est = $('#repCfgEstimate'); if (est) est.innerHTML = reputationEstimateHTML();
       return;
     }
     if (target?.id === 'reviewAnalysisBudget') {
@@ -3834,22 +3941,12 @@ function wireHotelReputationEvents() {
     if (target?.matches('[data-review-select]')) {
       const key = target.dataset.reviewSelect;
       if (target.checked) State.reputation.selectedKeys.add(key); else State.reputation.selectedKeys.delete(key);
-      const button = $('[data-review-compare]'); if (button) button.disabled = State.reputation.selectedKeys.size < 2;
-      const label = $('[data-review-compare]'); if (label) label.textContent = `Comparar selección (${State.reputation.selectedKeys.size})`;
       filterHotelReviewCatalog();
-      refreshHotelReviewCaptureControls();
       return;
     }
     if (target?.id === 'reviewSelectAll') {
       $$('[data-reputation-row]:not([hidden]) [data-review-select]').forEach((input) => {input.checked = target.checked; if (target.checked) State.reputation.selectedKeys.add(input.dataset.reviewSelect); else State.reputation.selectedKeys.delete(input.dataset.reviewSelect);});
-      const compare = $('[data-review-compare]'); if (compare) { compare.disabled = State.reputation.selectedKeys.size < 2; compare.textContent = `Comparar selección (${State.reputation.selectedKeys.size})`; }
       filterHotelReviewCatalog();
-      refreshHotelReviewCaptureControls();
-      return;
-    }
-    if (target?.matches('[data-review-source]')) {
-      State.reputation.captureSettings[target.dataset.reviewSource] = target.checked;
-      refreshHotelReviewCaptureControls();
       return;
     }
     const filter = target?.dataset?.reviewFilter;
@@ -3872,8 +3969,8 @@ function wireHotelReputationEvents() {
       const data = new FormData(noteForm);
       const body = {body: data.get('body'), reviewId: data.get('reviewId') ? Number(data.get('reviewId')) : null};
       void api(reputationKeyPath(State.reputation.hotelKey, 'notes'), {method:'POST',body:JSON.stringify(body)})
-        .then(() => {State.reputation.tab='notes'; setStatus('Nota guardada.', 'success'); return renderHotelReputation();})
-        .catch((error) => setStatus(error.message,'error'));
+        .then(() => {State.reputation.tab='notes'; toast('Nota guardada.', 'ok'); return renderHotelReputation();})
+        .catch((error) => toast(error.message,'warn'));
       return;
     }
     const linkForm = event.target.closest('[data-review-link-form]');
@@ -3885,9 +3982,18 @@ function wireHotelReputationEvents() {
     const open = target.closest('[data-review-open]'); if (open) {openHotelReviewProfile(open.dataset.reviewOpen); return;}
     if (target.closest('[data-review-back]')) {State.reputation.hotelKey=null; State.reputation.profile=null; State.reputation.tab='profile'; setView('reputation'); window.scrollTo(0, 0); return;}
     const tab = target.closest('[data-review-profile-tab]'); if (tab) {showHotelReputationTab(tab.dataset.reviewProfileTab); return;}
-    if (target.closest('[data-review-capture-selected]')) {void launchHotelReviewCapture([...State.reputation.selectedKeys], 'catalog'); return;}
-    if (target.closest('[data-review-capture-all]')) {void launchHotelReviewCapture((State.reputation.catalog || []).map((hotel) => hotel.hotel_key), 'catalog'); return;}
-    if (target.closest('[data-review-capture-profile]')) {void launchHotelReviewCapture([State.reputation.hotelKey], 'profile'); return;}
+    if (target.closest('[data-review-capture-selected]')) {requestHotelReviewCapture([...State.reputation.selectedKeys], 'catalog'); return;}
+    if (target.closest('[data-review-capture-all]')) {requestHotelReviewCapture((State.reputation.catalog || []).map((hotel) => hotel.hotel_key), 'catalog'); return;}
+    if (target.closest('[data-review-capture-profile]')) {requestHotelReviewCapture([State.reputation.hotelKey], 'profile'); return;}
+    if (target.closest('[data-rep-config]')) {openReputationConfig(); return;}
+    if (target.closest('[data-rep-config-save]')) {saveReputationConfig(); return;}
+    const src = target.closest('[data-rep-src]');
+    if (src && State.reputation.configDraft) {const d = State.reputation.configDraft; d[src.dataset.repSrc] = !d[src.dataset.repSrc]; paintReputationConfig(`[data-rep-src="${src.dataset.repSrc}"]`); return;}
+    if (target.closest('[data-rep-unbounded]') && State.reputation.configDraft) {State.reputation.configDraft.unboundedReviews = !State.reputation.configDraft.unboundedReviews; paintReputationConfig('[data-rep-unbounded]'); return;}
+    const repTab = target.closest('[data-rep-tab]');
+    if (repTab) {State.reputation.repTab = repTab.dataset.repTab; $$('[data-rep-tab]').forEach((b) => {const on = b === repTab; b.classList.toggle('is-active', on); b.setAttribute('aria-selected', String(on));}); filterHotelReviewCatalog(); return;}
+    if (target.closest('[data-rep-clear]')) {State.reputation.selectedKeys.clear(); $$('[data-review-select]').forEach((input) => {input.checked = false;}); filterHotelReviewCatalog(); return;}
+    if (target.closest('[data-rep-notice-dismiss]')) {try {localStorage.setItem(REP_NOTICE_KEY, '1');} catch (_) { /* solo esta sesión */ } $('#repNotice')?.remove(); return;}
     if (target.closest('[data-review-compare]')) {void runHotelReviewComparison(); return;}
     const pageButton = target.closest('[data-review-page]');
     if (pageButton) {State.reputation.reviewPage=Math.max(0,State.reputation.reviewPage+(pageButton.dataset.reviewPage==='next'?1:-1));void loadHotelReviewsPage();return;}
@@ -3900,8 +4006,8 @@ function wireHotelReputationEvents() {
       void api(reputationKeyPath(State.reputation.hotelKey, 'attributes/selection'), {method: 'PUT', body: JSON.stringify({
         attribute: selectAttribute.dataset.reviewSelectAttribute,
         observationId: Number(selectAttribute.dataset.reviewObservationId),
-      })}).then(() => {setStatus('Valor principal actualizado.', 'success'); return renderHotelReputation();})
-        .catch((error) => {selectAttribute.disabled = false; setStatus(error.message, 'error');});
+      })}).then(() => {toast('Valor principal actualizado.', 'ok'); return renderHotelReputation();})
+        .catch((error) => {selectAttribute.disabled = false; toast(error.message, 'warn');});
       return;
     }
     const history = target.closest('[data-review-history]');
@@ -3922,13 +4028,13 @@ function wireHotelReputationEvents() {
         .catch((error)=>{outlet.innerHTML=`<small class="hotel-review-error">${esc(error.message)}</small>`;});
       return;
     }
-    const deleteNote = target.closest('[data-review-delete-note]'); if (deleteNote) {void api(`/api/hotel-reviews/notes/${deleteNote.dataset.reviewDeleteNote}`,{method:'DELETE'}).then(()=>renderHotelReputation()).catch((error)=>setStatus(error.message,'error'));return;}
+    const deleteNote = target.closest('[data-review-delete-note]'); if (deleteNote) {void api(`/api/hotel-reviews/notes/${deleteNote.dataset.reviewDeleteNote}`,{method:'DELETE'}).then(()=>renderHotelReputation()).catch((error)=>toast(error.message,'warn'));return;}
     if (target.closest('[data-review-analyze]')) {
       const budget=Number($('#reviewAnalysisBudget')?.value||0);
-      if (!Number.isFinite(budget) || budget < 0.001 || budget > 10) {setStatus('Introduce un tope de gasto USD entre 0,001 y 10 para este análisis.','error');return;}
+      if (!Number.isFinite(budget) || budget < 0.001 || budget > 10) {toast('Introduce un tope de gasto USD entre 0,001 y 10 para este análisis.','warn');return;}
       void api(reputationKeyPath(State.reputation.hotelKey,'analyses'),{method:'POST',body:JSON.stringify({budgetUsd:budget,sources:['google','booking']})})
         .then((result)=>{State.reputation.activeJobId=result.job.id;State.reputation.activeJobKind='analysis';State.reputation.job=result.job;void renderHotelReputation();void pollHotelReviewJob(result.job.id);})
-        .catch((error)=>setStatus(error.message,'error'));
+        .catch((error)=>toast(error.message,'warn'));
     }
   });
 }

@@ -121,13 +121,13 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 - [x] §3B · pestaña por defecto = Panel de análisis · hecho · js:`HOTEL_TAB_KEY`
 
 ## 4 Reputación
-- [ ] §4 · cabecera con «Configurar captura» (icono) y «Capturar inventario» (primario) · falta · js:`renderHotelReputationCatalog`
-- [ ] §4 · tira de KPIs: Inventario · Reseñas Google · Reseñas Booking · Maps verificados N/M · Última captura · falta · js:`reputationKpisHTML`
-- [ ] §4 · aviso de estado vacío descartable («Entendido») · falta · js:`reputationEmptyNoticeHTML`
-- [ ] §4 · segmentado Todos / Sin captura / Maps por revisar y buscador de 300 px · falta · js:`renderHotelReputationCatalog`
-- [ ] §4 · tabla: casilla 52 px · Hotel + dirección · Google · Booking · Google Maps (chip) · Último Maps · Último Booking · Ficha («Abrir»); fila seleccionada en `--accent-soft`; casilla de cabecera · parcial · js:`renderHotelReputationCatalog`
-- [ ] §4 · barra de selección flotante oscura («N seleccionados», Comparar, Capturar reseñas, ×) · falta · js:`reputationSelectionBarHTML`
-- [ ] §4 · panel lateral «Configuración» (460 px) con fuentes, límites, interruptor, coste, estimación, Cancelar / Guardar · falta · js:`reputationConfigHTML`
+- [x] §4 · cabecera con «Configurar captura» (icono) y «Capturar inventario» (primario) · hecho · js:`renderHotelReputationCatalog` · si la configuración no permite capturar, «Capturar inventario» abre el panel con el motivo
+- [x] §4 · tira de KPIs: Inventario · Reseñas Google · Reseñas Booking · Maps verificados N/M · Última captura · hecho · js:`reputationKpisHTML` · «Última captura» = run más reciente del catálogo (corregido: antes se leía `row.source` en vez de `row.sources`)
+- [x] §4 · aviso de estado vacío descartable («Entendido») · hecho · js:`reputationEmptyNoticeHTML` · solo aparece si ningún hotel tiene reseñas (hoy hay 1 con 521, así que no se ve); «Entendido» se guarda en `atlas.rep.emptyNotice`
+- [x] §4 · segmentado Todos / Sin captura / Maps por revisar y buscador de 300 px · hecho · js:`filterHotelReviewCatalog` · «Maps por revisar» incluye también los hoteles sin vínculo de Maps (todo lo no verificado)
+- [x] §4 · tabla: casilla 52 px · Hotel + dirección · Google · Booking · Google Maps (chip) · Último Maps · Último Booking · Ficha («Abrir»); fila seleccionada en `--accent-soft`; casilla de cabecera · hecho · js:`reputationRowHTML`
+- [x] §4 · barra de selección flotante oscura («N seleccionados», Comparar, Capturar reseñas, ×) · hecho · js:`reputationSelectionBarHTML` · «Comparar» abre la comparación en el panel lateral (exige ≥ 2)
+- [x] §4 · panel lateral «Configuración» (460 px) con fuentes, límites, interruptor, coste, estimación, Cancelar / Guardar · hecho · js:`reputationConfigHTML`/`openReputationConfig`/`saveReputationConfig` · borrador: Cancelar descarta; la ficha del hotel usa el mismo panel
 
 ## 5 Vuelos
 - [x] §5 · cabecera «Conectividad aérea hacia Gran Canaria · N rutas directas desde N mercados emisores», «Foto aérea … · N opciones» y «Nueva captura aérea» · hecho · js:`flightHeaderHTML` · el nº de «rutas directas» cuenta rutas con alguna opción directa
