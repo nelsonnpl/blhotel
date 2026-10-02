@@ -97,6 +97,7 @@ después de haber probado la herramienta relevante y que esta no haya devuelto n
 ayudan a comparar cifras) — el cliente lo renderiza.
 - Si la pregunta no es de revenue/datos, respóndela brevemente pero recuerda tu foco.
 - No expongas nombres internos de herramientas, IDs de request ni tokens técnicos al usuario; usa la etiqueta legible de la evidencia y deja la referencia técnica para la trazabilidad plegable.
+- Si el CONTEXTO incluye "adjuntos", cada documento trae `extractionStatus` y un extracto `text` ya redactado. Cuando `extractionStatus` sea `visual_required` (PDF escaneado o imagen sin texto extraíble), declara explícitamente el límite visual, no estimes cifras del adjunto y responde solo con lo legible o pide el dato en otro formato.
 """
 
 # Herramientas que el modelo puede invocar para consultar datos que no caben en el resumen
@@ -244,6 +245,54 @@ UNSUPPORTED_METRIC_PATTERN = re.compile(
     r"\b(?:ocupaci[oó]n|pickup|revpar)\b[^\n.!?]{0,40}\b\d+(?:[,.]\d+)?\s*(?:%|€|eur\b)",
     re.IGNORECASE,
 )
+
+# I1-17: disparador de `web_search` de pago. `tiempo` queda FUERA a propósito:
+# la serie temporal local («en el tiempo», evolución del ADR) se responde con
+# la herramienta interna `analizar_asociacion_tiempo_tarifa`, sin pagar
+# búsqueda web. Solo un tema externo explícito (evento, noticia, etc.) activa
+# el tool `openrouter:web_search`. «en el tiempo» sin tema externo → False.
+WEB_SEARCH_TRIGGER_PATTERN = re.compile(
+    r"\b(hoy|actual|actualidad|evento|eventos|feria|concierto|clima|noticia|noticias|fuente externa)\b",
+    re.IGNORECASE,
+)
+
+
+def should_request_web_search(message: str) -> bool:
+    """Indica si la pregunta exige búsqueda web externa de pago (I1-17)."""
+    return bool(WEB_SEARCH_TRIGGER_PATTERN.search(message or ""))
+
+
+def _sum_server_tool_use(previous: Any, current: Any) -> Any:
+    """Suma `server_tool_use.web_search_requests` entre rondas (I1-17).
+
+    `_sum_usage` de `copilot_moa.py` solo suma contadores de primer nivel y
+    conserva el primer dict anidado; sin este ajuste, dos rondas con búsqueda
+    infrarreportan el número de llamadas de pago en `telemetry["usage"]`.
+    """
+    prev_requests = 0
+    curr_requests = 0
+    if isinstance(previous, dict):
+        server = previous.get("server_tool_use")
+        if isinstance(server, dict) and isinstance(server.get("web_search_requests"), (int, float)):
+            prev_requests = int(server["web_search_requests"])
+    if isinstance(current, dict):
+        server = current.get("server_tool_use")
+        if isinstance(server, dict) and isinstance(server.get("web_search_requests"), (int, float)):
+            curr_requests = int(server["web_search_requests"])
+    total = prev_requests + curr_requests
+    if total <= 0 and not isinstance((current or {}).get("server_tool_use"), dict) and not isinstance((previous or {}).get("server_tool_use"), dict):
+        return None
+    merged: dict[str, Any] = {}
+    if isinstance(previous, dict) and isinstance(previous.get("server_tool_use"), dict):
+        merged.update(previous["server_tool_use"])
+    if isinstance(current, dict) and isinstance(current.get("server_tool_use"), dict):
+        for key, value in current["server_tool_use"].items():
+            if key == "web_search_requests":
+                continue
+            if key not in merged:
+                merged[key] = value
+    merged["web_search_requests"] = total
+    return merged
 
 
 class AssistantError(Exception):
@@ -1318,7 +1367,9 @@ def ask_openrouter(
     }
 
     tools_enabled = db is not None
-    needs_web_search = bool(re.search(r"\b(hoy|actual|actualidad|evento|eventos|feria|concierto|clima|tiempo|noticia|noticias|fuente externa)\b", message.lower()))
+    # I1-17: `tiempo` no dispara búsqueda web de pago; solo un tema externo
+    # explícito (ver `WEB_SEARCH_TRIGGER_PATTERN`). «en el tiempo» → False.
+    needs_web_search = should_request_web_search(message)
     telemetry["webSearchRequested"] = needs_web_search
     tool_rounds_used = 0
     tool_calls_used = 0
@@ -1372,6 +1423,9 @@ def ask_openrouter(
                 # `_sum_usage` de `copilot_moa.py` (suma contadores sin asumir
                 # forma del proveedor). Importación diferida para evitar ciclo
                 # assistant <-> copilot_moa en tiempo de carga.
+                # I1-17: además se suma `server_tool_use.web_search_requests`
+                # (dict anidado que `_sum_usage` no acumula) para no perder el
+                # conteo de búsquedas de pago entre rondas.
                 try:
                     from .copilot_moa import _sum_usage as _sum_moa_usage  # type: ignore[import-not-found]
                 except Exception:  # noqa: BLE001 - fallback local si el panel no está disponible
@@ -1384,6 +1438,9 @@ def ask_openrouter(
                     parts.append({"usage": usage})
                     summed = _sum_moa_usage(parts)
                     telemetry["usage"] = summed if isinstance(summed, dict) else usage
+                    server_tool_use = _sum_server_tool_use(previous, usage)
+                    if server_tool_use is not None and isinstance(telemetry.get("usage"), dict):
+                        telemetry["usage"]["server_tool_use"] = server_tool_use
                 else:
                     previous = telemetry.get("usage")
                     if isinstance(previous, dict):
@@ -1397,6 +1454,9 @@ def ask_openrouter(
                                     merged[key] = value
                             elif key not in merged:
                                 merged[key] = value
+                        server_tool_use = _sum_server_tool_use(previous, usage)
+                        if server_tool_use is not None:
+                            merged["server_tool_use"] = server_tool_use
                         telemetry["usage"] = merged
                     else:
                         telemetry["usage"] = usage

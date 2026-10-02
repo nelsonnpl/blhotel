@@ -39,6 +39,7 @@ from .assistant import (
     blocked_decision_reply,
     build_assistant_visualization,
     build_revenue_context,
+    should_request_web_search,
     validate_assistant_response,
 )
 from .analytics_contracts import AnalyticsQueryPayload, SEMANTIC_VERSION, metric_catalog, metric_definition
@@ -724,9 +725,14 @@ def _assistant_usage_cost(telemetry: dict[str, Any]) -> float:
     I1-06/I1-07: `telemetry["usage"]` ya suma todas las rondas (ver
     `assistant._sum_usage`). Acepta `cost/costUsd/total_cost/totalCost` y el
     desglose `prompt_cost+completion_cost` para no liquidar 0.
+    I1-17: la búsqueda web de pago (`openrouter:web_search`, con
+    `usage.include`) llega en el mismo `cost` del proveedor; además se aceptan
+    claves separadas de búsqueda (`search_cost/...`) por si el proveedor las
+    desglosa, y el conteo `server_tool_use.web_search_requests` queda en
+    `telemetry["usage"]` para auditoría (ver `assistant._sum_server_tool_use`).
     """
     usage = telemetry.get("usage") if isinstance(telemetry.get("usage"), dict) else {}
-    for key in ("costUsd", "cost", "total_cost", "totalCost"):
+    for key in ("costUsd", "cost", "total_cost", "totalCost", "search_cost", "searchCost", "web_search_cost", "webSearchCost", "server_tool_cost"):
         value = telemetry.get(key) if key in telemetry else usage.get(key)
         try:
             parsed = float(value) if value is not None else None
@@ -742,6 +748,19 @@ def _assistant_usage_cost(telemetry: dict[str, Any]) -> float:
     except (TypeError, ValueError):
         pass
     return 0.0
+
+
+def _assistant_search_requests(telemetry: dict[str, Any]) -> int:
+    """Cuenta las búsquedas web de pago ya sumadas en `telemetry["usage"]` (I1-17)."""
+    usage = telemetry.get("usage") if isinstance(telemetry.get("usage"), dict) else {}
+    server_tool_use = usage.get("server_tool_use") if isinstance(usage, dict) else None
+    if isinstance(server_tool_use, dict):
+        try:
+            count = int(server_tool_use.get("web_search_requests") or 0)
+        except (TypeError, ValueError):
+            count = 0
+        return max(0, count)
+    return 0
 
 
 _ASSISTANT_ALLOWED_TYPES = {
@@ -896,11 +915,23 @@ def assistant_attachment_upload():
     if len(content) > _ASSISTANT_MAX_FILE_BYTES:
         return error_response("El archivo supera el límite de 20 MB", 413)
     digest = hashlib.sha256(content).hexdigest()
+    # I1-15: los originales se guardan en claro fuera del docroot estático
+    # (`<sqlite_dir>/assistant-files`, nunca bajo `/static/`), con directorio
+    # 0700 y fichero 0600. No hay cifrado en reposo: el comentario y la
+    # documentación deben decirlo así.
     storage_dir = settings.sqlite_path.parent / "assistant-files"
     storage_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(storage_dir, 0o700)
+    except OSError:
+        pass
     storage_path = storage_dir / f"{digest}{suffix}"
     if not storage_path.exists():
         storage_path.write_bytes(content)
+    try:
+        os.chmod(storage_path, 0o600)
+    except OSError:
+        logger.warning("No se pudo restringir a 0600 el adjunto %s", digest[:12])
     extracted, extraction_status = _extract_attachment_text(filename, media_type, content)
     attachment = db.add_assistant_attachment(session_id, owner_key, {
         "filename": filename, "mediaType": media_type, "sizeBytes": len(content),
@@ -920,7 +951,7 @@ def assistant_session_attachments(session_id: int):
 
 @app.delete("/api/assistant/attachments/<int:attachment_id>")
 def delete_assistant_attachment(attachment_id: int):
-    """Delete metadata and the encrypted-at-rest original for one owner."""
+    """Delete metadata and the plaintext original stored with 0600 for one owner."""
     owner_key = current_owner_key()
     attachment = db.get_assistant_attachment(attachment_id, owner_key)
     if attachment is None:
@@ -3301,11 +3332,15 @@ def assistant_chat():
                 "message": assistant_message,
             }
         )
+    # I1-17: la búsqueda web de pago también reserva techo ampliado; su coste
+    # llega en `usage.cost` (ver `_assistant_usage_cost`) y su conteo en
+    # `server_tool_use.web_search_requests`.
     expanded_task = bool(
         routing.get("requiresRecommendation")
         or request_context.get("adjuntos")
         or payload.visualize
         or len(payload.message) > 900
+        or should_request_web_search(payload.message)
     )
     reservation_amount = (
         min(runtime.copilot_task_budget_usd, 2.0)
