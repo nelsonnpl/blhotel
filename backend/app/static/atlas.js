@@ -2777,7 +2777,8 @@ function syncBiMarkers(m) {
     if (!item) return;
     const price = h.prices[m.fi];
     const own = h.key === st.own;
-    const size = biPinSize(h.reviews);
+    /* D2-01/U2-04: pin visual ≥15 px (biPinSize puro intacto para tests; el mínimo se aplica aquí) + diana ≥24 px vía .bi-pin::after inset:-6px. */
+    const size = Math.max(15, biPinSize(h.reviews));
     item.root.hidden = !visible.has(h.key);
     item.pin.style.width = `${size}px`;
     item.pin.style.height = `${size}px`;
@@ -3549,6 +3550,22 @@ function paintFlightMap() {
   $$('[data-fl-label]').forEach((el) => el.classList.toggle('is-focus', el.dataset.flLabel === State.flight.focus));
 }
 
+/* D2-02/U2-05: desplazamiento anticolisión para etiquetas del clúster europeo (AMS/LGW/CDG/BRU…).
+   Ordena por latitud y alterna nivel 0/1/2 cuando dos aeropuertos quedan a <1.2° lat y <1.8° lng.
+   No toca setStyle ni la estructura del marcador (hijo .map-pin con position:relative intacto). */
+function flightLabelShifts(routes) {
+  const sorted = [...routes].sort((a, b) => a.lat - b.lat || a.lng - b.lng);
+  const shifts = new Map();
+  let last = null, level = 0;
+  sorted.forEach((r) => {
+    if (last && Math.abs(r.lat - last.lat) < 1.2 && Math.abs(r.lng - last.lng) < 1.8) level = (level + 1) % 3;
+    else level = 0;
+    shifts.set(r.code, level);
+    last = r;
+  });
+  return shifts;
+}
+
 async function renderFlightMap(model) {
   const frame = $('#flMapFrame'), container = $('#flMap');
   if (!frame || !container) return;
@@ -3575,10 +3592,14 @@ async function renderFlightMap(model) {
   map.on('click', 'fl-routes', (e) => { const code = e.features?.[0]?.properties?.code; if (code) setFlightFocus(code); });
   map.on('mouseenter', 'fl-routes', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'fl-routes', () => { map.getCanvas().style.cursor = ''; });
+  const labelShifts = flightLabelShifts(routes);
   routes.forEach((r) => {
-    const label = mapPinElement(`<button type="button" class="fl-label" data-fl-label="${esc(r.code)}" data-fl-route="${esc(r.code)}" aria-label="${esc(`${r.code} → LPA · desde ${eur(r.minP)}`)}">${esc(r.code)} · ${eur(r.minP)}</button>`);
-    State.flightMarkers.push(new ml.Marker({ element: label, anchor: 'bottom', offset: [0, -4] }).setLngLat([r.lng, r.lat]).addTo(map));
-    const dot = mapPinElement(`<span class="fl-dot" style="background:${AIR_TIER_COLORS[r.tier]}"></span>`);
+    const shift = labelShifts.get(r.code) || 0;
+    const shiftCls = shift === 1 ? ' is-shift-1' : shift === 2 ? ' is-shift-2' : '';
+    const label = mapPinElement(`<button type="button" class="fl-label${shiftCls}" data-fl-label="${esc(r.code)}" data-fl-route="${esc(r.code)}" aria-label="${esc(`${r.code} → LPA · desde ${eur(r.minP)}`)}">${esc(r.code)} · ${eur(r.minP)}</button>`);
+    State.flightMarkers.push(new ml.Marker({ element: label, anchor: 'bottom', offset: [0, -4 - shift * 14] }).setLngLat([r.lng, r.lat]).addTo(map));
+    /* D2-01: fl-dot decorativo 10 px no interactivo; alternativa operable .fl-label (≥24 px, botón). */
+    const dot = mapPinElement(`<span class="fl-dot" aria-hidden="true" style="background:${AIR_TIER_COLORS[r.tier]}"></span>`);
     State.flightMarkers.push(new ml.Marker({ element: dot }).setLngLat([r.lng, r.lat]).addTo(map));
   });
   const hub = mapPinElement('<span class="fl-hub"><i></i><b>LPA</b></span>');

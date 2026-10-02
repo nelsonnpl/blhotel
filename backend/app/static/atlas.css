@@ -535,7 +535,8 @@ body.air-operations-fullscreen .page { animation: none; transform: none; }
 .map-frame .maplibregl-ctrl-group { border: 1px solid var(--border); border-radius: var(--r-ctl); box-shadow: 0 2px 8px rgba(20, 22, 28, .08); }
 .map-frame .maplibregl-ctrl button { width: 28px; height: 28px; }
 .map-pin { position: relative; display: flex; align-items: center; justify-content: center; }
-.map-pin__dot { display: block; width: 14px; height: 14px; padding: 0; border: 2px solid var(--on-dark); border-radius: 50%; box-shadow: 0 1px 4px rgba(20, 22, 28, .35); cursor: pointer; transition: transform var(--dur-xs) var(--ease), box-shadow var(--dur-xs) var(--ease); }
+.map-pin__dot { position: relative; display: block; width: 15px; height: 15px; padding: 0; border: 2px solid var(--on-dark); border-radius: 50%; box-shadow: 0 1px 4px rgba(20, 22, 28, .35); cursor: pointer; transition: transform var(--dur-xs) var(--ease), box-shadow var(--dur-xs) var(--ease); }
+.map-pin__dot::after { position: absolute; inset: -6px; border-radius: 50%; content: ''; }
 .map-pin__dot:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
 /* fijos README mapas/semáforo */
 .map-pin__dot--low { background: #1f7a52; }
@@ -624,6 +625,8 @@ body.air-operations-fullscreen .page { animation: none; transform: none; }
 .dash-swarm__med { position: absolute; top: 0; bottom: 22px; width: 1px; background: var(--ink); opacity: .55; }
 .dash-swarm__medlabel { position: absolute; top: -2px; transform: translateX(6px); font-family: 'Space Mono', monospace; font-size: 10px; color: var(--ink); white-space: nowrap; }
 .dash-swarm__dot { position: absolute; width: 12px; height: 12px; margin-left: -6px; padding: 0; box-sizing: content-box; border: 2px solid var(--card); border-radius: 50%; cursor: pointer; transition: transform var(--dur-fast) var(--ease); animation: atFade var(--dur-400) var(--ease) both; }
+/* D2-03/PA-44: diana ≥24 px fuera del mapa mediante expansor (visual intacto de 12 px). */
+.dash-swarm__dot::after { position: absolute; inset: -6px; border-radius: 50%; content: ''; }
 .dash-swarm__dot:hover, .dash-swarm__dot:focus-visible { transform: scale(1.35); }
 .dash-swarm__dot.is-mid { background: var(--mid); }
 .dash-swarm__dot.is-lo { background: var(--lo); }
@@ -1714,7 +1717,8 @@ button.ws-table__hotel:hover { color: var(--ac); }
 .bi-zone.is-active .bi-zone__name span { font-weight: 600; }
 .bi-zone__meta { font-family: 'Space Mono', monospace; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
 .bi-zone__meta b { color: var(--ink); }
-.bi-pin { display: block; padding: 0; border: 2px solid var(--on-dark); border-radius: 50%; box-shadow: 0 1px 4px rgba(20, 22, 28, .35); cursor: pointer; transition: transform var(--dur-xs) var(--ease), opacity var(--dur-xs) var(--ease); }
+.bi-pin { position: relative; display: block; min-width: 15px; min-height: 15px; padding: 0; border: 2px solid var(--on-dark); border-radius: 50%; box-shadow: 0 1px 4px rgba(20, 22, 28, .35); cursor: pointer; transition: transform var(--dur-xs) var(--ease), opacity var(--dur-xs) var(--ease); }
+.bi-pin::after { position: absolute; inset: -6px; border-radius: 50%; content: ''; }
 .bi-pin.is-closed { opacity: .55; }
 .bi-pin.is-own { transform: scale(1.25); box-shadow: 0 0 0 3px var(--ac), 0 2px 6px rgba(0, 0, 0, .35); }
 .bi-pin:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
@@ -1803,7 +1807,8 @@ button.bi-fact:hover { color: var(--ac); }
 .bi-cal__medrow { margin: 4px 0 6px; }
 .bi-cal__label { padding-right: 10px; font-size: 11.5px; font-weight: 600; }
 .bi-cal__label.is-own { color: var(--ac); }
-.bi-cal__med { display: flex; align-items: flex-end; justify-content: center; height: 22px; cursor: pointer; }
+/* D2-03/PA-23: control pequeño fuera del mapa a ≥24 px (era 22 px). */
+.bi-cal__med { display: flex; align-items: flex-end; justify-content: center; min-height: 24px; height: 24px; cursor: pointer; }
 .bi-cal__med i { width: 100%; border-radius: 2px 2px 0 0; background: var(--mid); opacity: .7; pointer-events: none; }
 .bi-cal__med:focus-visible { outline: 2px solid var(--ac); outline-offset: 1px; }
 .bi-cal__rank { margin-bottom: 6px; }
@@ -1865,6 +1870,8 @@ html[data-theme="oscuro"] .bi-cell.is-closed, html[data-theme="oscuro"] .bi-mini
 .bi-q--bl { bottom: 6px; left: 8px; }
 .bi-q--br { right: 8px; bottom: 6px; color: var(--red); }
 .bi-dot { position: absolute; z-index: 1; padding: 0; transform: translate(-50%, 50%); border: 2px solid var(--card); border-radius: 50%; opacity: .85; transition: transform var(--dur-fast) var(--ease); }
+/* D2-03/PA-44: diana ≥24 px en el dispersor (visual 8–22 px intacto; -8px cubre el mínimo de 8 px → 24 px). */
+.bi-dot::after { position: absolute; inset: -8px; border-radius: 50%; content: ''; }
 .bi-dot:hover, .bi-dot:focus-visible { z-index: 4; transform: translate(-50%, 50%) scale(1.3); }
 /* fijos README §mapas/semáforo */
 .bi-dot.is-good { background: #1f7a52; }
@@ -1997,10 +2004,14 @@ button.bi-closer:hover { color: var(--ac); }
 .dash-legend .fl-line.tone-high { background: #b94f50; }
 .fl-map { height: 560px; border-top: 1px solid var(--line); }
 .fl-map__legend { position: absolute; left: 14px; bottom: 14px; z-index: 2; display: flex; flex-direction: column; gap: 3px; padding: 8px 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--r-seg); font-size: 11.5px; color: var(--muted); pointer-events: none; }
-.fl-label { padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--r-chip); background: var(--card); box-shadow: 0 1px 4px rgba(20, 22, 28, .18); color: var(--ink); font: 700 10.5px 'Space Mono', monospace; white-space: nowrap; cursor: pointer; }
+.fl-label { position: relative; display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border: 1px solid var(--border); border-radius: var(--r-chip); background: var(--card); box-shadow: 0 1px 4px rgba(20, 22, 28, .18); color: var(--ink); font: 700 10.5px 'Space Mono', monospace; white-space: nowrap; cursor: pointer; }
 .fl-label:hover { border-color: var(--ac); }
 .fl-label:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
 .fl-label.is-focus { border-color: var(--ac); background: var(--ac); color: var(--on-dark); }
+/* D2-02: desplazamiento anticolisión para el clúster europeo (AMS/LGW/CDG/BRU): el JS asigna is-shift-1/2 cuando dos etiquetas quedan a <1.2° lat y <1.8° lng. */
+.fl-label.is-shift-1 { transform: translateY(-14px); }
+.fl-label.is-shift-2 { transform: translateY(14px); }
+/* D2-01: fl-dot decorativo de 10 px, no interactivo (pointer-events:none); la alternativa operable es .fl-label (≥24 px). */
 .fl-dot { display: block; width: 10px; height: 10px; border: 2px solid var(--on-dark); border-radius: 50%; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); pointer-events: none; }
 .fl-hub { display: flex; align-items: center; gap: 6px; pointer-events: none; }
 .fl-hub i { width: 14px; height: 14px; border: 3px solid var(--card); border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 4px var(--accent-soft), 0 0 0 5px var(--ac); }
