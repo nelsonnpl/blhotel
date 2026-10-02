@@ -1,0 +1,5 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "director",
+  "instructions": ["auditoria/2026-10-02/00-contrato.md"]
+}

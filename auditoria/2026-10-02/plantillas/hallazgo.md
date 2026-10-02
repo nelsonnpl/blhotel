@@ -1,0 +1,13 @@
+# Plantilla de hallazgo
+
+```md
+## <ID> · <título>
+
+- Severidad: P0/P1/P2/P3 · Esfuerzo: S/M/L · Tipo: datos/seguridad/gasto/flujo/visual/a11y/rendimiento/robustez/IA · Carril: FE/BE/QA
+- Evidencia: <archivo:línea | medición | captura `artifacts/visual-qa/pulido/<id>/…`> · reproducido/observado/hipótesis
+- Pasos: 1. … 2. … 3. …
+- Esperado: …
+- Observado: …
+- Propuesta: … (reutilizando <función existente>)
+- Aceptación: …
+```
