@@ -1335,6 +1335,34 @@ button.ws-table__hotel:hover { color: var(--ac); }
   .review-section-head { flex-direction: column; gap: 5px; }
 }
 
+/* PKG-13 (U1-08/09/10, D1-11, G1-13): cobertura tableta 761–1024.
+   Los breakpoints en 760 dejaban 768–1024 con layout desktop y desborde de página
+   (dashboard 42, hotels 28, reputation 49, flights 31, captures 35, workspace 105:
+   casi todo topbar; resto page-head). Estas reglas son no-op cuando hay sitio
+   (flex-wrap solo envuelve si falta ancho; overflow-x:auto solo desplaza si el
+   contenido excede), así que 1024/1366 no cambian. */
+@media (max-width: 1024px) {
+  .page-head { flex-wrap: wrap; }
+  .page-head .actions { flex-wrap: wrap; }
+  .page-head__meta { flex-wrap: wrap; white-space: normal; }
+  .hsheet__bar .seg { min-width: 0; max-width: 100%; overflow-x: auto; }
+}
+
+/* PKG-13: topbar tableta (≤900px). En 768 el main es 532px y la topbar desktop
+   mínima (migas + data-age + buscador + acciones) desborda 21–105px según la
+   vista. Se ocultan ticker y data-age (como en móvil), se compacta el relleno y
+   el buscador queda usable (120–220px con texto, no solo icono) con las acciones
+   intactas. A 901–1024 sigue la topbar desktop completa. */
+@media (max-width: 900px) {
+  .topbar { padding: 0 16px; gap: 10px; }
+  .topbar .ticker-mask, .topbar__sep { display: none; }
+  .data-age { display: none; }
+  .crumb { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .topbar__right { flex: 1 1 auto; min-width: 0; gap: 10px; }
+  .search-btn { flex: 1 1 auto; width: auto; min-width: 120px; max-width: 220px; }
+  .topbar__actions { flex: 0 0 auto; }
+}
+
 /* En móvil, la navegación comparte el ancho con el contenido en una franja superior. */
 @media (max-width: 760px) {
   body.is-sidebar-collapsed { --sw: 236px; }
