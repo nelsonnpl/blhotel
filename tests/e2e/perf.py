@@ -48,7 +48,7 @@ def run(args):
     out.mkdir(parents=True, exist_ok=True)
     rows, table = {}, ["| Vista | FCP | LCP | Bytes | Recursos |", "| --- | --- | --- | --- | --- |"]
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(args=["--explicitly-allowed-ports=5050,5060,5061,5070,8001"])
         for view in args.views:
             samples = []
             for _ in range(args.runs):

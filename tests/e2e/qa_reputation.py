@@ -21,7 +21,7 @@ def check(name, ok, detail=''):
 
 
 with sync_playwright() as p:
-    browser = p.chromium.launch()
+    browser = p.chromium.launch(args=["--explicitly-allowed-ports=5050,5060,5061,5070,8001"])
     ctx = browser.new_context(viewport={'width': 1440, 'height': 900})
     ctx.add_init_script("try{localStorage.setItem('atlas.theme','claro');}catch(e){}")
     page = ctx.new_page()

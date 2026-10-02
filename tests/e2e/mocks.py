@@ -8,8 +8,11 @@ hasta que la oleada 1 corrija la fuga (PA-97) y la contabilidad (PA-80).
 import json
 import re
 
-# (método, regex) permitidos con respuesta canned (sin gasto real)
+# (método, regex) permitidos con respuesta canned (sin gasto real).
+# analytics/query es POST de SOLO LECTURA (métricas; sin gasto ni escrituras):
+# se deja pasar al backend real con continue_().
 ALLOW = [
+    ("POST", r"/api/analytics/query$"),
     ("POST", r"/api/jobs/hotel-capture$"),
     ("POST", r"/api/jobs/air-capture$"),
     ("POST", r"/api/jobs/qa-"),
@@ -54,13 +57,14 @@ def install_mocks(page):
     """Instala mocks deny-by-default en una página Playwright."""
     def handler(route):
         req = route.request
-        if is_allowed(req.url, req.method):
-            body = canned(req.url) if req.method.upper() != "GET" else None
-            if body is not None:
-                route.fulfill(status=200, content_type="application/json",
-                              body=json.dumps(body))
-            else:
-                route.continue_()
+        body = canned(req.url)
+        if body is not None:
+            # Ruta mock conocida: se responde siempre (cubre el sondeo GET
+            # de jobs, p. ej. /api/jobs/qa-rev, que si llega al backend da 404).
+            route.fulfill(status=200, content_type="application/json",
+                          body=json.dumps(body))
+        elif is_allowed(req.url, req.method):
+            route.continue_()
         else:
             route.fulfill(status=403, content_type="application/json",
                           body=json.dumps({"error": "bloqueado por mocks e2e"}))

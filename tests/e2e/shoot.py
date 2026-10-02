@@ -66,7 +66,7 @@ def run(args):
     densities = args.density.split(',')
     report = []
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(args=["--explicitly-allowed-ports=5050,5060,5061,5070,8001"])
         for name in args.views:
             view, storage, ready = VIEWS[name]
             for width, height in sizes:

@@ -40,7 +40,7 @@ def open_dashboard(browser, market, theme='claro', width=1440, height=900):
 
 
 with sync_playwright() as p:
-    browser = p.chromium.launch()
+    browser = p.chromium.launch(args=["--explicitly-allowed-ports=5050,5060,5061,5070,8001"])
 
     # ---------------- mercado 2: tiene movimiento, 6 señales y nuevos
     ctx, page, errors = open_dashboard(browser, 2)
