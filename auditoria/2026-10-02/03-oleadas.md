@@ -32,7 +32,8 @@ Cierre oleada 1: regresión + captura aérea SerpAPI real (≤1 €, tras PKG-01
 
 | PKG | Contenido | Impl | Rev | Carril |
 | --- | --- | --- | --- | --- |
-| PKG-15 | Tokens (conservando README) + 58 `style`→clases + hex→tokens (D1-01/02/03/04/06) | D1 | U2 | FE |
+| PKG-15 | Tokens (conservando README) + 58 `style`→clases + hex→tokens (D1-01/02/06; APTO-PARCIAL, hecho) | D1 | U2 | FE |
+| PKG-15B | Consolidar fuentes 31→roles y radios 24→8 con valores preservados (resto D1-03/04; APTO-PARCIAL de PKG-15) | D1 | U2 | FE |
 | PKG-16 | Movimiento: tokens + `reduced-motion` + salidas + `aria-busy` + MM/MX aceptadas (U2-01/02/03/11/12, MM-01/03/04/06/07/08/09/10/11/12/14/15, MX-01/04/06/07) | U2 | D1 | FE |
 | PKG-17 | PA-43 roving + MM-02 + segmentado + iconos SVG + `tabular-nums` (D1-05/13, U2-08/09/10) | D1 | U2 | FE |
 | PKG-18 | Mapas: pines/dianas + etiquetas + `fl-dot` + `title`→accesibles (D2-01/02/03, U2-04/05/13, PA-44) | D2 | U1 | FE |

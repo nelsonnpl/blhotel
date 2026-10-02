@@ -19,5 +19,6 @@ Log de una línea por evento: fecha-hora · fase-paso · quién · qué · resul
 | 2026-10-02 10:42 | PARADA-1 | usuario+director | «ejecuta todo el plan» = APROBADO con las 8 recomendaciones D1–D8. Adaptación: sin OpenCode-desktop; F3 con subagentes en modo IMPLEMENTACIÓN | **PARADA-1: APROBADO** |
 | 2026-10-02 11:40 | O1-cierre | director | 8/8 PKG + regresión (pytest 263, node 33, smoke FE) + SerpAPI MAD_LPA×3 (0 €, sin leak) + backup `113738` + copias. *OR 0,6992 con retardo de contador, no gasto nuevo | OK |
 | 2026-10-02 12:30 | O2-cierre | director | 6/6 PKG (09 pushState, 10 glosario+errores con 1 remate, 11 Capturas, 12 ejes, 13 768→0, 14 es-ES) + pytest 263 + node 33 + humo 20/20 | OK |
+| 2026-10-02 13:30 | O3-cierre | director | 6/6 PKG (15+15B tokens, 16 movimiento con 1 fix, 17 tabs, 18 mapas, 19 contraste) + 1 NO APTO→APTO + 1 APTO-PARCIAL→15B + cota gzip 42 KB + pytest 263 + humo 16/16. Desvío doc: MM-02/03 animan width (cubierto por reduce) | OK |
 
 Marcas: `PARADA-1: APROBADO` · `PARADA-2: APROBADO` (las anota el director al aprobar el usuario).
