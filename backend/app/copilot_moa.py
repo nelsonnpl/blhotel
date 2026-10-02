@@ -140,6 +140,7 @@ def run_moa(
     mode: str = "decision",
     experts: list[str] | None = None,
     telemetry: dict[str, Any] | None = None,
+    on_progress: Any = None,
 ) -> str:
     """Ejecuta expertos en paralelo y sintetiza sus informes.
 
@@ -147,7 +148,20 @@ def run_moa(
     intenta sintetizar; si falla la síntesis, se entrega el mejor informe como
     respuesta degradada. Si fallan todos, se propaga ``AssistantError`` para
     que el endpoint pueda devolver el error estándar.
+
+    I1-19: ``on_progress(pct, mensaje)`` es opcional y solo publica fases
+    (0-100 del panel) para que el job async no quede mudo en decisiones
+    >60 s. El progreso es consultable vía ``GET /api/assistant/jobs/<id>``.
+    Nunca altera el resultado ni genera llamadas de pago extra.
     """
+    def _emit(pct: int, message: str) -> None:
+        if on_progress is None:
+            return
+        try:
+            on_progress(max(0, min(100, int(pct))), str(message)[:300])
+        except Exception:
+            logger.debug("MoA on_progress ignorado", exc_info=True)
+
     started = time.monotonic()
     telemetry = telemetry if telemetry is not None else {}
     settings = replace(
@@ -257,10 +271,16 @@ def run_moa(
             }
 
     max_workers = min(2, len(llm_experts))
+    _emit(5, f"Panel MoA: lanzando {len(llm_experts)} expertos")
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="copilot-moa") as pool:
         futures = [pool.submit(ask_expert, expert) for expert in llm_experts]
+        done = 0
         for future in as_completed(futures):
-            reports.append(future.result())
+            report = future.result()
+            reports.append(report)
+            done += 1
+            # 10-70: expertos; mensaje con fase consultable vía job async.
+            _emit(10 + int(done * 60 / max(1, len(llm_experts))), f"MoA: experto {done}/{len(llm_experts)} listo")
 
     reports.sort(key=lambda report: llm_experts.index(report["expert"]))
     successful = [report for report in reports if report.get("response")]
@@ -298,6 +318,7 @@ def run_moa(
         f"CONSULTA ORIGINAL:\n{message}"
     )
     synthesis_telemetry: dict[str, Any] = {}
+    _emit(75, "MoA: sintetizando informes")
     try:
         response = ask_openrouter(
             replace(settings, model=settings.synthesis_model),
@@ -316,6 +337,7 @@ def run_moa(
         _aggregate_telemetry(telemetry, reports, synthesis_telemetry)
         telemetry["model"] = settings.synthesis_model
         telemetry["moa"]["latencyMs"] = round((time.monotonic() - started) * 1000)
+        _emit(95, "MoA: síntesis completada")
         return response
     except AssistantError as exc:
         # La respuesta del experto conserva valor si la última llamada agota
@@ -325,4 +347,5 @@ def run_moa(
         telemetry["model"] = successful[0]["model"]
         telemetry["moa"]["latencyMs"] = round((time.monotonic() - started) * 1000)
         telemetry["outcome"] = "degraded"
+        _emit(95, "MoA: respuesta degradada (síntesis no disponible)")
         return successful[0]["response"]

@@ -25,7 +25,7 @@ from typing import Any
 from threading import Lock
 from urllib.parse import urlsplit
 
-from flask import Flask, Response, jsonify, render_template, request, session
+from flask import Flask, Response, g, jsonify, render_template, request, session
 import httpx
 from pydantic import ValidationError
 from werkzeug.exceptions import HTTPException
@@ -2908,6 +2908,14 @@ def _run_assistant_analysis_job(payload: dict, progress) -> dict:
     with app.test_request_context("/api/assistant/chat", method="POST", json=request_payload):
         session["ownerKey"] = owner_key
         progress(15, "Consultando fotos y fuentes")
+        # I1-19: el panel MoA (>60 s posible) publica fases en el job para
+        # que GET /api/assistant/jobs/<id> nunca quede mudo. MoA ocupa 20-85
+        # del job; contexto=15 y cierre=92 se conservan.
+        def _moa_job_progress(pct: int, message: str) -> None:
+            mapped = 20 + int(max(0, min(100, pct)) * 65 / 100)
+            progress(mapped, message)
+
+        g.assistant_moa_progress = _moa_job_progress  # type: ignore[attr-defined]
         response = assistant_chat()
     body = response[0] if isinstance(response, tuple) else response
     status = response[1] if isinstance(response, tuple) and len(response) > 1 else getattr(response, "status_code", 200)
@@ -3386,6 +3394,18 @@ def assistant_chat():
         )
         moa_requested = routing.get("aggregation") == "multi_call_synthesis" and routing.get("requiresRecommendation", False)
         if moa_requested and provider_settings.moa_enabled:
+            # I1-19: el chat directo no emite progreso (HTTP síncrono). Si la
+            # decisión corre en job async, run_moa publica fases vía `g` y el
+            # cliente las consulta con GET /api/assistant/jobs/<id>. En chat
+            # directo se devuelve la pista para no quedar mudo >60 s.
+            moa_progress = getattr(g, "assistant_moa_progress", None)
+            telemetry["moa"] = {
+                "enabled": True,
+                "progressHint": (
+                    "Decisión MoA en curso: consulta el progreso en "
+                    "GET /api/assistant/jobs/<id> cuando uses POST /api/assistant/jobs"
+                ),
+            }
             reply = run_moa(
                 provider_settings,
                 payload.message,
@@ -3397,7 +3417,15 @@ def assistant_chat():
                 mode=payload.mode,
                 experts=routing.get("experts"),
                 telemetry=telemetry,
+                on_progress=moa_progress if callable(moa_progress) else None,
             )
+            # run_moa inicializa telemetry["moa"]; conserva la pista.
+            if isinstance(telemetry.get("moa"), dict):
+                telemetry["moa"].setdefault(
+                    "progressHint",
+                    "Decisión MoA en curso: consulta el progreso en "
+                    "GET /api/assistant/jobs/<id> cuando uses POST /api/assistant/jobs",
+                )
         else:
             if moa_requested:
                 telemetry["moa"] = {

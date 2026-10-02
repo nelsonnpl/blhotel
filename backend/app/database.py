@@ -43,6 +43,17 @@ def _safe_int(value) -> int | None:
         return None
 
 
+# I1-19 (B1): tope explícito para comparable_snapshot. 120 fotos es el máximo
+# histórico a escanear; la resolución es en memoria tras UNA sola lectura
+# masiva (sin N+1), más UNA lectura completa solo para la ganadora.
+COMPARABLE_MAX_SNAPSHOTS = 120
+COMPARABLE_COVERAGE_THRESHOLD = 0.70
+# Vía rápida: las 3 fotos más recientes se comprueban con lectura completa
+# directa (caso común: la anterior inmediata coincide). Solo si fallan se hace
+# el barrido masivo acotado. Peor caso: 3 + 1 bulk + 1 ganadora (antes: 120).
+COMPARABLE_FAST_PATH = 3
+
+
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -944,6 +955,20 @@ class Database:
         )
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_market_snapshots_capture_group ON market_snapshots(capture_group_id, scraped_at DESC)"
+        )
+        # I1-19 (B1): tope+índice para comparable_snapshot. El historial ya se
+        # ordena por (target_id, scraped_at DESC, id DESC); este índice cubre
+        # ese ORDER BY y el filtro por target_id sin ordenación externa.
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_market_snapshots_comparable "
+            "ON market_snapshots(target_id, scraped_at DESC, id DESC)"
+        )
+        # La búsqueda masiva de firmas usa snapshot_id IN (...); el índice ya
+        # existe como idx_market_snapshot_hotels_snapshot, se reafirma aquí
+        # para instalaciones que migraron antes de su creación.
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_market_snapshot_hotels_snapshot "
+            "ON market_snapshot_hotels(snapshot_id, position ASC)"
         )
         self.conn.execute(
             "UPDATE market_snapshots SET capture_status = 'unknown' WHERE capture_profile_json IS NULL AND capture_status = 'complete'"
@@ -3625,6 +3650,12 @@ class Database:
         board, currency and cancellation conditions can all change the public
         price. Return matched pairs so callers cannot fall back to a key-only
         comparison.
+
+        I1-19 (B1): tope COMPARABLE_MAX_SNAPSHOTS + índice
+        idx_market_snapshots_comparable. Sin N+1: vía rápida (3 lecturas
+        completas como máximo para el caso común) + UNA lectura masiva de
+        firmas ligeras para el resto + UNA lectura completa solo para la foto
+        ganadora (antes: un snapshot_rows completo por candidato, hasta 120).
         """
         current_comparable = [
             row for row in current_rows
@@ -3645,7 +3676,10 @@ class Database:
         if anchor is None:
             return empty
         anchor_profile = json.loads(anchor['capture_profile_json']) if anchor['capture_profile_json'] else profile_from_url(anchor['source_url'])
-        history = self.snapshot_history(target_id, 120)
+        history = self.snapshot_history(target_id, COMPARABLE_MAX_SNAPSHOTS)
+        # Fase 1 (sin I/O extra): filtra por tiempo y ocupación usando solo el
+        # historial ya cargado (captureProfile viene en snapshot_history).
+        candidates: list = []
         for candidate in history:
             if (candidate.scrapedAt, candidate.id) >= (anchor["scraped_at"], anchor["id"]):
                 continue
@@ -3653,11 +3687,17 @@ class Database:
             occupancy_fields = ('adults', 'children', 'rooms', 'childAges')
             if any(anchor_profile.get(key) != other_profile.get(key) for key in occupancy_fields):
                 continue
+            candidates.append(candidate)
+        if not candidates:
+            return empty
+        # Vía rápida (caso común): la foto anterior inmediata suele coincidir.
+        # Máximo COMPARABLE_FAST_PATH lecturas completas, sin barrido masivo.
+        for candidate in candidates[:COMPARABLE_FAST_PATH]:
             candidate_rows = self.snapshot_rows(candidate.id)
             candidate_by_signature = unique_products(candidate_rows)
             matched_current = [row for key, row in current_unique.items() if key in candidate_by_signature]
             coverage = len(matched_current) / len(current_comparable)
-            if coverage < 0.70:
+            if coverage < COMPARABLE_COVERAGE_THRESHOLD:
                 continue
             matched_previous = [
                 candidate_by_signature[_market_row_comparison_signature(row)]
@@ -3670,7 +3710,62 @@ class Database:
                 "matchedPreviousRows": matched_previous,
                 "coveragePct": _round(coverage * 100),
             }
-        return empty
+        remaining = candidates[COMPARABLE_FAST_PATH:]
+        if not remaining:
+            return empty
+        # Fase 2: UNA sola lectura masiva de firmas ligeras (sin JOINs con
+        # inventario/localización; solo columnas de product_signature).
+        candidate_ids = [candidate.id for candidate in remaining]
+        placeholders = ", ".join("?" for _ in candidate_ids)
+        sig_rows = self.conn.execute(
+            "SELECT snapshot_id AS snapshotId, hotel_key AS hotelKey, check_in AS checkIn, "
+            "check_out AS checkOut, nights AS nights, pax AS pax, room_type AS roomType, "
+            "board AS board, currency AS currency, free_cancellation AS freeCancellation, "
+            "price AS price, price_per_night AS pricePerNight "
+            f"FROM market_snapshot_hotels WHERE snapshot_id IN ({placeholders})",
+            candidate_ids,
+        ).fetchall()
+        by_snapshot: dict[int, list[dict]] = {}
+        for row in sig_rows:
+            item = dict(row)
+            # Normaliza freeCancellation a bool para que la firma coincida con
+            # MarketHotelRow (0 == False en hash, pero se hace explícito).
+            raw_fc = item.get("freeCancellation")
+            if raw_fc is not None:
+                try:
+                    item["freeCancellation"] = bool(int(raw_fc))
+                except (TypeError, ValueError):
+                    item["freeCancellation"] = bool(raw_fc)
+            by_snapshot.setdefault(int(item["snapshotId"]), []).append(item)
+        winner = None
+        for candidate in remaining:
+            candidate_by_light = unique_products(by_snapshot.get(candidate.id, []))
+            matched_current = [row for key, row in current_unique.items() if key in candidate_by_light]
+            coverage = len(matched_current) / len(current_comparable)
+            if coverage < COMPARABLE_COVERAGE_THRESHOLD:
+                continue
+            winner = candidate
+            break
+        if winner is None:
+            return empty
+        # Fase 3: UNA sola lectura completa, solo para la ganadora.
+        candidate_rows = self.snapshot_rows(winner.id)
+        candidate_by_signature = unique_products(candidate_rows)
+        matched_current = [row for key, row in current_unique.items() if key in candidate_by_signature]
+        coverage = len(matched_current) / len(current_comparable)
+        if coverage < COMPARABLE_COVERAGE_THRESHOLD:
+            return empty
+        matched_previous = [
+            candidate_by_signature[_market_row_comparison_signature(row)]
+            for row in matched_current
+        ]
+        return {
+            "snapshot": winner,
+            "rows": candidate_rows,
+            "matchedCurrentRows": matched_current,
+            "matchedPreviousRows": matched_previous,
+            "coveragePct": _round(coverage * 100),
+        }
 
     def insert_rate_detail_rows(self, target_id: int, rows: list[HotelRateDetailRow]) -> None:
         with self.lock:
