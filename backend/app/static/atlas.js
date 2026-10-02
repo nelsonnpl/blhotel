@@ -1492,7 +1492,7 @@ function dashboardPopoverHTML(h) {
     : h.delta === 0 ? [`Sin cambio vs foto #${prevId}`, 'dim']
     : [`${h.delta > 0 ? '▲' : '▼'} ${nEs(Math.abs(h.delta), 1)} % vs foto #${prevId} (${eur(h.prevAdr)})`, h.delta > 0 ? 'pos' : 'neg'];
   const modes = [['hist', 'Por foto'], ['dates', 'Por extracción']].map(([id, label]) => `<button type="button" class="${st.chart === id ? 'is-active' : ''}" data-dash-chart="${id}" aria-pressed="${st.chart === id}">${label}</button>`).join('');
-  return `<div class="dash-pop__head"><div class="dash-pop__title"><span class="dash-pop__kicker">Inspector de tarifa · puesto ${h.rank} de ${priced}</span><h3 id="dashPopTitle">${esc(h.name)}</h3>${sub ? `<span class="dash-pop__sub">${esc(sub)}</span>` : ''}</div><button type="button" class="icon-x" data-dash-close aria-label="Cerrar inspector">×</button></div>
+  return `<div class="dash-pop__head"><div class="dash-pop__title"><span class="dash-pop__kicker">Inspector de tarifa · puesto ${h.rank} de ${priced}</span><h3 id="dashPopTitle">${esc(h.name)}</h3>${sub ? `<span class="dash-pop__sub">${esc(sub)}</span>` : ''}</div><button type="button" class="icon-x" data-dash-close aria-label="Cerrar inspector">${ICON_CLOSE}</button></div>
     <div class="dash-pop__body">
       <div class="dash-pop__chart"><div class="dash-pop__modes"><div class="seg seg--sm" role="group" aria-label="Modo de la gráfica">${modes}</div>${st.chart === 'hist' ? `<button type="button" class="dash-pop__cmp" data-dash-cmp aria-pressed="${st.cmp}"><i aria-hidden="true"></i>Media del set</button>` : ''}</div><div id="dashPopChart">${dashboardPopoverChartHTML(h)}</div></div>
       <div class="dash-pop__side"><div class="dash-pop__adr"><span class="dash-pop__kicker">ADR hab/noche</span><div class="dash-pop__adrrow"><strong>${eur(h.adr)}</strong>${h.vsMedian == null ? '' : `<span class="dash-pop__vs${h.vsMedian >= 0 ? ' is-up' : ''}" title="Distancia a la mediana (azul = distancia, no juicio)">${pctTxt(h.vsMedian, 0)} vs mediana</span>`}</div><span class="dash-pop__delta ${delta[1]}" title="${esc(h.delta == null && !h.isNew ? 'Sin foto comparable con mismo hotel, estancia y producto' : delta[0])}">${esc(delta[0])}</span></div>
@@ -2066,7 +2066,7 @@ async function renderHotels() {
           <i class="hsheet__bar-sep" aria-hidden="true"></i>
           <div class="hsheet__chips" id="hotelChips" role="group" aria-label="Filtros combinables">${tools.chips}</div>
           <span class="hsheet__spacer"></span>
-          <label class="hsheet__search"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg><input type="search" id="hotelSearch" value="${esc(State.hotelSearch)}" placeholder="Hotel, cadena o zona" aria-label="Buscar hoteles por nombre, cadena o zona" autocomplete="off" /><button type="button" id="hotelSearchClear" aria-label="Borrar búsqueda"${State.hotelSearch ? '' : ' hidden'}>×</button></label>
+          <label class="hsheet__search"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg><input type="search" id="hotelSearch" value="${esc(State.hotelSearch)}" placeholder="Hotel, cadena o zona" aria-label="Buscar hoteles por nombre, cadena o zona" autocomplete="off" /><button type="button" id="hotelSearchClear" aria-label="Borrar búsqueda"${State.hotelSearch ? '' : ' hidden'}>${ICON_CLOSE}</button></label>
           <label class="hsheet__group"><span>Agrupar</span><select id="hotelGroup" aria-label="Agrupar hoteles">${SHEET_GROUPS.map((g) => `<option value="${g.id}"${State.hotelGroup === g.id ? ' selected' : ''}>${esc(g.label)}</option>`).join('')}</select></label>
           <div class="seg seg--icons" id="hotelDensity" role="group" aria-label="Densidad de filas">${tools.densities}</div>
         </div>
@@ -2202,7 +2202,8 @@ function handleHotelSheetKey(e) {
   if (tab && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
     e.preventDefault();
     const order = ['sheet', 'bi'];
-    const next = e.key === 'Home' ? 'sheet' : e.key === 'End' ? 'bi' : order[(order.indexOf(tab.dataset.hotelTab) + 1) % 2];
+    const idx = order.indexOf(tab.dataset.hotelTab);
+    const next = e.key === 'Home' ? 'sheet' : e.key === 'End' ? 'bi' : order[(idx + (e.key === 'ArrowRight' ? 1 : -1) + order.length) % order.length];
     setHotelTab(next);
     return true;
   }
@@ -2319,7 +2320,7 @@ function biChipsHTML(m) {
   if (st.seg) chips.push(['seg', st.seg]);
   if (st.chain) chips.push(['chain', `Cadena: ${st.chain}`]);
   if (m.fi !== m.defaultFi) chips.push(['focus', `Extracción ${biDayLabel(m.dates[m.fi])}`]);
-  return `${chips.map(([kind, label]) => `<button type="button" class="bi-chip" data-bi-clear="${kind}" aria-label="Quitar filtro ${esc(label)}">${esc(label)}<span aria-hidden="true">×</span></button>`).join('')}${chips.length ? '<button type="button" class="bi-clear" data-bi-clear="all">Limpiar</button>' : ''}<span class="bi-scope">${m.hs.length} de ${m.all.length} hoteles</span>`;
+  return `${chips.map(([kind, label]) => `<button type="button" class="bi-chip" data-bi-clear="${kind}" aria-label="Quitar filtro ${esc(label)}">${esc(label)}<span aria-hidden="true" class="bi-chip__x">${ICON_CLOSE_SM}</span></button>`).join('')}${chips.length ? '<button type="button" class="bi-clear" data-bi-clear="all">Limpiar</button>' : ''}<span class="bi-scope">${m.hs.length} de ${m.all.length} hoteles</span>`;
 }
 
 function biKpisHTML(m) {
@@ -2459,14 +2460,14 @@ function biCalendarHTML(m) {
   const meds = m.dayMeds.filter((v) => v != null);
   const mMax = meds.length ? Math.max(...meds) : 1, mMin = meds.length ? Math.min(...meds) : 0;
   const medRow = m.dayMeds.map((v, i) => (v == null ? `<span class="bi-cal__med" data-d="${i}"></span>`
-    : `<span class="bi-cal__med" data-d="${i}" role="button" tabindex="0" aria-label="${esc(`Extracción ${biDayLong(m.dates[i])} · mediana ${eur(v)}`)}" aria-pressed="${i === m.fi}"><i style="height:${(30 + ((v - mMin) / Math.max(1, mMax - mMin)) * 70).toFixed(0)}%"></i></span>`)).join('');
+    : `<span class="bi-cal__med" data-d="${i}" role="button" tabindex="${i === m.fi ? 0 : -1}" aria-label="${esc(`Extracción ${biDayLong(m.dates[i])} · mediana ${eur(v)}`)}" aria-pressed="${i === m.fi}"><i style="height:${(30 + ((v - mMin) / Math.max(1, mMax - mMin)) * 70).toFixed(0)}%"></i></span>`)).join('');
   let rankRow = '';
   if (m.own) {
     rankRow = `<div class="bi-cal__row bi-cal__rank" style="grid-template-columns:${cols}"><span class="bi-cal__label is-own">Rank del hotel propio</span>${m.dates.map((_, i) => {
       const r = biRankAt(m.hs, m.own.key, i);
       const s = m.own.status[i];
       if (r) { const pct = (r.rank - 1) / Math.max(1, r.of - 1); return `<span data-d="${i}" class="${pct < 0.34 ? 'is-top' : pct < 0.67 ? 'is-mid' : 'is-low'}">${showText ? r.rank : ''}</span>`; }
-      return s === 'closed' ? `<span data-d="${i}" class="is-closed">${showText ? '×' : ''}</span>` : `<span data-d="${i}" class="is-none"></span>`;
+      return s === 'closed' ? `<span data-d="${i}" class="is-closed">${showText ? ICON_CLOSE_SM : ''}</span>` : `<span data-d="${i}" class="is-none"></span>`;
     }).join('')}</div>`;
   }
   const rows = [...m.hs].sort((a, b) => (b.key === st.own) - (a.key === st.own) || (b.prices[m.fi] ?? -1) - (a.prices[m.fi] ?? -1) || String(a.name).localeCompare(String(b.name), 'es'));
@@ -2852,7 +2853,7 @@ function biDrawerHTML(m, key) {
       return `<div class="bi-room"><span class="bi-room__name"><span>${esc(g.roomType || 'Habitación sin identificar')}</span><small>${g.maxOccupancy != null ? `máx. ${nEs(g.maxOccupancy)} pers. · ` : ''}${g.rates.length} ${g.rates.length === 1 ? 'tarifa' : 'tarifas'}</small></span><span class="hstock hstock--${tone}">${esc(tag)}</span><strong class="mono">${nightly.length ? `desde ${eur(Math.min(...nightly))}` : '—'}</strong></div>`;
     }).join('') || '<p class="bi-drawer__empty">No hay tarifas de detalle capturadas para este hotel.</p>';
   const isOwn = st.own === key;
-  return `<div class="bi-drawer__head"><div><span class="card__kicker">Ficha · puesto ${rank ? rank.rank : '—'} de ${rank ? rank.of : m.hs.length}</span><h2 id="sidePanelTitle">${esc(h.name)}</h2>${sub ? `<span class="bi-drawer__sub">${esc(sub)}</span>` : ''}</div><button type="button" class="icon-x icon-x--lg" data-side-close aria-label="Cerrar ficha">×</button></div>
+  return `<div class="bi-drawer__head"><div><span class="card__kicker">Ficha · puesto ${rank ? rank.rank : '—'} de ${rank ? rank.of : m.hs.length}</span><h2 id="sidePanelTitle">${esc(h.name)}</h2>${sub ? `<span class="bi-drawer__sub">${esc(sub)}</span>` : ''}</div><button type="button" class="icon-x icon-x--lg" data-side-close aria-label="Cerrar ficha">${ICON_CLOSE}</button></div>
     <div class="bi-drawer__body">
       <div class="bi-drawer__kpis">${kpis}</div>
       <section class="bi-drawer__section"><span class="card__kicker">Tarifa por extracción</span>${chart}</section>
@@ -3890,7 +3891,7 @@ function renderHotelReputationCatalog(host, total) {
     <section class="kpi-strip rep-kpis" aria-label="Cobertura de reseñas">${reputationKpisHTML(rows, total)}</section>
     ${reputationEmptyNoticeHTML(rows)}
     <article class="rep-card">
-      <div class="rep-card__bar"><div class="seg rep-tabs" role="tablist" aria-label="Filtrar inventario">${REP_TABS.map(([id, label]) => `<button type="button" role="tab" class="${tab === id ? 'is-active' : ''}" aria-selected="${tab === id}" data-rep-tab="${id}">${label}<span>${nEs(counts[id])}</span></button>`).join('')}</div>
+      <div class="rep-card__bar"><div class="seg rep-tabs" role="tablist" aria-label="Filtrar inventario">${REP_TABS.map(([id, label]) => `<button type="button" role="tab" class="${tab === id ? 'is-active' : ''}" aria-selected="${tab === id}" tabindex="${tab === id ? 0 : -1}" data-rep-tab="${id}">${label}<span>${nEs(counts[id])}</span></button>`).join('')}</div>
         <label class="rep-search"><span class="sr-only">Buscar hotel</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" id="reviewCatalogSearch" value="${esc(State.reputation.query)}" placeholder="Nombre, dirección o ciudad" autocomplete="off"></label></div>
       <div class="rep-table__scroll"><table class="rep-table"><caption class="sr-only">Inventario hotelero con cobertura de reseñas por fuente</caption>
         <colgroup><col class="w-52"><col><col class="w-110"><col class="w-110"><col class="w-160"><col class="w-150"><col class="w-150"><col class="w-96"></colgroup>
@@ -3935,7 +3936,7 @@ function reputationSelectionBarHTML() {
   return `<div class="rep-selbar" role="region" aria-label="Acciones sobre la selección"><span><b>${nEs(n)}</b> ${n === 1 ? 'seleccionado' : 'seleccionados'}</span>
     <button type="button" class="rep-selbar__btn" data-review-compare${n < 2 ? ' disabled title="Selecciona al menos dos hoteles"' : ''}>Comparar</button>
     <button type="button" class="rep-selbar__btn rep-selbar__btn--primary" data-review-capture-selected>Capturar reseñas</button>
-    <button type="button" class="rep-selbar__x" data-rep-clear aria-label="Quitar selección">×</button></div>`;
+    <button type="button" class="rep-selbar__x" data-rep-clear aria-label="Quitar selección">${ICON_CLOSE}</button></div>`;
 }
 
 function paintReputationSelectionBar() {
@@ -4008,7 +4009,7 @@ function reputationEstimateHTML() {
 function reputationConfigHTML() {
   const d = State.reputation.configDraft;
   const num = (id, label, key, attrs, placeholder = '') => `<label class="rep-cfg__field"><span>${label}</span><input id="${id}" data-rep-cfg="${key}" value="${esc(d[key])}" ${attrs}${placeholder ? ` placeholder="${placeholder}"` : ''}${key === 'maxReviews' && d.unboundedReviews ? ' disabled' : ''}></label>`;
-  return `<div class="bi-drawer__head rep-cfg__head"><div><span class="card__kicker">Captura de reseñas</span><h2 id="sidePanelTitle">Configuración</h2></div><button type="button" class="icon-x icon-x--lg" data-side-close aria-label="Cerrar">×</button></div>
+  return `<div class="bi-drawer__head rep-cfg__head"><div><span class="card__kicker">Captura de reseñas</span><h2 id="sidePanelTitle">Configuración</h2></div><button type="button" class="icon-x icon-x--lg" data-side-close aria-label="Cerrar">${ICON_CLOSE}</button></div>
     <div class="rep-cfg__body">
       <section class="rep-cfg__group"><strong>Fuentes</strong><div class="rep-cfg__sources">${REP_SOURCES.map(([id, label]) => `<button type="button" class="rep-src${d[id] ? ' is-on' : ''}" data-rep-src="${id}" aria-pressed="${!!d[id]}"><span class="rep-src__box" aria-hidden="true">${d[id] ? '✓' : ''}</span>${label}</button>`).join('')}</div></section>
       <section class="rep-cfg__group"><strong>Límites por hotel</strong><div class="rep-cfg__grid">${num('repCfgMax', 'Máx. reseñas', 'maxReviews', 'type="number" min="1" max="10000" step="1"')}${num('repCfgDecisions', 'Decisiones máx.', 'maxDecisions', 'type="number" min="1" max="120" step="1"')}</div>
@@ -4260,7 +4261,7 @@ async function pollHotelReviewJob(jobId) {
 async function runHotelReviewComparison() {
   const keys = [...State.reputation.selectedKeys].slice(0, 8);
   if (keys.length < 2) return;
-  const head = `<div class="bi-drawer__head rep-cfg__head"><div><span class="card__kicker">Reputación por plataforma</span><h2 id="sidePanelTitle">Comparar ${keys.length} hoteles</h2></div><button type="button" class="icon-x icon-x--lg" data-side-close aria-label="Cerrar">×</button></div>`;
+  const head = `<div class="bi-drawer__head rep-cfg__head"><div><span class="card__kicker">Reputación por plataforma</span><h2 id="sidePanelTitle">Comparar ${keys.length} hoteles</h2></div><button type="button" class="icon-x icon-x--lg" data-side-close aria-label="Cerrar">${ICON_CLOSE}</button></div>`;
   $('#sidePanelBody').innerHTML = `${head}<div class="rep-cfg__body"><div class="empty">Cargando comparación…</div></div>`;
   openSidePanel('rep-compare');
   try {
@@ -4386,9 +4387,9 @@ function wireHotelReputationEvents() {
     if (src && State.reputation.configDraft) {const d = State.reputation.configDraft; d[src.dataset.repSrc] = !d[src.dataset.repSrc]; paintReputationConfig(`[data-rep-src="${src.dataset.repSrc}"]`); return;}
     if (target.closest('[data-rep-unbounded]') && State.reputation.configDraft) {State.reputation.configDraft.unboundedReviews = !State.reputation.configDraft.unboundedReviews; paintReputationConfig('[data-rep-unbounded]'); return;}
     const repTab = target.closest('[data-rep-tab]');
-    if (repTab) {State.reputation.repTab = repTab.dataset.repTab; $$('[data-rep-tab]').forEach((b) => {const on = b === repTab; b.classList.toggle('is-active', on); b.setAttribute('aria-selected', String(on));}); filterHotelReviewCatalog(); return;}
+    if (repTab) {State.reputation.repTab = repTab.dataset.repTab; $$('[data-rep-tab]').forEach((b) => {const on = b === repTab; b.classList.toggle('is-active', on); b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1;}); filterHotelReviewCatalog(); atlasScheduleSync(); return;}
     if (target.closest('[data-rep-clear]')) {State.reputation.selectedKeys.clear(); $$('[data-review-select]').forEach((input) => {input.checked = false;}); filterHotelReviewCatalog(); return;}
-    if (target.closest('[data-rep-show-all]')) {State.reputation.repTab = 'all'; State.reputation.query = ''; const search = $('#reviewCatalogSearch'); if (search) search.value = ''; $$('[data-rep-tab]').forEach((b) => {const on = b.dataset.repTab === 'all'; b.classList.toggle('is-active', on); b.setAttribute('aria-selected', String(on));}); filterHotelReviewCatalog(); search?.focus(); return;}
+    if (target.closest('[data-rep-show-all]')) {State.reputation.repTab = 'all'; State.reputation.query = ''; const search = $('#reviewCatalogSearch'); if (search) search.value = ''; $$('[data-rep-tab]').forEach((b) => {const on = b.dataset.repTab === 'all'; b.classList.toggle('is-active', on); b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1;}); filterHotelReviewCatalog(); search?.focus(); return;}
     if (target.closest('[data-rep-notice-dismiss]')) {try {localStorage.setItem(REP_NOTICE_KEY, '1');} catch (_) { /* solo esta sesión */ } $('#repNotice')?.remove(); return;}
     if (target.closest('[data-review-compare]')) {void runHotelReviewComparison(); return;}
     if (target.closest('[data-review-filters-reset]')) {State.reputation.reviewFilters = {source:'',language:'',rating:'',topic:'',dateFrom:'',dateTo:'',query:''}; State.reputation.reviewPage = 0; showHotelReputationTab('reviews'); return;}
@@ -4589,14 +4590,14 @@ async function renderCopilot() {
   const workspaceScopeLabel = workspaceScope ? ` · contexto BI: foto #${workspaceScope.snapshotId}${workspaceScope.checkIn ? ` · extracción ${workspaceScope.checkIn}` : ' · todas las extracciones'}` : '';
   host.innerHTML = `<div class="copilot ${State.copilotHistoryOpen ? '' : 'is-history-collapsed'}" id="copilotLayout">
     <aside class="copilot__aside" aria-label="Historial de conversaciones">
-      <div class="top"><div><h2>Conversaciones</h2><span id="sessCount">…</span></div><div class="copilot-aside-actions"><button type="button" class="icon-btn" id="toggleCopilotHistory" aria-label="Plegar historial" aria-expanded="true" title="Plegar historial">‹</button><button type="button" class="add-btn" id="newSession" aria-label="Nueva conversación">+</button></div></div>
+      <div class="top"><div><h2>Conversaciones</h2><span id="sessCount">…</span></div><div class="copilot-aside-actions"><button type="button" class="icon-btn" id="toggleCopilotHistory" aria-label="Plegar historial" aria-expanded="true" title="Plegar historial">${ICON_CHEV_LEFT}</button><button type="button" class="add-btn" id="newSession" aria-label="Nueva conversación">${ICON_PLUS}</button></div></div>
       <label class="copilot-session-search"><span class="sr-only">Buscar conversaciones</span><input type="search" id="copilotSessionSearch" placeholder="Buscar conversaciones…" autocomplete="off" /></label>
       <div class="sessions" id="sessionList"></div>
       <details class="copilot-diagnostics"><summary>Diagnóstico <span>técnico</span></summary><dl class="copilot-evaluation" id="copilotEvaluation"><dt>Control IA</dt><dd>Cargando último control…</dd></dl><div class="copilot-budget" id="copilotBudget" aria-live="polite"></div></details>
       <div class="note-box">Respuestas basadas en capturas de Booking y vuelos. No sustituye pickup ni ocupación del PMS.</div>
     </aside>
     <section class="copilot__main">
-      <div class="copilot__head"><div class="copilot-head-title"><button type="button" class="copilot-history-toggle icon-btn" id="toggleCopilotHistoryMain" aria-label="Mostrar u ocultar historial" aria-expanded="${State.copilotHistoryOpen}">☰</button><div><h1>Copilot</h1><p id="copilotCtx">${esc(activeTarget() ? activeTarget().name : 'Mercado')} · asistente de revenue${esc(workspaceScopeLabel)}</p></div></div><div class="copilot__scope">${copilotAgeChipHTML()}<label class="sr-only" for="copilotMode">Modelo</label><select id="copilotMode" class="copilot-mode">${[['auto', 'Modelo automático'], ['quick', 'Rápido'], ['analysis', 'Razonamiento']].map(([v, l]) => `<option value="${v}"${State.copilotMode === v ? ' selected' : ''}>${l}</option>`).join('')}</select><button type="button" class="btn copilot-panel-toggle" id="toggleCopilotPanel" aria-expanded="false">Resultados</button></div></div>
+      <div class="copilot__head"><div class="copilot-head-title"><button type="button" class="copilot-history-toggle icon-btn" id="toggleCopilotHistoryMain" aria-label="Mostrar u ocultar historial" aria-expanded="${State.copilotHistoryOpen}">${ICON_MENU}</button><div><h1>Copilot</h1><p id="copilotCtx">${esc(activeTarget() ? activeTarget().name : 'Mercado')} · asistente de revenue${esc(workspaceScopeLabel)}</p></div></div><div class="copilot__scope">${copilotAgeChipHTML()}<label class="sr-only" for="copilotMode">Modelo</label><select id="copilotMode" class="copilot-mode">${[['auto', 'Modelo automático'], ['quick', 'Rápido'], ['analysis', 'Razonamiento']].map(([v, l]) => `<option value="${v}"${State.copilotMode === v ? ' selected' : ''}>${l}</option>`).join('')}</select><button type="button" class="btn copilot-panel-toggle" id="toggleCopilotPanel" aria-expanded="false">Resultados</button></div></div>
       <div class="thread" id="thread" role="log" aria-live="polite" aria-relevant="additions text"></div>
       <div class="composer">
         <div class="suggest" id="chatSuggestions">
@@ -4605,7 +4606,7 @@ async function renderCopilot() {
         </div>
         <div class="copilot-attachments" id="copilotAttachments" aria-live="polite"></div>
         <div class="composer__row">
-          <button type="button" class="attach-btn" id="chatAttach" aria-label="Adjuntar archivo" title="Adjuntar CSV, XLSX, PDF o imagen">＋</button>
+          <button type="button" class="attach-btn" id="chatAttach" aria-label="Adjuntar archivo" title="Adjuntar CSV, XLSX, PDF o imagen">${ICON_PLUS}</button>
           <input type="file" id="chatFile" accept=".csv,.xlsx,.pdf,.png,.jpg,.jpeg" hidden />
           <textarea id="chatInput" rows="2" placeholder="Pregunta, compara o pide una gráfica…" aria-label="Mensaje para Copilot (Enter envía, Mayús+Enter salto de línea)" autocomplete="off"></textarea>
           <button type="button" class="send-btn" id="chatSend" aria-label="Enviar">
@@ -4613,7 +4614,7 @@ async function renderCopilot() {
           </button>
         </div>
       </div>
-      <aside class="copilot__results" id="copilotResults" hidden aria-label="Resultados de Copilot"><div class="copilot-results__head"><strong>Resultados</strong><button type="button" class="icon-btn" id="closeCopilotPanel" aria-label="Cerrar resultados">×</button></div><div class="copilot-results__tabs" role="tablist"><button type="button" class="is-active" data-copilot-panel-tab="result" role="tab" aria-selected="true">Resultado</button><button type="button" data-copilot-panel-tab="sources" role="tab" aria-selected="false">Fuentes</button><button type="button" data-copilot-panel-tab="files" role="tab" aria-selected="false">Archivos</button></div><div class="copilot-results__body" id="copilotResultsBody"><p class="empty">Selecciona un resultado para inspeccionarlo.<br><button type="button" class="btn btn--sm" data-copilot-ask>Hacer una pregunta</button></p></div></aside>
+      <aside class="copilot__results" id="copilotResults" hidden aria-label="Resultados de Copilot"><div class="copilot-results__head"><strong>Resultados</strong><button type="button" class="icon-btn" id="closeCopilotPanel" aria-label="Cerrar resultados">${ICON_CLOSE}</button></div><div class="copilot-results__tabs" role="tablist" aria-label="Panel de resultados"><button type="button" class="is-active" data-copilot-panel-tab="result" role="tab" aria-selected="true" tabindex="0">Resultado</button><button type="button" data-copilot-panel-tab="sources" role="tab" aria-selected="false" tabindex="-1">Fuentes</button><button type="button" data-copilot-panel-tab="files" role="tab" aria-selected="false" tabindex="-1">Archivos</button></div><div class="copilot-results__body" id="copilotResultsBody"><p class="empty">Selecciona un resultado para inspeccionarlo.<br><button type="button" class="btn btn--sm" data-copilot-ask>Hacer una pregunta</button></p></div></aside>
     </section>
   </div>`;
 
@@ -4674,7 +4675,7 @@ function renderSessionList() {
   if (!State.sessions.length) { list.innerHTML = '<div class="empty u-pad20-0">Sin conversaciones que coincidan.</div>'; return; }
   list.innerHTML = State.sessions.map((s) => `<div class="session-wrap ${s.id === State.activeSession ? 'is-active' : ''}">
     <button type="button" class="session" data-session="${s.id}" aria-current="${s.id === State.activeSession ? 'true' : 'false'}" title="${esc(s.title || 'Conversación')}"><strong>${s.pinned ? '<span class="session-pin" aria-label="Fijada">●</span>' : ''}${esc(s.title || 'Conversación')}</strong><span class="session-date">${fmtStamp(s.lastMessageAt || s.updatedAt)}</span></button>
-    <div class="session-actions" aria-label="Acciones de conversación"><button type="button" data-session-action="pin" data-session-id="${s.id}" aria-label="${s.pinned ? 'Desfijar' : 'Fijar'} conversación">${s.pinned ? '★' : '☆'}</button><button type="button" data-session-action="rename" data-session-id="${s.id}" aria-label="Renombrar conversación">✎</button><button type="button" data-session-action="archive" data-session-id="${s.id}" aria-label="Archivar conversación">×</button></div>
+    <div class="session-actions" aria-label="Acciones de conversación"><button type="button" data-session-action="pin" data-session-id="${s.id}" aria-label="${s.pinned ? 'Desfijar' : 'Fijar'} conversación">${s.pinned ? '★' : '☆'}</button><button type="button" data-session-action="rename" data-session-id="${s.id}" aria-label="Renombrar conversación">${ICON_EDIT}</button><button type="button" data-session-action="archive" data-session-id="${s.id}" aria-label="Archivar conversación">${ICON_CLOSE}</button></div>
   </div>`).join('');
 }
 
@@ -4705,7 +4706,7 @@ function copilotPanelHTML(tab = 'result', focusOrigin = null) {
   const main = $('.copilot__main'); if (main) main.classList.toggle('has-results', main.clientWidth >= 938);
   const toggle = $('#toggleCopilotPanel'); if (toggle) toggle.setAttribute('aria-expanded', 'true');
   requestAnimationFrame(() => $('#closeCopilotPanel')?.focus());
-  $$('.copilot-results__tabs [data-copilot-panel-tab]').forEach((button) => { const active = button.dataset.copilotPanelTab === tab; button.classList.toggle('is-active', active); button.setAttribute('aria-selected', String(active)); });
+  $$('.copilot-results__tabs [data-copilot-panel-tab]').forEach((button) => { const active = button.dataset.copilotPanelTab === tab; button.classList.toggle('is-active', active); button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });
   const body = $('#copilotResultsBody'); if (!body) return;
   if (tab === 'files') { body.innerHTML = State.copilotAttachments.length ? State.copilotAttachments.map((item) => { const state = item.extractionStatus || item.status || 'ready'; const label = state === 'partial' ? 'lectura parcial' : state === 'ocr_pending' ? 'OCR pendiente' : state === 'error' ? 'error de lectura' : 'listo'; return `<div class="result-file"><strong>${esc(item.filename)}</strong><span>${esc(item.mimeType || item.contentType || 'Archivo')} · ${label}${item.sizeBytes ? ` · ${nEs(item.sizeBytes / 1024, 0)} KB` : ''}</span></div>`; }).join('') : '<p class="empty">No hay archivos asociados a esta conversación.</p>'; return; }
   const result = State.copilotLastResult || {};
@@ -5057,7 +5058,7 @@ async function pollAssistantJob(jobId, pend, requestSessionId = State.activeSess
 
 function renderCopilotAttachments() {
   const host = $('#copilotAttachments'); if (!host) return;
-  host.innerHTML = State.copilotAttachments.map((item) => { const state = item.extractionStatus || item.status || 'ready'; const label = state === 'partial' ? 'lectura parcial' : state === 'ocr_pending' ? 'OCR pendiente' : state === 'error' ? 'error' : 'listo'; return `<span class="attachment-chip"><span>${esc(item.filename)}</span><small>${label}</small><button type="button" data-remove-attachment="${item.id}" aria-label="Quitar ${esc(item.filename)}">×</button></span>`; }).join('');
+  host.innerHTML = State.copilotAttachments.map((item) => { const state = item.extractionStatus || item.status || 'ready'; const label = state === 'partial' ? 'lectura parcial' : state === 'ocr_pending' ? 'OCR pendiente' : state === 'error' ? 'error' : 'listo'; return `<span class="attachment-chip"><span>${esc(item.filename)}</span><small>${label}</small><button type="button" data-remove-attachment="${item.id}" aria-label="Quitar ${esc(item.filename)}">${ICON_CLOSE}</button></span>`; }).join('');
 }
 
 async function uploadCopilotAttachment(file) {
@@ -5223,7 +5224,7 @@ function workspaceContextHTML(context, semantic, selections = {}) {
   if (!context.capture) return '<div class="ws-context"><span class="card__kicker">Contexto</span><span class="dim">No hay extracciones disponibles para fijar el contexto del tablero.</span></div>';
   const population = semantic?.population;
   const inferred = context.capture.kind === 'legacy_inferred_capture_group' ? ' · agrupación histórica inferida' : '';
-  const links = Object.entries(selections).filter(([, sel]) => sel).map(([group, sel]) => `<span class="ws-link">Enlace ${esc(group)} · ${esc(sel.hotelName)}<button type="button" data-workspace-unlink="${esc(group)}" aria-label="Quitar enlace ${esc(group)}">×</button></span>`).join('');
+  const links = Object.entries(selections).filter(([, sel]) => sel).map(([group, sel]) => `<span class="ws-link">Enlace ${esc(group)} · ${esc(sel.hotelName)}<button type="button" data-workspace-unlink="${esc(group)}" aria-label="Quitar enlace ${esc(group)}">${ICON_CLOSE}</button></span>`).join('');
   return `<section class="ws-context" aria-label="Contexto común del tablero"><span class="card__kicker">Contexto</span>
     <label><span class="sr-only">Extracción</span><select data-workspace-context="captureAnchorSnapshotId" title="Observada ${esc(fmtStamp(context.capture.observedAt))}${esc(inferred)}">${(State.captureHistories[State.targetId]?.captures || []).map((capture) => `<option value="${nEs(capture.anchorSnapshotId)}"${capture.anchorSnapshotId === context.anchorSnapshotId ? ' selected' : ''}>Extracción ${esc(fmtStamp(capture.observedAt))} · #${nEs(capture.snapshotIds?.[0])}–#${nEs(capture.snapshotIds?.at(-1))}</option>`).join('')}</select></label>
     <label><span class="sr-only">Extracción</span><select data-workspace-context="checkIn"><option value="">Todas las extracciones</option>${context.availableCheckIns.map((checkIn) => `<option value="${esc(checkIn)}"${checkIn === context.checkIn ? ' selected' : ''}>Extracción ${esc(biDayLabel(checkIn))}</option>`).join('')}</select></label>
@@ -5453,7 +5454,7 @@ function renderLayer(l, m, selections = {}, selectionHistories = {}, index = 0, 
     inner = `<div class="ws-qa-grid">${tile('Filas', nEs(population?.totalRows ?? dq.totalRows ?? 0))}${tile('Con precio', nEs(population?.pricedRows ?? dq.pricedRows ?? 0))}${tile('Vigencia', age == null ? '—' : age <= 1 ? 'Vigente' : `Hace ${nEs(age)} d`, age != null && age > 1 ? 'warn' : '')}${tile('Comparables', nEs(population?.comparableRows ?? dq.comparableRows ?? 0))}</div>${(dq.notes || []).slice(0, 2).map((n) => `<p class="ws-note">${esc(n)}</p>`).join('')}`;
   }
   return `<article class="wblock${wide}">
-    <div class="wblock__head"><div class="lhs"><span class="badge">${badge}</span><strong>${esc(l.title)}</strong></div><div class="wblock__tools">${link}<div class="workspace-layer-order" role="group" aria-label="Orden de ${esc(l.title)}"><button type="button" class="icon-btn workspace-layer-move" data-workspace-move="${esc(l.id || '')}" data-workspace-direction="-1" aria-label="Subir ${esc(l.title)}"${index === 0 ? ' disabled' : ''}>↑</button><button type="button" class="icon-btn workspace-layer-move" data-workspace-move="${esc(l.id || '')}" data-workspace-direction="1" aria-label="Bajar ${esc(l.title)}"${index === layerCount - 1 ? ' disabled' : ''}>↓</button></div><button type="button" class="icon-btn workspace-layer-remove" data-workspace-remove="${esc(l.id || '')}" aria-label="Quitar ${esc(l.title)}">×</button></div></div>
+    <div class="wblock__head"><div class="lhs"><span class="badge">${badge}</span><strong>${esc(l.title)}</strong></div><div class="wblock__tools">${link}<div class="workspace-layer-order" role="group" aria-label="Orden de ${esc(l.title)}"><button type="button" class="icon-btn workspace-layer-move" data-workspace-move="${esc(l.id || '')}" data-workspace-direction="-1" aria-label="Subir ${esc(l.title)}"${index === 0 ? ' disabled' : ''}>↑</button><button type="button" class="icon-btn workspace-layer-move" data-workspace-move="${esc(l.id || '')}" data-workspace-direction="1" aria-label="Bajar ${esc(l.title)}"${index === layerCount - 1 ? ' disabled' : ''}>↓</button></div><button type="button" class="icon-btn workspace-layer-remove" data-workspace-remove="${esc(l.id || '')}" aria-label="Quitar ${esc(l.title)}">${ICON_CLOSE}</button></div></div>
     ${inner}
   </article>`;
 }
@@ -6268,10 +6269,10 @@ function wireEvents() {
       return;
     }
     if (e.key === 'Enter' && e.target && e.target.id === 'chatInput' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendChat(e.target.value); }
-    if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && e.target?.matches?.('[data-copilot-panel-tab]')) {
+    if (['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key) && e.target?.matches?.('[data-copilot-panel-tab]')) {
       const tabs = $$('.copilot-results__tabs [data-copilot-panel-tab]');
       const index = tabs.indexOf(e.target);
-      if (index >= 0) { e.preventDefault(); tabs[(index + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length]?.focus(); }
+      if (index >= 0) { e.preventDefault(); const next = e.key === 'Home' ? tabs[0] : e.key === 'End' ? tabs[tabs.length - 1] : tabs[(index + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length]; if (next) { if (typeof copilotPanelHTML === 'function') copilotPanelHTML(next.dataset.copilotPanelTab); next.focus(); if (typeof atlasScheduleSync === 'function') atlasScheduleSync(); } }
     }
     if (e.key === 'Enter' && e.target && e.target.id === 'lockPass') { e.preventDefault(); void unlockSession(); }
     if ((e.metaKey || e.ctrlKey) && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); setView('copilot'); }
@@ -6404,6 +6405,149 @@ async function lockSession() {
     State.authBusy = false;
   }
 }
+
+/* >>> pulido-d1:tablists-deslizantes-iconos (PKG-17 PA-43 MM-02/03 D1-05/13 U2-08/09/10 MX-04)
+   Reserva FE D1: roving tabindex en todos los tablist (incl. Vuelos y calendario),
+   indicador deslizante (MM-02) + fondo segmentado deslizante (MM-03),
+   glifos a SVG y tabular-nums (CSS). No toca líneas 12–80 ni marcadores previos. */
+const ICON_CLOSE = '<svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9"/></svg>';
+const ICON_CLOSE_SM = '<svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9"/></svg>';
+const ICON_PLUS = '<svg viewBox="0 0 12 12" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M6 1.5v9M1.5 6h9"/></svg>';
+const ICON_EDIT = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 5.5l3 3L8 18l-4 1 1-4z"/></svg>';
+const ICON_MENU = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+const ICON_CHEV_LEFT = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 6l-6 6 6 6"/></svg>';
+function atlasSyncRoving(root) {
+  const scope = root || document;
+  $$('[role="tablist"]', scope).forEach((list) => {
+    const tabs = [...list.querySelectorAll('[role="tab"]')];
+    if (!tabs.length) return;
+    const active = tabs.find((t) => t.getAttribute('aria-selected') === 'true') || tabs.find((t) => t.classList.contains('is-active')) || tabs[0];
+    tabs.forEach((t) => { t.tabIndex = (t === active ? 0 : -1); });
+  });
+  const calBtns = $$('#biCalGrid [data-d][role="button"]', scope);
+  if (calBtns.length) {
+    const activeCal = calBtns.find((b) => b.getAttribute('aria-pressed') === 'true') || null;
+    const fallback = activeCal || calBtns[0];
+    calBtns.forEach((b) => { b.tabIndex = (b === fallback ? 0 : -1); });
+  }
+}
+function atlasSyncTabIndicator(list) {
+  if (!list || !list.isConnected) return;
+  const active = list.querySelector('[role="tab"].is-active, [role="tab"][aria-selected="true"]');
+  let ind = list.querySelector(':scope > .tab-indicator');
+  if (!active) { if (ind) ind.style.opacity = '0'; return; }
+  if (!ind) {
+    ind = document.createElement('span');
+    ind.className = 'tab-indicator';
+    ind.setAttribute('aria-hidden', 'true');
+    list.appendChild(ind);
+    list.classList.add('has-indicator');
+  }
+  const x = active.offsetLeft || 0;
+  const w = active.offsetWidth || 0;
+  ind.style.opacity = '1';
+  ind.style.transform = `translateX(${x}px)`;
+  ind.style.width = `${w}px`;
+}
+function atlasSyncAllTabIndicators(root) {
+  $$('[role="tablist"]', root || document).forEach(atlasSyncTabIndicator);
+}
+function atlasSyncSegBg(seg) {
+  if (!seg || !seg.isConnected) return;
+  const active = seg.querySelector('button.is-active');
+  let bg = seg.querySelector(':scope > .seg__bg');
+  if (!active) { if (bg) bg.style.opacity = '0'; return; }
+  if (!bg) {
+    bg = document.createElement('span');
+    bg.className = 'seg__bg';
+    bg.setAttribute('aria-hidden', 'true');
+    seg.prepend(bg);
+    seg.classList.add('has-sliding');
+  }
+  bg.style.opacity = '1';
+  bg.style.transform = `translateX(${active.offsetLeft || 0}px)`;
+  bg.style.width = `${active.offsetWidth || 0}px`;
+  bg.style.height = `${active.offsetHeight || 0}px`;
+  bg.style.top = `${active.offsetTop || 0}px`;
+}
+function atlasSyncAllSeg(root) {
+  $$('.seg', root || document).forEach(atlasSyncSegBg);
+}
+let __atlasSyncQueued = false;
+function atlasScheduleSync() {
+  if (__atlasSyncQueued) return;
+  __atlasSyncQueued = true;
+  requestAnimationFrame(() => {
+    __atlasSyncQueued = false;
+    try {
+      atlasSyncRoving();
+      atlasSyncAllTabIndicators();
+      atlasSyncAllSeg();
+    } catch (_) { /* indicadores progresivos: el tab sigue funcionando sin ellos */ }
+  });
+}
+function atlasActivateRepTab(next) {
+  if (!next) return;
+  State.reputation.repTab = next.dataset.repTab;
+  $$('[data-rep-tab]').forEach((b) => {
+    const on = b === next;
+    b.classList.toggle('is-active', on);
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;
+  });
+  filterHotelReviewCatalog();
+  next.focus({ preventScroll: true });
+  next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  atlasScheduleSync();
+}
+if (typeof MutationObserver !== 'undefined' && !window.__atlasD1Observer) {
+  window.__atlasD1Observer = new MutationObserver(() => atlasScheduleSync());
+  if (document.documentElement) window.__atlasD1Observer.observe(document.documentElement, { childList: true, subtree: true });
+  window.addEventListener('resize', atlasScheduleSync, { passive: true });
+  window.addEventListener('load', atlasScheduleSync);
+}
+document.addEventListener('keydown', (e) => {
+  if (!(e.target instanceof Element)) return;
+  const inFlight = e.target.closest && e.target.closest('[data-flight-tab]');
+  if (inFlight && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+    const list = inFlight.closest('[role="tablist"]');
+    const tabs = list ? [...list.querySelectorAll('[data-flight-tab]')] : $$('[data-flight-tab]');
+    const idx = tabs.indexOf(inFlight);
+    if (idx < 0) return;
+    e.preventDefault();
+    const next = e.key === 'Home' ? tabs[0] : e.key === 'End' ? tabs[tabs.length - 1] : tabs[(idx + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+    if (next && next !== inFlight && typeof setFlightTab === 'function') setFlightTab(next.dataset.flightTab);
+    else if (next) next.focus();
+    atlasScheduleSync();
+    return;
+  }
+  const repTab = e.target.closest && e.target.closest('[data-rep-tab]');
+  if (repTab && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+    const tabs = $$('[data-rep-tab]');
+    const idx = tabs.indexOf(repTab);
+    if (idx < 0) return;
+    e.preventDefault();
+    const next = e.key === 'Home' ? tabs[0] : e.key === 'End' ? tabs[tabs.length - 1] : tabs[(idx + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+    if (next) atlasActivateRepTab(next);
+    return;
+  }
+  const calBtn = e.target.closest && e.target.closest('#biCalGrid [data-d][role="button"]');
+  if (calBtn && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+    const btns = $$('#biCalGrid [data-d][role="button"]');
+    const idx = btns.indexOf(calBtn);
+    if (idx < 0) return;
+    e.preventDefault();
+    const next = e.key === 'Home' ? btns[0] : e.key === 'End' ? btns[btns.length - 1] : btns[(idx + (e.key === 'ArrowRight' ? 1 : -1) + btns.length) % btns.length];
+    if (next) {
+      const d = next.dataset.d;
+      next.click();
+      const fresh = document.querySelector(`#biCalGrid [data-d="${d}"][role="button"]`);
+      (fresh || next).focus();
+      atlasScheduleSync();
+    }
+  }
+});
+/* <<< pulido-d1:tablists-deslizantes-iconos */
 
 /* -------------------------------------------------------------------- boot */
 async function boot() {

@@ -2521,3 +2521,36 @@ details[open] > *:not(summary) { animation: atFade var(--dur-fast) var(--ease) b
 /* ticker vacio no ocupa ancho */
 .ticker-mask[hidden] { display: none; }
 .ticker:empty { display: none; }
+/* ============================================================================
+   PKG-17 D1 tablists deslizantes + iconos SVG + tabular completa
+   PA-43 roving tabindex (incl. Vuelos y calendario) + MM-02 indicador deslizante
+   + MM-03 fondo segmentado deslizante + D1-05/13 glifos a SVG + U2-08/09/10
+   teclado completo + MX-04 tabular completa. Sin tocar líneas 12–80.
+   ============================================================================ */
+/* MM-02 indicador de pestaña que se desliza (progresivo: sin JS sigue el borde) */
+.htabs, .review-profile-tabs, .copilot-results__tabs { position: relative; }
+.tab-indicator { position: absolute; bottom: -1px; left: 0; height: 2px; width: 0; background: var(--ac); border-radius: 2px; opacity: 0; transform: translateX(0); transition: transform var(--dur-sm) var(--ease), width var(--dur-sm) var(--ease), opacity var(--dur-fast) var(--ease); pointer-events: none; }
+.review-profile-tabs .tab-indicator { bottom: 7px; }
+.htabs.has-indicator .htabs__tab.is-active, .review-profile-tabs.has-indicator [role="tab"].is-active, .copilot-results__tabs.has-indicator button.is-active { border-bottom-color: transparent; }
+/* MM-03 fondo de segmentado que se desliza (progresivo: sin JS sigue el activo) */
+.seg { position: relative; }
+.seg__bg { position: absolute; left: 0; top: 3px; width: 0; height: 0; border-radius: var(--r-seg-opt); background: var(--card); box-shadow: 0 1px 2px rgba(20, 22, 28, .08); opacity: 0; transition: transform var(--dur-sm) var(--ease), width var(--dur-sm) var(--ease), height var(--dur-sm) var(--ease), top var(--dur-sm) var(--ease), opacity var(--dur-fast) var(--ease); pointer-events: none; z-index: 0; }
+.seg.has-sliding { isolation: isolate; }
+.seg.has-sliding button { position: relative; z-index: 1; }
+.seg.has-sliding button.is-active { background: transparent; box-shadow: none; }
+/* D1-05/13 iconos SVG (sustituyen glifos): centraje sin cambiar layout */
+.icon-x { display: inline-flex; align-items: center; justify-content: center; }
+.icon-x svg, .icon-btn svg, .rep-selbar__x svg, .attach-btn svg, .add-btn svg { display: block; flex: 0 0 auto; }
+.add-btn, .attach-btn, .rep-selbar__x { display: inline-flex; align-items: center; justify-content: center; }
+.bi-chip__x { display: inline-flex; align-items: center; justify-content: center; }
+.bi-chip__x svg, .bi-chip svg { display: block; }
+.attachment-chip button, .ws-link button, .workspace-layer-remove, .session-actions button, .copilot-aside-actions button { display: inline-flex; align-items: center; justify-content: center; }
+.attachment-chip svg, .ws-link svg, .session-actions svg { display: block; }
+.hsheet__search button svg { display: block; }
+/* foco visible en pestañas (teclado completo U2-08/09/10) */
+.htabs__tab:focus-visible, .review-profile-tabs [role="tab"]:focus-visible, .seg button:focus-visible, .rep-tabs button:focus-visible { outline: 2px solid var(--ac); outline-offset: -2px; }
+/* MX-04 completa tabular-nums donde faltaba (sin cambiar familia) */
+.htabs__tab, .htabs__tab span, .seg button, .rep-tabs button, .rep-tabs button span, .copilot-results__tabs button, .review-profile-tabs [role="tab"], .hrooms td strong, .hrooms__night, .vsbar__val, .hrow__rank, .rep-table td, .fl-route__facts strong, .fl-lead > strong, .fl-airline strong, .fl-signal__v, .bi-closer span:nth-child(n+2), .bi-drawer__kpis strong, .ws-trend__stat strong, .bi-reco__diff, .bi-zone__meta { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  .tab-indicator, .seg__bg { transition: none !important; }
+}
