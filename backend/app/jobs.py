@@ -7,8 +7,13 @@ from typing import Callable
 from uuid import uuid4
 
 from .database import Database
+from .secure_logging import install_secret_redact_filter
 
 logger = logging.getLogger(__name__)
+# B2-09: el worker puede vivir sin importar `flask_app`; el filtro central
+# debe estar activo aquí también para que `logger.exception` nunca emita
+# secretos aunque el import llegue solo desde `jobs`.
+install_secret_redact_filter(("", __name__))
 JobHandler = Callable[[dict, Callable[[int, str], None]], dict]
 
 

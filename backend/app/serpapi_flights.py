@@ -9,17 +9,26 @@ import time
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
 
 from .config import ROOT
+from .secure_logging import PLACEHOLDER as _CENTRAL_PLACEHOLDER
+from .secure_logging import redact_text as _central_redact
 
 
 SERPAPI_URL = "https://serpapi.com/search.json"
 
+# PA-92: 2 intentos x 90 s con backoff exponencial para errores
+# transitorios del proveedor. El timeout largo cubre `deep_search`; el
+# techo de intentos evita quemar cuota en reintentos silenciosos.
+SERPAPI_TIMEOUT_S = 90.0
+SERPAPI_MAX_ATTEMPTS = 2
+SERPAPI_BACKOFF_BASE_S = 1.0
+
 # B2-01: punto único de redacción para que `api_key` de SerpAPI nunca salga
-# del proceso en errores persistidos/logueados. El placeholder evita a
-# propósito la subcadena `api_key` para que `rg api_key` no dé positivos.
-_SERPAPI_KEY_PLACEHOLDER = "[clave oculta]"
+# del proceso en errores persistidos/logueados. Delega en el logging
+# central (`secure_logging.redact_text`); el placeholder evita a propósito
+# la subcadena `api_key` para que `rg api_key` no dé positivos.
+_SERPAPI_KEY_PLACEHOLDER = _CENTRAL_PLACEHOLDER
 _SERPAPI_API_KEY_RE = re.compile(
     r"(?i)[\"']?api[_-]?key[\"']?\s*(?:[:=]|%3D|%253D)\s*[\"']?[^\s&'\"`}\],;]+[\"']?"
 )
@@ -30,15 +39,29 @@ def redact_serpapi_key_text(value: Any, api_key: str | None = None) -> str:
 
     Cubre URLs de httpx (`...?api_key=SECRETO&...`), JSON
     (`"api_key": "SECRETO"`) y el secreto literal cuando se conoce.
+    Punto único real en `secure_logging.redact_text`.
     """
-    text = "" if value is None else value if isinstance(value, str) else str(value)
-    # Patrón primero: evita que el placeholder (con espacio) se re-procese.
-    text = _SERPAPI_API_KEY_RE.sub(_SERPAPI_KEY_PLACEHOLDER, text)
-    if api_key:
-        key = str(api_key).strip()
-        if len(key) >= 4 and key in text:
-            text = text.replace(key, _SERPAPI_KEY_PLACEHOLDER)
-    return text
+    extra = (str(api_key),) if api_key else ()
+    return _central_redact(value if isinstance(value, str) else ("" if value is None else str(value)), extra)
+
+
+# B2-10: una sola carga de `.env` por proceso (PA-92). `override=False`
+# respeta el entorno real (producción) y evita releer el fichero en cada
+# llamada a `serpapi_key()` / rutas / `should_use_live_air_data`.
+_ENV_LOADED = False
+
+
+def _ensure_env_loaded() -> None:
+    global _ENV_LOADED
+    if _ENV_LOADED:
+        return
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(ROOT / ".env", override=False)
+    except Exception:
+        pass
+    _ENV_LOADED = True
 
 
 @dataclass(frozen=True)
@@ -62,18 +85,18 @@ class AirSearchRoute:
 
 
 def serpapi_key() -> str:
-    load_dotenv(ROOT / ".env", override=True)
+    _ensure_env_loaded()
     return (os.getenv("SERPAPI_API_KEY") or os.getenv("SERP_API_KEY") or "").strip()
 
 
 def should_use_live_air_data(force_live: bool = False) -> bool:
-    load_dotenv(ROOT / ".env", override=True)
+    _ensure_env_loaded()
     configured = (os.getenv("AIR_DATA_SOURCE") or "").strip().lower() in {"live", "serpapi", "real"}
     return bool(serpapi_key()) and (force_live or configured)
 
 
 def configured_air_routes() -> list[AirSearchRoute]:
-    load_dotenv(ROOT / ".env", override=True)
+    _ensure_env_loaded()
     raw = (os.getenv("AIR_DATA_ROUTES") or "").strip()
     if raw:
         routes = []
@@ -134,7 +157,7 @@ def fetch_google_flights(route: AirSearchRoute, api_key: str, force_live: bool =
         params["no_cache"] = "true"
 
     try:
-        with httpx.Client(timeout=90) as client:
+        with httpx.Client(timeout=SERPAPI_TIMEOUT_S) as client:
             response = client.get(SERPAPI_URL, params=params)
             response.raise_for_status()
             data = response.json()
@@ -160,7 +183,7 @@ def fetch_booking_options(booking_token: str, api_key: str, *, force_live: bool 
     if force_live:
         params["no_cache"] = "true"
     try:
-        with httpx.Client(timeout=90) as client:
+        with httpx.Client(timeout=SERPAPI_TIMEOUT_S) as client:
             response = client.get(SERPAPI_URL, params=params)
             response.raise_for_status()
             data = response.json()
@@ -176,10 +199,14 @@ def fetch_google_flights_with_retry(
     api_key: str,
     *,
     force_live: bool = False,
-    attempts: int = 2,
+    attempts: int = SERPAPI_MAX_ATTEMPTS,
     fetcher=None,
 ) -> tuple[dict[str, Any], int]:
-    """Bounded retry with a short exponential backoff for transient provider errors."""
+    """Reintento acotado PA-92: 2 x 90 s con backoff exponencial.
+
+    `max_attempts` coherente con capturas: como máximo 3 (techo duro) y
+    por defecto 2 para no quemar cuota en reintentos silenciosos.
+    """
     max_attempts = max(1, min(int(attempts), 3))
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
@@ -190,7 +217,7 @@ def fetch_google_flights_with_retry(
             last_error = exc
             if attempt == max_attempts:
                 break
-            time.sleep(0.2 * (2 ** (attempt - 1)))
+            time.sleep(SERPAPI_BACKOFF_BASE_S * (2 ** (attempt - 1)))
     if last_error is not None:
         # B2-01: punto único de salida; el mensaje re-lanzado ya va redactado
         # para que ningún `str(exc)` posterior (persistencia, API, logs) vea la clave.

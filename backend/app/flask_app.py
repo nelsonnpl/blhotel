@@ -73,8 +73,17 @@ from .models import (
     ScrapeSearchPayload,
     WorkspacePayload,
 )
+from .secure_logging import SecretRedactFilter, install_secret_redact_filter, redact_text as _central_redact_text
 from .serpapi_flights import AirSearchRoute, fetch_booking_options, fetch_google_flights, fetch_google_flights_with_retry, normalize_serpapi_response, redact_serpapi_key_text, serpapi_key
 from .services import MarketService
+
+# B2-09/10/11/16/17: límites sanos para endpoints síncronos largos.
+# Por encima de estos techos el cliente debe usar la cola con
+# progreso/cancelación (`POST /api/jobs/*` + `GET /api/jobs/<id>` +
+# `POST /api/jobs/<id>/cancel`). Mantiene el hilo de petición acotado y
+# evita quemar cuota SerpAPI en una respuesta HTTP sin cancelación.
+SYNC_AIR_MAX_QUERIES = 25
+SYNC_DETAIL_MAX_HOTELS = 15
 
 settings = load_settings(require_decodo=False)
 db = Database(settings.sqlite_path)
@@ -817,60 +826,27 @@ def _redact_attachment_text(value: str) -> str:
 
 
 def _redact_serpapi_key_text(value: str | None) -> str:
-    """B2-01: `api_key` de SerpAPI nunca sale del proceso.
+    """B2-01/B2-09: `api_key` de SerpAPI nunca sale del proceso.
 
-    Punto único real en `serpapi_flights.redact_serpapi_key_text`; este
-    wrapper sigue el mismo patrón que `_redact_attachment_text` y se usa en
+    Punto único real en `secure_logging.redact_text` (vía
+    `serpapi_flights.redact_serpapi_key_text`); este wrapper se usa en
     `capture_air_payload` y en el `fail_job` redactado.
     """
     return redact_serpapi_key_text(value or "")
 
 
-class _SerpApiKeyRedactFilter(logging.Filter):
-    """B2-11: redacción de `api_key=...` en logs (cubre `jobs.py:89`)."""
+class _SerpApiKeyRedactFilter(SecretRedactFilter):
+    """B2-11: compatibilidad; la redacción real vive en `secure_logging`."""
 
-    def filter(self, record: logging.LogRecord) -> bool:
-        try:
-            if isinstance(record.msg, str):
-                record.msg = _redact_serpapi_key_text(record.msg)
-            if isinstance(record.args, tuple):
-                record.args = tuple(
-                    _redact_serpapi_key_text(arg) if isinstance(arg, str) else arg
-                    for arg in record.args
-                )
-            elif isinstance(record.args, dict):
-                record.args = {
-                    key: _redact_serpapi_key_text(val) if isinstance(val, str) else val
-                    for key, val in record.args.items()
-                }
-            exc_info = getattr(record, "exc_info", None)
-            if exc_info and len(exc_info) == 3 and exc_info[1] is not None:
-                exc = exc_info[1]
-                try:
-                    redacted = _redact_serpapi_key_text(str(exc))
-                    if redacted != str(exc):
-                        if getattr(exc, "args", None):
-                            exc.args = (redacted,) + tuple(exc.args[1:])  # type: ignore[union-attr]
-                        else:
-                            exc.args = (redacted,)
-                        if hasattr(exc, "_message"):
-                            try:
-                                exc._message = redacted  # type: ignore[attr-defined]
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        return True
+    pass
 
 
 def _install_serpapi_redact_filter() -> None:
-    filt = _SerpApiKeyRedactFilter()
-    for name in ("", "backend.app.jobs", __name__):
-        target = logging.getLogger(name)
-        if not any(isinstance(item, _SerpApiKeyRedactFilter) for item in target.filters):
-            target.addFilter(filt)
+    # B2-09: logging central con redactado (sin secretos). Cubre el root,
+    # `jobs.py` y este módulo; `SecretRedactFilter` redacta `api_key=`,
+    # literales de entorno (SerpAPI/OpenRouter/Decodo/sesión/DATABASE_URL)
+    # y esquemas Basic/Bearer.
+    install_secret_redact_filter(("", "backend.app.jobs", __name__))
 
 
 _install_serpapi_redact_filter()
@@ -884,7 +860,7 @@ def _install_redacted_fail_job() -> None:
     original = current
 
     def _redacted_fail_job(self: Database, job_id: str, error: str) -> None:
-        return original(self, job_id, _redact_serpapi_key_text(error or ""))
+        return original(self, job_id, _central_redact_text(error or ""))
 
     _redacted_fail_job._b2_redacted = True  # type: ignore[attr-defined]
     Database.fail_job = _redacted_fail_job  # type: ignore[method-assign]
@@ -1144,6 +1120,12 @@ def update_workspace(workspace_id: int):
 
 @app.post("/api/scrape/search")
 def scrape_search():
+    """Captura síncrona acotada a una sola foto (límite sano B2-16).
+
+    El barrido semanal (`arrivalWeeks > 1`) es largo y cancelable solo
+    vía cola: `POST /api/jobs/hotel-capture` + polls
+    `GET /api/jobs/<id>` + `POST /api/jobs/<id>/cancel`.
+    """
     try:
         service = market_service(require_decodo=True)
     except ValueError as exc:
@@ -1151,7 +1133,7 @@ def scrape_search():
 
     payload = ScrapeSearchPayload.model_validate(request.get_json(silent=True) or {})
     if payload.arrivalWeeks != 1:
-        raise ValueError('Usa la captura en segundo plano para el barrido semanal.')
+        raise ValueError('Usa POST /api/jobs/hotel-capture para el barrido semanal (síncrono limitado a 1 foto).')
     result = asyncio.run(service.scrape_search(payload))
     clear_cache() # new snapshot written — drop stale cached reads
     return ok(result.model_dump(), 201)
@@ -1267,9 +1249,23 @@ def _run_hotel_detail_capture_job(raw_payload: dict, progress) -> dict:
 
 @app.post("/api/scrape/detail")
 def scrape_detail():
+    """Captura síncrona acotada (B2-16): como máximo 15 hoteles.
+
+    Por encima del techo, usar la cola cancelable
+    `POST /api/jobs/hotel-detail-capture` (hasta 200, por lotes
+    reanudables con `GET /api/jobs/hotel-detail-capture/<batch>`).
+    """
     payload = ScrapeDetailPayload.model_validate(request.get_json(silent=True) or {})
     if not payload.hotels:
         return error_response("Selecciona al menos un hotel para el detalle.", 400)
+    if len(payload.hotels) > SYNC_DETAIL_MAX_HOTELS:
+        return error_response(
+            f"La captura síncrona admite hasta {SYNC_DETAIL_MAX_HOTELS} hoteles; "
+            "usa POST /api/jobs/hotel-detail-capture para lotes mayores.",
+            413,
+            syncMaxHotels=SYNC_DETAIL_MAX_HOTELS,
+            hotelsRequested=len(payload.hotels),
+        )
 
     if payload.snapshotId is not None:
         photo = db.photo_detail(payload.snapshotId)
@@ -2433,23 +2429,41 @@ def capture_air_payload(payload: AirCapturePayload, progress=lambda _value, _mes
     errors = []
     completed_queries = 0
     cache_hits = 0
-    for index, (definition, route) in enumerate(requested, start=1):
-        progress(round((index - 1) / len(requested) * 85), f"Consultando {route.origin} → {route.destination} · {route.outbound_date}")
+    try:
+        for index, (definition, route) in enumerate(requested, start=1):
+            # B2-17: cancelación cooperativa. En cola, `progress` lanza
+            # `JobCancelled` si `cancel_requested`; en síncrono es no-op.
+            progress(round((index - 1) / len(requested) * 85), f"Consultando {route.origin} → {route.destination} · {route.outbound_date}")
+            try:
+                raw_payload, _attempts_used = fetch_google_flights_with_retry(
+                    route, api_key, force_live=payload.forceLive, fetcher=fetch_google_flights
+                )
+                raw_rows = normalize_serpapi_response(raw_payload, route)
+                completed_queries += 1
+                if bool((raw_payload.get("search_metadata") or {}).get("cached")):
+                    cache_hits += 1
+            except JobCancelled:
+                raise
+            except Exception as exc:
+                errors.append({"routeKey": route.route_key, "outboundDate": route.outbound_date, "message": _redact_serpapi_key_text(str(exc))[:500]})
+                continue
+            flights = [normalize_flight(row) for row in raw_rows]
+            flights = [flight for flight in flights if bool(flight["is_direct"]) == payload.direct]
+            if flights:
+                prepared_routes.append((definition, aggregate_air_data(flights)[0], flights))
+    except JobCancelled:
+        # La cola marca el job como `cancelled`; la foto aérea no debe
+        # quedar en `running` para los polls del cliente.
         try:
-            raw_payload, _attempts_used = fetch_google_flights_with_retry(
-                route, api_key, force_live=payload.forceLive, fetcher=fetch_google_flights
-            )
-            raw_rows = normalize_serpapi_response(raw_payload, route)
-            completed_queries += 1
-            if bool((raw_payload.get("search_metadata") or {}).get("cached")):
-                cache_hits += 1
-        except Exception as exc:
-            errors.append({"routeKey": route.route_key, "outboundDate": route.outbound_date, "message": _redact_serpapi_key_text(str(exc))[:500]})
-            continue
-        flights = [normalize_flight(row) for row in raw_rows]
-        flights = [flight for flight in flights if bool(flight["is_direct"]) == payload.direct]
-        if flights:
-            prepared_routes.append((definition, aggregate_air_data(flights)[0], flights))
+            with db.lock:
+                db.conn.execute(
+                    "UPDATE air_runs SET queries_completed=?, queries_failed=?, cache_hits=?, status=? WHERE id=?",
+                    (completed_queries, len(errors), cache_hits, "cancelled", run["id"]),
+                )
+                db.conn.commit()
+        except Exception:
+            pass
+        raise
 
     route_snapshots = []
     captured_flights = 0
@@ -2485,7 +2499,36 @@ def capture_air_payload(payload: AirCapturePayload, progress=lambda _value, _mes
 
 @app.post("/api/air-data/capture")
 def air_data_capture():
+    """Captura síncrona acotada (B2-16): hasta SYNC_AIR_MAX_QUERIES consultas.
+
+    Cada consulta SerpAPI puede tardar hasta 90 s x 2 intentos (PA-92);
+    por encima del techo el cliente debe usar la cola cancelable
+    `POST /api/jobs/air-capture` (progreso + `POST /api/jobs/<id>/cancel`)
+    previo `POST /api/air-data/capture/estimate`.
+    """
     payload = AirCapturePayload.model_validate(request.get_json(silent=True) or {})
+    from .air_catalog import routes_for_capture
+
+    try:
+        _selected = routes_for_capture(
+            payload.areaIds, payload.countryIds, payload.routeKeys,
+            payload.outboundDate.isoformat(), None,
+        )
+        _dates = _air_capture_dates(payload)
+        _queries = len(_selected) * len(_dates)
+        if payload.tripType == "round_trip" and payload.returnDate and len(_dates) == 1:
+            _queries *= 2
+    except Exception:
+        _queries = 0
+    if _queries > SYNC_AIR_MAX_QUERIES:
+        return error_response(
+            f"La captura síncrona admite hasta {SYNC_AIR_MAX_QUERIES} consultas "
+            f"(solicitadas {_queries}); usa POST /api/jobs/air-capture con "
+            "progreso y cancelación.",
+            413,
+            syncMaxQueries=SYNC_AIR_MAX_QUERIES,
+            queriesRequested=_queries,
+        )
     return ok(capture_air_payload(payload), 201)
 
 
@@ -3097,13 +3140,19 @@ def _public_job(job: dict | None) -> dict | None:
 
 @app.post("/api/jobs/air-capture")
 def enqueue_air_capture_job():
+    """Cola cancelable para capturas largas (B2-17, `max_attempts` coherente).
+
+    `max_attempts=1` como el resto de capturas: sin reintentos silenciosos
+    que quemen cuota SerpAPI; el reintento por consulta ya vive en
+    `fetch_google_flights_with_retry` (PA-92: 2 x 90 s con backoff).
+    """
     raw_payload = request.get_json(silent=True) or {}
     payload = AirCapturePayload.model_validate(raw_payload)
     worker = active_job_worker()
     worker.start()
     queued_payload = payload.model_dump(mode="json") | {"ownerKey": current_owner_key()}
     queued_payload["singleDate"] = not bool({"dailyDays", "weeklyUntilDays"} & set(raw_payload))
-    job = worker.enqueue("air_capture", queued_payload)
+    job = worker.enqueue("air_capture", queued_payload, max_attempts=1)
     return ok({"job": _public_job(job)}, 202)
 
 

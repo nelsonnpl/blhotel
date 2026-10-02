@@ -142,8 +142,25 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw not in {"false", "0", "no", "off"}
 
 
+# B2-10: una sola lectura de `.env` por proceso. `load_settings` se llama
+# por petición (`market_service`); con `override=False` y este guardián el
+# fichero solo se lee una vez y el entorno real siempre prevalece.
+_CONFIG_ENV_LOADED = False
+
+
+def _ensure_dotenv_once() -> None:
+    global _CONFIG_ENV_LOADED
+    if _CONFIG_ENV_LOADED:
+        return
+    try:
+        load_dotenv(ROOT / ".env", override=False)
+    except Exception:
+        pass
+    _CONFIG_ENV_LOADED = True
+
+
 def load_settings(require_decodo: bool = False) -> AppSettings:
-    load_dotenv(ROOT / ".env", override=False)
+    _ensure_dotenv_once()
 
     # Motor de extracción por defecto: GraphQL interno de Booking (ver
     # backend/app/booking_graphql/), más estable y con mucha más señal que
