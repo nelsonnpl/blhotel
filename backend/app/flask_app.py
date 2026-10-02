@@ -1744,7 +1744,7 @@ def enqueue_hotel_review_capture():
     if not tasks:
         return error_response("No hay fuentes con URL pública para los hoteles seleccionados.", 400, skipped=skipped)
     worker = active_job_worker()
-    worker.start()
+    # B2-07/08: arranque bajo demanda por cola dentro de `enqueue()`.
     payload = {"tasks": tasks, "maxReviews": max_reviews, "maxJevDecisions": max_jev_decisions,
                "estimatedDecisionCostUsd": unit_cost, "budgetUsd": budget,
                "ownerKey": current_owner_key()}
@@ -1769,7 +1769,7 @@ def enqueue_hotel_review_analysis(hotel_key: str):
     if not sources or any(source not in {"google", "booking"} for source in sources):
         return error_response("Las fuentes de análisis deben ser Google o Booking.", 400)
     worker = active_job_worker()
-    worker.start()
+    # B2-07/08: arranque bajo demanda por cola dentro de `enqueue()`.
     job = worker.enqueue("hotel_review_analysis", {
         "hotelKey": hotel_key, "sources": sources, "budgetUsd": budget_usd,
         "ownerKey": current_owner_key(),
@@ -3045,12 +3045,18 @@ def _run_hotel_review_analysis_job(payload: dict, progress) -> dict:
 
 
 def register_job_handlers(worker: BackgroundJobWorker) -> None:
-    worker.register("air_capture", _run_air_capture_job)
-    worker.register("hotel_capture", _run_hotel_capture_job)
-    worker.register("hotel_detail_capture", _run_hotel_detail_capture_job)
-    worker.register("hotel_review_capture", _run_hotel_review_capture_job)
-    worker.register("hotel_review_analysis", _run_hotel_review_analysis_job)
-    worker.register("assistant_analysis", _run_assistant_analysis_job)
+    """B2-07/08 (D3 = SI separar): dos colas aisladas.
+
+    Rapida (Copilot/assistant) y larga (capturas hotel/aerea/detalle/
+    resenas/Jev). Cada cola tiene su hilo y su `claim_next_job` disjunto:
+    un Jev de 30 min en la larga nunca bloquea el chat Copilot.
+    """
+    worker.register("air_capture", _run_air_capture_job, queue=BackgroundJobWorker.LONG_QUEUE)
+    worker.register("hotel_capture", _run_hotel_capture_job, queue=BackgroundJobWorker.LONG_QUEUE)
+    worker.register("hotel_detail_capture", _run_hotel_detail_capture_job, queue=BackgroundJobWorker.LONG_QUEUE)
+    worker.register("hotel_review_capture", _run_hotel_review_capture_job, queue=BackgroundJobWorker.LONG_QUEUE)
+    worker.register("hotel_review_analysis", _run_hotel_review_analysis_job, queue=BackgroundJobWorker.LONG_QUEUE)
+    worker.register("assistant_analysis", _run_assistant_analysis_job, queue=BackgroundJobWorker.FAST_QUEUE)
 
 
 def _run_assistant_analysis_job(payload: dict, progress) -> dict:
@@ -3119,6 +3125,8 @@ def active_job_worker() -> BackgroundJobWorker:
 
     Keeping this indirection also makes the app testable with an isolated
     SQLite database, while production keeps one long-lived worker.
+    B2-07/08: el arranque es bajo demanda por cola dentro de
+    `BackgroundJobWorker.enqueue()`; aqui no se arranca nada.
     """
     global job_worker
     if job_worker.db is not db:
@@ -3149,7 +3157,7 @@ def enqueue_air_capture_job():
     raw_payload = request.get_json(silent=True) or {}
     payload = AirCapturePayload.model_validate(raw_payload)
     worker = active_job_worker()
-    worker.start()
+    # B2-07/08: arranque bajo demanda por cola dentro de `enqueue()`.
     queued_payload = payload.model_dump(mode="json") | {"ownerKey": current_owner_key()}
     queued_payload["singleDate"] = not bool({"dailyDays", "weeklyUntilDays"} & set(raw_payload))
     job = worker.enqueue("air_capture", queued_payload, max_attempts=1)
@@ -3163,7 +3171,7 @@ def enqueue_hotel_capture_job():
     if payload.arrivalWeeks > 1 and payload.profile is None:
         raise ValueError('El barrido semanal requiere una fecha de entrada explícita.')
     worker = active_job_worker()
-    worker.start()
+    # B2-07/08: arranque bajo demanda por cola dentro de `enqueue()`.
     job = worker.enqueue("hotel_capture", payload.model_dump(mode="json") | {"ownerKey": current_owner_key()}, max_attempts=1)
     return ok({"job": _public_job(job)}, 202)
 
@@ -3202,7 +3210,7 @@ def enqueue_hotel_detail_capture_job():
     raw_payload = payload.model_dump(mode="json") | {"batchId": batch_id, "ownerKey": current_owner_key()}
     task_count = db.create_hotel_detail_tasks(batch_id, raw_payload, hotels)
     worker = active_job_worker()
-    worker.start()
+    # B2-07/08: arranque bajo demanda por cola dentro de `enqueue()`.
     job = worker.enqueue("hotel_detail_capture", raw_payload, max_attempts=1)
     return ok({"job": _public_job(job), "batchId": batch_id, "tasks": task_count}, 202)
 
@@ -3265,7 +3273,7 @@ def enqueue_assistant_analysis_job():
     if active_job is not None:
         return ok({"job": _public_job(active_job), "session": session_data, "reused": True}, 202)
     worker = active_job_worker()
-    worker.start()
+    # B2-07/08: arranque bajo demanda por cola dentro de `enqueue()` (rapida).
     queued = payload.model_dump(mode="json") | {"ownerKey": owner_key}
     # Idempotencia con propietario: el mismo requestId de otro owner nunca
     # reutiliza el trabajo ajeno.
