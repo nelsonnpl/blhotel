@@ -1966,6 +1966,37 @@ class Database:
     def create_assistant_run(self, session_id: int, telemetry: dict, assistant_message_id: int | None = None) -> dict:
         now = datetime.now(timezone.utc).isoformat()
         usage = telemetry.get("usage") if isinstance(telemetry.get("usage"), dict) else None
+        # I1-06/I1-07: el coste imputado suma todas las rondas (telemetry["usage"]
+        # ya viene sumado con `_sum_usage`). Acepta todas las formas de coste
+        # de OpenRouter sin asumir una sola clave.
+        cost_value: float = 0.0
+        candidates: list[object] = [
+            telemetry.get("costUsd"),
+            (usage or {}).get("costUsd") if isinstance(usage, dict) else None,
+            telemetry.get("cost"),
+            (usage or {}).get("cost") if isinstance(usage, dict) else None,
+            telemetry.get("total_cost"),
+            (usage or {}).get("total_cost") if isinstance(usage, dict) else None,
+            telemetry.get("totalCost"),
+            (usage or {}).get("totalCost") if isinstance(usage, dict) else None,
+        ]
+        for candidate in candidates:
+            try:
+                parsed = float(candidate) if candidate is not None else None
+            except (TypeError, ValueError):
+                parsed = None
+            if parsed is not None and math.isfinite(parsed) and parsed > 0:
+                cost_value = max(0.0, parsed)
+                break
+        else:
+            # Fallback: prompt_cost + completion_cost cuando no hay total.
+            try:
+                prompt_c = float(((usage or {}).get("prompt_cost") or (usage or {}).get("promptCost") or 0) or 0)
+                completion_c = float(((usage or {}).get("completion_cost") or (usage or {}).get("completionCost") or 0) or 0)
+                if math.isfinite(prompt_c) and math.isfinite(completion_c) and (prompt_c + completion_c) > 0:
+                    cost_value = max(0.0, prompt_c + completion_c)
+            except (TypeError, ValueError):
+                cost_value = 0.0
         with self.lock:
             cursor = self.conn.execute(
                 """
@@ -1987,7 +2018,7 @@ class Database:
                     telemetry.get("toolCalls", 0),
                     telemetry.get("contextChars"),
                     json.dumps(usage, ensure_ascii=False) if usage else None,
-                    float(telemetry.get("costUsd") or (usage or {}).get("cost") or 0),
+                    float(cost_value),
                     now,
                 ),
             )
@@ -1995,13 +2026,29 @@ class Database:
         return {"id": cursor.lastrowid, "sessionId": session_id, "requestId": telemetry.get("requestId")}
 
     def assistant_month_spend(self, owner_key: str, month_prefix: str) -> float:
+        # I1-06: todo gasto de proveedor queda imputado al mes, incluido el
+        # análisis de reseñas (`hotel_review_analyses.cost_usd`, sin owner
+        # porque la evidencia es global del hotel). El exceso descartado se
+        # registra además en `assistant_runs` (ver flask_app) para que no se
+        # pierda aunque no se guarde el análisis.
         row = self.conn.execute(
             """SELECT COALESCE(SUM(ar.cost_usd), 0) AS total
                FROM assistant_runs ar JOIN assistant_sessions s ON s.id = ar.session_id
                WHERE s.owner_key = ? AND ar.created_at LIKE ?""",
             (owner_key, f"{month_prefix}%"),
         ).fetchone()
-        return float(row["total"] or 0) if row else 0.0
+        chat_total = float(row["total"] or 0) if row else 0.0
+        try:
+            review_row = self.conn.execute(
+                """SELECT COALESCE(SUM(cost_usd), 0) AS total
+                   FROM hotel_review_analyses
+                   WHERE created_at LIKE ? AND cost_usd IS NOT NULL""",
+                (f"{month_prefix}%",),
+            ).fetchone()
+            review_total = float(review_row["total"] or 0) if review_row else 0.0
+        except Exception:
+            review_total = 0.0
+        return chat_total + review_total
 
     def reserve_assistant_budget(
         self,
@@ -2056,13 +2103,23 @@ class Database:
                    WHERE s.owner_key = ? AND ar.created_at LIKE ?""",
                 (owner_key, f"{month_prefix}%"),
             ).fetchone()
+            try:
+                review_spent_row = self.conn.execute(
+                    """SELECT COALESCE(SUM(cost_usd), 0) AS total
+                       FROM hotel_review_analyses
+                       WHERE created_at LIKE ? AND cost_usd IS NOT NULL""",
+                    (f"{month_prefix}%",),
+                ).fetchone()
+                review_spent = float((review_spent_row or {"total": 0})["total"] or 0)
+            except Exception:
+                review_spent = 0.0
             reserved_row = self.conn.execute(
                 """SELECT COALESCE(SUM(reserved_usd), 0) AS total
                    FROM assistant_budget_reservations
                    WHERE owner_key = ? AND month_prefix = ? AND status = 'reserved'""",
                 (owner_key, month_prefix),
             ).fetchone()
-            committed = float((spent_row or {"total": 0})["total"] or 0) + float((reserved_row or {"total": 0})["total"] or 0)
+            committed = float((spent_row or {"total": 0})["total"] or 0) + review_spent + float((reserved_row or {"total": 0})["total"] or 0)
             if committed + amount > float(monthly_budget_usd):
                 return None
             if existing is not None:
@@ -2185,15 +2242,86 @@ class Database:
         }
 
     def purge_assistant_runs(self, retention_days: int) -> int:
-        """Elimina telemetría vencida; no toca sesiones ni mensajes de Copilot."""
+        """Elimina telemetría vencida; no toca sesiones ni mensajes de Copilot.
+
+        I1-08: conserva siempre el mes en curso para no borrar el libro de
+        gasto (`assistant_month_spend` suma `assistant_runs.cost_usd`).
+        """
         safe_days = max(1, int(retention_days))
         cutoff = datetime.fromtimestamp(
             datetime.now(timezone.utc).timestamp() - safe_days * 86400, timezone.utc
         ).isoformat()
+        month_prefix = datetime.now(timezone.utc).strftime("%Y-%m")
         with self.lock:
-            cursor = self.conn.execute("DELETE FROM assistant_runs WHERE created_at < ?", (cutoff,))
+            cursor = self.conn.execute(
+                "DELETE FROM assistant_runs WHERE created_at < ? AND created_at NOT LIKE ?",
+                (cutoff, f"{month_prefix}%"),
+            )
             self.conn.commit()
         return int(cursor.rowcount)
+
+    def release_stale_assistant_budgets(self, stale_after_seconds: int = 3600) -> int:
+        """Libera reservas `reserved` sin liquidar (I1-08/B2-06).
+
+        Reutiliza el patrón de `recover_stale_jobs` (corte por `updated_at`):
+        una reserva colgada no debe bloquear el techo mensual para siempre.
+        Las filas liberadas pasan a `expired` para conservar la auditoría;
+        solo `reserved` cuenta en `assistant_budget_state`.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max(60, int(stale_after_seconds)))).isoformat()
+        now = _now()
+        with self.lock:
+            cursor = self.conn.execute(
+                """UPDATE assistant_budget_reservations
+                   SET status = 'expired', updated_at = ?
+                   WHERE status = 'reserved' AND updated_at < ?""",
+                (now, cutoff),
+            )
+            self.conn.commit()
+        return int(cursor.rowcount)
+
+    def record_review_cost_overrun(
+        self,
+        owner_key: str,
+        cost_usd: float | None,
+        *,
+        model: str | None = None,
+        usage: dict | None = None,
+        request_id: str | None = None,
+        hotel_key: str | None = None,
+    ) -> dict | None:
+        """Imputa el exceso de coste de reseñas aunque se descarte el análisis (I1-09).
+
+        El proveedor ya cobró: se registra en `assistant_runs` para que
+        `assistant_month_spend`/`assistant_budget_state` lo reflejen aunque
+        no se guarde `hotel_review_analyses`.
+        """
+        try:
+            amount = float(cost_usd) if cost_usd is not None else None
+        except (TypeError, ValueError):
+            amount = None
+        if amount is None or not math.isfinite(amount) or amount <= 0:
+            return None
+        owner = (str(owner_key or "local-revenue")).strip()[:80] or "local-revenue"
+        row = self.conn.execute(
+            "SELECT id FROM assistant_sessions WHERE owner_key = ? ORDER BY updated_at DESC LIMIT 1",
+            (owner,),
+        ).fetchone()
+        if row is not None:
+            session_id = int(row["id"])
+        else:
+            session_id = int(self.create_assistant_session("Análisis de reseñas", owner_key=owner)["id"])
+        telemetry: dict = {
+            "requestId": request_id or f"review-overrun-{uuid.uuid4().hex[:12]}",
+            "model": model,
+            "mode": "quick",
+            "outcome": "budget_exceeded",
+            "usage": dict(usage) if isinstance(usage, dict) else {"cost": float(amount)},
+            "cost": float(amount),
+        }
+        if hotel_key:
+            telemetry["hotelKey"] = hotel_key
+        return self.create_assistant_run(session_id, telemetry)
 
     def _ensure_column(self, table: str, column: str, column_type: str) -> None:
         with self.lock:
@@ -4855,6 +4983,8 @@ class Database:
 
         Se comprueba al arrancar y periódicamente. Los trabajos que ya
         consumieron sus intentos no se repiten para evitar capturas duplicadas.
+        I1-08: además libera reservas de presupuesto `reserved` >1 h (reaper)
+        reutilizando el mismo patrón de corte por `updated_at`.
         """
         cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max(60, int(stale_after_seconds)))).isoformat()
         now = _now()
@@ -4900,6 +5030,14 @@ class Database:
                                WHERE id=? AND status IN ('queued','running')""",
                             (now, task["runId"]),
                         )
+            # Reaper de reservas de presupuesto: mismo patrón de corte, techo 1 h.
+            budget_cutoff = (datetime.now(timezone.utc) - timedelta(seconds=3600)).isoformat()
+            self.conn.execute(
+                """UPDATE assistant_budget_reservations
+                   SET status = 'expired', updated_at = ?
+                   WHERE status = 'reserved' AND updated_at < ?""",
+                (now, budget_cutoff),
+            )
             self.conn.commit()
         return {"requeued": int(retry), "failed": int(failed)}
 

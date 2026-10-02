@@ -719,12 +719,28 @@ def assistant_budget():
 
 
 def _assistant_usage_cost(telemetry: dict[str, Any]) -> float:
-    """Read the provider cost field without assuming one OpenRouter shape."""
+    """Read the provider cost field without assuming one OpenRouter shape.
+
+    I1-06/I1-07: `telemetry["usage"]` ya suma todas las rondas (ver
+    `assistant._sum_usage`). Acepta `cost/costUsd/total_cost/totalCost` y el
+    desglose `prompt_cost+completion_cost` para no liquidar 0.
+    """
     usage = telemetry.get("usage") if isinstance(telemetry.get("usage"), dict) else {}
-    for key in ("costUsd", "cost", "total_cost"):
+    for key in ("costUsd", "cost", "total_cost", "totalCost"):
         value = telemetry.get(key) if key in telemetry else usage.get(key)
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return max(0.0, float(value))
+        try:
+            parsed = float(value) if value is not None else None
+        except (TypeError, ValueError):
+            parsed = None
+        if parsed is not None and parsed == parsed and parsed > 0:
+            return max(0.0, parsed)
+    try:
+        prompt_c = float(usage.get("prompt_cost") or usage.get("promptCost") or telemetry.get("prompt_cost") or 0 or 0)
+        completion_c = float(usage.get("completion_cost") or usage.get("completionCost") or telemetry.get("completion_cost") or 0 or 0)
+        if prompt_c + completion_c > 0:
+            return max(0.0, prompt_c + completion_c)
+    except (TypeError, ValueError):
+        pass
     return 0.0
 
 
@@ -2740,6 +2756,19 @@ def _run_hotel_review_analysis_job(payload: dict, progress) -> dict:
     except (TypeError, ValueError):
         actual_cost = None
     if actual_cost is not None and actual_cost > budget_usd + 1e-8:
+        # I1-09: el proveedor ya cobró; imputar antes del `raise` para que el
+        # exceso quede visible en presupuesto (`assistant_runs.cost_usd`).
+        try:
+            db.record_review_cost_overrun(
+                str(payload.get("ownerKey") or DEFAULT_OWNER_KEY),
+                float(actual_cost),
+                model=model,
+                usage=usage if isinstance(usage, dict) else None,
+                request_id=f"review-{hotel_key}-{input_hash[:12]}",
+                hotel_key=hotel_key,
+            )
+        except Exception:  # noqa: BLE001 - el registro nunca oculta el exceso
+            logger.warning("review overrun cost not recorded", exc_info=True)
         raise RuntimeError("El coste reportado por OpenRouter superó el límite configurado; no se guardó el análisis.")
     content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)

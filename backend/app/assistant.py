@@ -1292,6 +1292,10 @@ def ask_openrouter(
                 # Reasoning models may spend part of that budget on internal
                 # thinking before returning their visible answer.
                 "max_tokens": policy["max_tokens"],
+                # I1-06: pedir coste al proveedor (mismo patrón que reseñas en
+                # flask_app.py). Sin `usage.include`, modelos sin `cost`
+                # imputan 0 en `assistant_runs.cost_usd`.
+                "usage": {"include": True},
                 "provider": {
                     "require_parameters": True,
                     "data_collection": settings.data_collection,
@@ -1317,7 +1321,38 @@ def ask_openrouter(
 
             usage = data.get("usage")
             if isinstance(usage, dict):
-                telemetry["usage"] = usage
+                # I1-07: el coste imputado suma TODAS las rondas. Reutiliza
+                # `_sum_usage` de `copilot_moa.py` (suma contadores sin asumir
+                # forma del proveedor). Importación diferida para evitar ciclo
+                # assistant <-> copilot_moa en tiempo de carga.
+                try:
+                    from .copilot_moa import _sum_usage as _sum_moa_usage  # type: ignore[import-not-found]
+                except Exception:  # noqa: BLE001 - fallback local si el panel no está disponible
+                    _sum_moa_usage = None  # type: ignore[assignment]
+                if _sum_moa_usage is not None:
+                    previous = telemetry.get("usage")
+                    parts: list[dict[str, Any]] = []
+                    if isinstance(previous, dict):
+                        parts.append({"usage": previous})
+                    parts.append({"usage": usage})
+                    summed = _sum_moa_usage(parts)
+                    telemetry["usage"] = summed if isinstance(summed, dict) else usage
+                else:
+                    previous = telemetry.get("usage")
+                    if isinstance(previous, dict):
+                        merged: dict[str, Any] = dict(previous)
+                        for key, value in usage.items():
+                            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                                prev_val = merged.get(key)
+                                if isinstance(prev_val, (int, float)) and not isinstance(prev_val, bool):
+                                    merged[key] = prev_val + value
+                                else:
+                                    merged[key] = value
+                            elif key not in merged:
+                                merged[key] = value
+                        telemetry["usage"] = merged
+                    else:
+                        telemetry["usage"] = usage
 
             choices = data.get("choices") or []
             if not choices:
