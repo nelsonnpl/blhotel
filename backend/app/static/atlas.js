@@ -20,7 +20,7 @@ function signPct(x, dec = 1) {
   if (x === null || x === undefined || Number.isNaN(Number(x))) return '—';
   const v = Number(x);
   const s = v > 0 ? '+' : v < 0 ? '−' : '';
-  return `${s}${nEs(Math.abs(v), dec)}%`;
+  return `${s}${nEs(Math.abs(v), dec)}\u202F%`; // W1-09: fino U+202F antes de % (igual que pctTxt y _pct_es)
 }
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function normalizeText(value) { return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
@@ -923,7 +923,9 @@ function pageHead(title, subtitle, actionsHTML, stampHTML) {
 function fmtStamp(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
-  return d.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  // W1-05: huso fijo Atlantic/Canary para que el mismo instante pinte la misma hora en todas las vistas,
+  // con independencia del huso del cliente (península vs Canarias), incluido el borde DST del 25-10.
+  return d.toLocaleString('es-ES', { timeZone: 'Atlantic/Canary', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 function boardTag(board) {
   return `<span class="tag">${esc(board || '—')}</span>`;
@@ -1695,7 +1697,7 @@ function persistHotelQuery() {
 function pctTxt(value, decimals = 0) {
   if (value == null || !Number.isFinite(Number(value))) return '—';
   const v = Number(value);
-  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${nEs(Math.abs(v), decimals)}${NBSP}%`;
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${nEs(Math.abs(v), decimals)}\u202F%`; // W1-09: fino U+202F (antes NBSP)
 }
 
 function hotelSheetHotel(key) {
@@ -5746,8 +5748,17 @@ function askCopilot(text) {
 }
 
 /* captura del mercado activo con los parámetros de la última foto */
-function localIsoDate(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+/* W1-06: «hoy» de negocio en Atlantic/Canary (determinista para todos los clientes y estable
+   en el borde DST del 25-10), coherente con biDate/biDaysBetween que comparan fechas de día
+   como medianoche UTC. Con Date explícito se preservan sus componentes locales: el único
+   llamador construye una medianoche local a partir de una fecha de calendario y la conversión
+   a otro huso la desplazaría un día (p. ej. 00:00 Madrid = 23:00 del día anterior en Canarias). */
+function localIsoDate(date) {
+  if (date === undefined) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Atlantic/Canary', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  }
+  const d = date instanceof Date ? date : new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 function shortIsoDate(iso) {
   const [y, m, d] = String(iso || '').split('-');

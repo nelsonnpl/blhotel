@@ -5490,10 +5490,10 @@ def _empty_dashboard() -> dict:
 
 
 def _pct_es(value: float | None) -> str:
-    """Porcentaje para el texto de una señal: una cifra decimal con coma («131,9 %»)."""
+    """Porcentaje para el texto de una señal: una cifra decimal con coma y fino U+202F antes de %."""
     if value is None:
         return "—"
-    return f"{abs(value):.1f}".replace(".", ",") + " %"
+    return f"{abs(value):.1f}".replace(".", ",") + "\u202f%"
 
 
 def _build_insights(
@@ -5516,7 +5516,10 @@ def _build_insights(
     insights: list[RevenueInsight] = []
 
     # --- Raise your rates ---
-    if ppn_change is not None and ppn_change >= 5:
+    # W1-07: una causa = una señal. Si ya se avisa de la subida con raise-rates,
+    # market-movement no se duplica para el mismo ppn_change.
+    raised = ppn_change is not None and ppn_change >= 5
+    if raised:
         insights.append(RevenueInsight(
             id="raise-rates", type="raise_rate", severity="critical" if ppn_change >= 12 else "warning",
             title="Revisar subida competitiva",
@@ -5532,7 +5535,7 @@ def _build_insights(
             message=f"{drops} competidores bajaron precio a la vez. El ADR del set cayó un {_pct_es(ppn_change)}.",
             changePct=ppn_change,
         ))
-    elif ppn_change is not None and abs(ppn_change) >= 5:
+    elif ppn_change is not None and abs(ppn_change) >= 5 and not raised:
         insights.append(RevenueInsight(
             id="market-movement", type="market_movement",
             severity="critical" if abs(ppn_change) >= 12 else "warning",
@@ -5551,13 +5554,17 @@ def _build_insights(
         ))
 
     # --- Price leader ---
+    # W1-08: la base es la media aritmética del set (gapVsMarketPct); se cita la mediana
+    # (gapVsMedianPct) para que no se confunda con la columna «vs mediana» de la hoja.
     if competitive:
         leader = competitive[0]
         if leader.get("gapVsMarketPct") is not None and leader["gapVsMarketPct"] >= 15:
+            leader_med = leader.get("gapVsMedianPct")
+            leader_med_txt = "." if leader_med is None else f" (mediana: +{_pct_es(leader_med)})."
             insights.append(RevenueInsight(
                 id="price-leader", type="price_leader", severity="info",
                 title="Líder de precio identificado",
-                message=f"{leader['hotelName']} está un {_pct_es(leader['gapVsMarketPct'])} por encima de la media del set.",
+                message=f"{leader['hotelName']} está un {_pct_es(leader['gapVsMarketPct'])} por encima de la media aritmética del set{leader_med_txt}",
                 hotelName=leader["hotelName"], value=leader["pricePerNight"],
                 benchmark=_round(avg_ppn), changePct=leader["gapVsMarketPct"],
             ))
@@ -5575,10 +5582,13 @@ def _build_insights(
         # --- Aggressive pricing ---
         aggressive = next((h for h in competitive if h.get("gapVsMarketPct") is not None and h["gapVsMarketPct"] <= -15), None)
         if aggressive:
+            med = aggressive.get("gapVsMedianPct")
+            med_sign = "+" if med is not None and med >= 0 else "\u2212"
+            med_txt = "." if med is None else f" (mediana: {med_sign}{_pct_es(med)})."
             insights.append(RevenueInsight(
                 id="aggressive-pricing", type="aggressive_pricing", severity="warning",
                 title="Precio agresivo en el mercado",
-                message=f"{aggressive['hotelName']} está un {_pct_es(aggressive['gapVsMarketPct'])} por debajo de la media del set.",
+                message=f"{aggressive['hotelName']} está un {_pct_es(aggressive['gapVsMarketPct'])} por debajo de la media aritmética del set{med_txt}",
                 hotelName=aggressive["hotelName"], value=aggressive["pricePerNight"],
                 benchmark=_round(avg_ppn), changePct=aggressive["gapVsMarketPct"],
             ))
