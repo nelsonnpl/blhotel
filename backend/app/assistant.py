@@ -841,16 +841,18 @@ def _safe(producer, default=None):
 
 
 def _find_hotel_rows(db: Database, nombre: str, target_id: int | None = None) -> list[tuple[str, Any]]:
-    """Busca `nombre` (substring, case-insensitive) entre los hoteles de la última
-    captura de CADA zona — a diferencia del CONTEXTO, no se limita a la zona activa
-    ni al top-8, así el modelo puede resolver hoteles que no vio en el resumen."""
+    """Busca `nombre` (substring, case-insensitive) solo dentro del mercado activo.
+
+    Sin `target_id` no se barre ningún mercado: el llamador debe exigir que el
+    usuario seleccione mercado antes de consultar herramientas de hoteles."""
     needle = (nombre or "").strip().lower()
     if not needle:
         return []
+    if target_id is None:
+        return []
     matches: list[tuple[str, Any]] = []
     targets = _safe(lambda: db.list_targets(), default=[])
-    if target_id is not None:
-        targets = [target for target in targets if target.id == target_id]
+    targets = [target for target in targets if target.id == target_id]
     for target in targets:
         snapshot = _safe(lambda t=target: db.latest_snapshot(t.id))
         if not snapshot:
@@ -866,6 +868,8 @@ def _tool_buscar_hotel(db: Database, arguments: dict) -> dict:
     nombre = str(arguments.get("nombre") or "")
     requested_target = arguments.get("targetId")
     target_id = int(requested_target) if isinstance(requested_target, (int, float)) else None
+    if target_id is None:
+        return {"error": "Selecciona un mercado antes de buscar hoteles."}
     matches = _find_hotel_rows(db, nombre, target_id=target_id)
     if not matches:
         return {"encontrados": 0, "mensaje": f"No se encontró ningún hotel que contenga '{nombre}'."}
@@ -899,6 +903,8 @@ def _tool_historial_precio_hotel(db: Database, arguments: dict) -> dict:
     limit = max(1, min(60, int(capturas))) if isinstance(capturas, (int, float)) else 24
     requested_target = arguments.get("targetId")
     target_id = int(requested_target) if isinstance(requested_target, (int, float)) else None
+    if target_id is None:
+        return {"error": "Selecciona un mercado antes de consultar el historial."}
     matches = _find_hotel_rows(db, nombre, target_id=target_id)
     zone = str(arguments.get("zona") or "").strip().casefold()
     if zone:
@@ -969,7 +975,7 @@ def _tool_buscar_vuelos(air_data: dict | None, arguments: dict) -> dict:
 
 def _tool_listar_competidores(db: Database, target_id: int | None, arguments: dict) -> dict:
     if target_id is None:
-        return {"error": "No hay zona de hotel activa seleccionada."}
+        return {"error": "Selecciona un mercado antes de listar competidores."}
     snapshot = _safe(lambda: db.latest_snapshot(target_id))
     if not snapshot:
         return {"error": "No hay capturas para la zona activa."}
@@ -1009,7 +1015,7 @@ def _tool_listar_competidores(db: Database, target_id: int | None, arguments: di
 
 def _tool_analizar_asociacion_tiempo_tarifa(db: Database, target_id: int | None, arguments: dict) -> dict:
     if target_id is None:
-        return {"error": "No hay zona de hotel activa seleccionada."}
+        return {"error": "Selecciona un mercado antes de analizar la asociación tiempo-tarifa."}
     capturas = arguments.get("capturas")
     limit = max(2, min(60, int(capturas))) if isinstance(capturas, (int, float)) else 12
     return db.weather_price_association(target_id, limit_snapshots=limit)
@@ -1052,8 +1058,16 @@ def _run_tool(
 ) -> dict:
     if db is None:
         return {"error": "Herramientas no disponibles en este contexto."}
-    # Never let the model widen the market scope. The active target is an
-    # authorization boundary, not a conversational hint.
+    # El mercado activo es una frontera de autorización, no una pista
+    # conversacional. Sin mercado no se barre ningún otro: se exige elegirlo.
+    # Nunca se deja que el modelo amplíe el alcance con su propio targetId.
+    if target_id is None and name in {
+        "buscar_hotel",
+        "historial_precio_hotel",
+        "listar_competidores",
+        "analizar_asociacion_tiempo_tarifa",
+    }:
+        return {"error": "Selecciona un mercado antes de consultar herramientas de hoteles."}
     if target_id is not None:
         arguments = {**arguments, "targetId": target_id}
     started = time.monotonic()

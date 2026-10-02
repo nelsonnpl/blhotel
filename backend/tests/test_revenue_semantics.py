@@ -176,7 +176,7 @@ def test_ai_history_retains_evidence_dimensions(market):
     from backend.app.assistant import _tool_historial_precio_hotel
     db, target = market
     photo = capture(market, [hotel('example')], '2026-09-01T10:00:00+00:00')
-    result = _tool_historial_precio_hotel(db, {'nombre': 'example'})
+    result = _tool_historial_precio_hotel(db, {'nombre': 'example', 'targetId': target.id})
     assert result['targetId'] == target.id
     entry = result['capturas'][0]
     assert entry['snapshotId'] == photo.id
@@ -185,8 +185,9 @@ def test_ai_history_retains_evidence_dimensions(market):
 
 def test_ai_does_not_pick_first_ambiguous_hotel(market):
     from backend.app.assistant import _tool_historial_precio_hotel
+    db, target = market
     capture(market, [hotel('example one'), hotel('example two')], '2026-09-01T10:00:00+00:00')
-    result = _tool_historial_precio_hotel(market[0], {'nombre': 'example'})
+    result = _tool_historial_precio_hotel(market[0], {'nombre': 'example', 'targetId': target.id})
     assert result['requiereAclaracion']
     assert len(result['candidatos']) == 2
     assert 'capturas' not in result
@@ -196,7 +197,7 @@ def test_ai_history_is_compact_but_keeps_comparison_dimensions(market):
     from backend.app.assistant import _tool_historial_precio_hotel
     db, target = market
     capture(market, [hotel('example')], '2026-09-01T10:00:00+00:00')
-    result = _tool_historial_precio_hotel(db, {'nombre': 'example'})
+    result = _tool_historial_precio_hotel(db, {'nombre': 'example', 'targetId': target.id})
     entry = result['capturas'][0]
     assert set(entry) == {'snapshotId', 'fechaObservacion', 'entrada', 'salida', 'noches', 'adultos', 'habitacion', 'regimen', 'moneda', 'cancelacionGratis', 'tarifaNoche'}
     assert entry['snapshotId'] is not None and entry['moneda'] == 'EUR'

@@ -94,6 +94,38 @@ _assistant_rate_lock = Lock()
 _assistant_rate_windows: dict[str, deque[float]] = defaultdict(deque)
 
 
+def _consume_assistant_rate_slot(client_key: str) -> int | None:
+    """Consume un hueco del límite de Copilot o devuelve retry_after.
+
+    Contrato compartido entre HTTP y worker: la misma ventana y el mismo
+    límite `copilot_requests_per_minute`. Devuelve None si se consume el
+    hueco, o los segundos de espera si la ráfaga supera el techo.
+    """
+    now = time.monotonic()
+    limit = settings.copilot_requests_per_minute
+    with _assistant_rate_lock:
+        window = _assistant_rate_windows[client_key]
+        while window and now - window[0] >= _ASSISTANT_RATE_WINDOW_SECONDS:
+            window.popleft()
+        if len(window) >= limit:
+            return max(1, int(_ASSISTANT_RATE_WINDOW_SECONDS - (now - window[0])) + 1)
+        window.append(now)
+    return None
+
+
+def _assistant_market_error(owner_key: str, target_id: int) -> tuple[str, int] | None:
+    """Valida el mismo contrato de mercado que el HTTP directo.
+
+    Devuelve (mensaje, estado) si el mercado no existe o el propietario no
+    tiene concesión, o None si el acceso es válido.
+    """
+    if db.get_target(target_id) is None:
+        return ("Mercado no encontrado", 404)
+    if hasattr(db, "can_access_target") and not db.can_access_target(owner_key, target_id):
+        return ("No tienes acceso a este mercado", 403)
+    return None
+
+
 # B1-01: gzip en memoria para estáticos versionados (PKG-00: a partir de
 # aquí ningún cambio FE necesita subir `v=` a mano). La compresión genérica
 # de `apply_security_headers` excluye `send_file` (streamed), así que se sirve
@@ -230,26 +262,19 @@ def require_authenticated_session():
 @app.before_request
 def enforce_assistant_rate_limit():
     """Protege las llamadas de modelo frente a ráfagas sin registrar su contenido."""
-    if request.method != "POST" or request.path != "/api/assistant/chat":
+    if request.method != "POST" or request.path not in {"/api/assistant/chat", "/api/assistant/jobs"}:
         return None
-    now = time.monotonic()
     client_key = request.remote_addr or "local"
-    limit = settings.copilot_requests_per_minute
-    with _assistant_rate_lock:
-        window = _assistant_rate_windows[client_key]
-        while window and now - window[0] >= _ASSISTANT_RATE_WINDOW_SECONDS:
-            window.popleft()
-        if len(window) >= limit:
-            retry_after = max(1, int(_ASSISTANT_RATE_WINDOW_SECONDS - (now - window[0])) + 1)
-            response, status = error_response(
-                "Demasiadas consultas a Copilot. Espera un momento antes de reintentar.",
-                429,
-                retryAfterSeconds=retry_after,
-            )
-            response.headers["Retry-After"] = str(retry_after)
-            logger.warning("assistant outcome=rate_limited client=%s retry_after=%s", client_key, retry_after)
-            return response, status
-        window.append(now)
+    retry_after = _consume_assistant_rate_slot(client_key)
+    if retry_after is not None:
+        response, status = error_response(
+            "Demasiadas consultas a Copilot. Espera un momento antes de reintentar.",
+            429,
+            retryAfterSeconds=retry_after,
+        )
+        response.headers["Retry-After"] = str(retry_after)
+        logger.warning("assistant outcome=rate_limited client=%s retry_after=%s", client_key, retry_after)
+        return response, status
     return None
 
 
@@ -2786,12 +2811,39 @@ def register_job_handlers(worker: BackgroundJobWorker) -> None:
 def _run_assistant_analysis_job(payload: dict, progress) -> dict:
     """Run the existing Copilot contract inside the persistent worker.
 
-    Calling the endpoint in an isolated request context keeps one source of
-    truth for permissions, evidence gates and response rendering while the
-    HTTP request only queues the work.
+    Aplica el mismo contrato que el HTTP directo: valida propietario y
+    mercado con `can_access_target` y respeta el rate-limit antes de tocar
+    el proveedor. `test_request_context` no ejecuta `before_request`, así
+    que los guardas se aplican aquí de forma explícita.
     """
     progress(5, "Preparando contexto autorizado")
     owner_key = str(payload.get("ownerKey") or DEFAULT_OWNER_KEY)
+    # Rate-limit compartido con el HTTP directo (misma ventana y techo).
+    # Clave por propietario: el worker no tiene remote_addr.
+    retry_after = _consume_assistant_rate_slot(f"job:{owner_key}")
+    if retry_after is not None:
+        raise AssistantError(
+            "Demasiadas consultas a Copilot. Espera un momento antes de reintentar."
+        )
+    # Mercado efectivo: payload directo o sesión del propietario.
+    target_id = payload.get("targetId")
+    session_id = payload.get("sessionId")
+    if target_id is None and session_id is not None:
+        try:
+            session_data = db.get_assistant_session(int(session_id), owner_key)
+        except (TypeError, ValueError):
+            session_data = None
+        if session_data is None:
+            raise AssistantError("Sesión de Copilot no encontrada")
+        target_id = session_data.get("targetId")
+    if target_id is not None:
+        try:
+            effective_target = int(target_id)
+        except (TypeError, ValueError):
+            raise AssistantError("Mercado no encontrado")
+        market_error = _assistant_market_error(owner_key, effective_target)
+        if market_error is not None:
+            raise AssistantError(market_error[0])
     request_payload = {key: value for key, value in payload.items() if key != "ownerKey"}
     with app.test_request_context("/api/assistant/chat", method="POST", json=request_payload):
         session["ownerKey"] = owner_key
@@ -2941,8 +2993,10 @@ def enqueue_assistant_analysis_job():
     if payload.sessionId and session_data is None:
         return error_response("Sesión de Copilot no encontrada", 404)
     target_id = payload.targetId if payload.targetId is not None else (session_data or {}).get("targetId")
-    if target_id is not None and db.get_target(target_id) is None:
-        return error_response("Mercado no encontrado", 404)
+    if target_id is not None:
+        market_error = _assistant_market_error(owner_key, target_id)
+        if market_error is not None:
+            return error_response(market_error[0], market_error[1])
     if session_data is None:
         session_data = db.create_assistant_session(
             payload.message[:80], target_id=target_id, mode=payload.mode, owner_key=owner_key,
@@ -2954,7 +3008,10 @@ def enqueue_assistant_analysis_job():
     worker = active_job_worker()
     worker.start()
     queued = payload.model_dump(mode="json") | {"ownerKey": owner_key}
-    job = worker.enqueue("assistant_analysis", queued, max_attempts=1, idempotency_key=payload.requestId)
+    # Idempotencia con propietario: el mismo requestId de otro owner nunca
+    # reutiliza el trabajo ajeno.
+    idempotency_key = f"{owner_key}:{payload.requestId}" if payload.requestId else None
+    job = worker.enqueue("assistant_analysis", queued, max_attempts=1, idempotency_key=idempotency_key)
     return ok({"job": _public_job(job), "session": session_data}, 202)
 
 

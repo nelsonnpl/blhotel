@@ -2029,11 +2029,27 @@ class Database:
             ).fetchone()
             if existing:
                 item = dict(existing)
-                return {
-                    "requestId": item["request_id"], "status": item["status"],
-                    "reservedUsd": float(item["reserved_usd"] or 0),
-                    "actualCostUsd": float(item["actual_cost_usd"] or 0),
-                }
+                if item["status"] == "reserved":
+                    # Reutilización idempotente solo para el mismo propietario
+                    # y mes; nunca cruzar propietarios.
+                    if item["owner_key"] == owner_key and item["month_prefix"] == month_prefix:
+                        return {
+                            "requestId": item["request_id"], "status": item["status"],
+                            "reservedUsd": float(item["reserved_usd"] or 0),
+                            "actualCostUsd": float(item["actual_cost_usd"] or 0),
+                        }
+                    # Propietario o mes distinto con el mismo requestId y estado
+                    # reservado: se rechaza para evitar filtrar gasto ajeno
+                    # (request_id es PK global).
+                    return None
+                # Estado liquidado (settled u otro): nunca se reutiliza como
+                # reserva. Si es de otro propietario, tampoco se reutiliza ni
+                # se sobrescribe: se rechaza para no cruzar gasto.
+                if item["owner_key"] != owner_key:
+                    return None
+                # Mismo propietario liquidado: se cae al chequeo de techo y se
+                # crea una reserva nueva sobre la misma fila (UPDATE), sin
+                # devolver el estado viejo como autorización de gasto.
             spent_row = self.conn.execute(
                 """SELECT COALESCE(SUM(ar.cost_usd), 0) AS total
                    FROM assistant_runs ar JOIN assistant_sessions s ON s.id = ar.session_id
@@ -2049,12 +2065,24 @@ class Database:
             committed = float((spent_row or {"total": 0})["total"] or 0) + float((reserved_row or {"total": 0})["total"] or 0)
             if committed + amount > float(monthly_budget_usd):
                 return None
-            self.conn.execute(
-                """INSERT INTO assistant_budget_reservations
-                   (request_id, owner_key, month_prefix, reserved_usd, status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, 'reserved', ?, ?)""",
-                (request_id, owner_key, month_prefix, amount, now, now),
-            )
+            if existing is not None:
+                # Reenvío de un requestId liquidado: crear una reserva nueva
+                # sobre la misma fila en vez de reutilizar el settled como
+                # autorización. El gasto anterior ya quedó en assistant_runs.
+                self.conn.execute(
+                    """UPDATE assistant_budget_reservations
+                       SET owner_key = ?, month_prefix = ?, reserved_usd = ?,
+                           status = 'reserved', actual_cost_usd = NULL, updated_at = ?
+                       WHERE request_id = ?""",
+                    (owner_key, month_prefix, amount, now, request_id),
+                )
+            else:
+                self.conn.execute(
+                    """INSERT INTO assistant_budget_reservations
+                       (request_id, owner_key, month_prefix, reserved_usd, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, 'reserved', ?, ?)""",
+                    (request_id, owner_key, month_prefix, amount, now, now),
+                )
             self.conn.commit()
         return {"requestId": request_id, "status": "reserved", "reservedUsd": amount, "actualCostUsd": None}
 
@@ -4718,25 +4746,68 @@ class Database:
         max_attempts: int = 3,
         idempotency_key: str | None = None,
     ) -> dict:
+        # Idempotencia con propietario también en inserción directa: si el
+        # payload trae ownerKey y la clave aún no está compuesta, se compone
+        # como "owner:requestId" para que otro propietario nunca colisione.
+        effective_key = idempotency_key
+        if isinstance(effective_key, str) and effective_key:
+            owner = (payload or {}).get("ownerKey")
+            if isinstance(owner, str) and owner and not effective_key.startswith(f"{owner}:"):
+                effective_key = f"{owner}:{effective_key}"
         now = _now()
         with self.lock:
+            if isinstance(effective_key, str) and effective_key:
+                existing_row = self.conn.execute(
+                    "SELECT * FROM background_jobs WHERE kind = ? AND idempotency_key = ?",
+                    (kind, effective_key),
+                ).fetchone()
+                if existing_row:
+                    self.conn.commit()
+                    return self.get_job(dict(existing_row)["id"])  # type: ignore[return-value]
             self.conn.execute(
                 """
                 INSERT INTO background_jobs (
                   id, kind, status, payload, progress, message, attempts, max_attempts, idempotency_key, created_at, updated_at
                 ) VALUES (?, ?, 'queued', ?, 0, 'En cola', 0, ?, ?, ?, ?)
                 """,
-                (job_id, kind, json.dumps(payload), max_attempts, idempotency_key, now, now),
+                (job_id, kind, json.dumps(payload), max_attempts, effective_key, now, now),
             )
             self.conn.commit()
         return self.get_job(job_id)  # type: ignore[return-value]
 
-    def get_job_by_idempotency(self, kind: str, idempotency_key: str) -> dict | None:
+    def get_job_by_idempotency(
+        self, kind: str, idempotency_key: str, owner_key: str | None = None
+    ) -> dict | None:
+        # Idempotencia con propietario: la misma requestId de otro owner
+        # nunca devuelve el trabajo ajeno. Las claves nuevas ya viajan como
+        # "owner:requestId" (compuestas en flask_app/enqueue_job), así que el
+        # match exacto basta; el filtro por payload cubre claves legadas.
+        if owner_key is None:
+            row = self.conn.execute(
+                "SELECT * FROM background_jobs WHERE kind = ? AND idempotency_key = ?",
+                (kind, idempotency_key),
+            ).fetchone()
+            return _deserialize_job(dict(row)) if row else None
+        composite = idempotency_key
+        prefix = f"{owner_key}:"
+        if not composite.startswith(prefix):
+            composite = f"{prefix}{idempotency_key}"
+        row = self.conn.execute(
+            "SELECT * FROM background_jobs WHERE kind = ? AND idempotency_key = ?",
+            (kind, composite),
+        ).fetchone()
+        if row:
+            return _deserialize_job(dict(row))
         row = self.conn.execute(
             "SELECT * FROM background_jobs WHERE kind = ? AND idempotency_key = ?",
             (kind, idempotency_key),
         ).fetchone()
-        return _deserialize_job(dict(row)) if row else None
+        if not row:
+            return None
+        job = _deserialize_job(dict(row))
+        if (job.get("payload") or {}).get("ownerKey") != owner_key:
+            return None
+        return job
 
     def active_assistant_job(self, session_id: int, owner_key: str) -> dict | None:
         """Return the queued/running Copilot job for a session, if any."""
