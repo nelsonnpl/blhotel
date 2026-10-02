@@ -6570,6 +6570,107 @@ document.addEventListener('keydown', (e) => {
 });
 /* <<< pulido-d1:tablists-deslizantes-iconos */
 
+/* >>> pulido-u2:contraste-calendario-graficos (PKG-19 U2-06/07/15 D2-08/09 G1-08/09)
+   Reserva FE U2: calendario BI teclado completo (completa PA-43) + 7 role=img con alternativa.
+   No toca líneas 12–80 ni marcadores previos. PA-43 cubre ←/→/Inicio/Fin en #biCalGrid;
+   aquí se añade ↑/↓ (misma fila lineal), Intro/Espacio (role=button) y grupo accesible.
+   Gráficos: mejora progresiva que añade <details class="chart-alt"> tabular tras cada
+   svg[role="img"] y hace focables los puntos con <title> (sin tocar el SVG base). */
+function atlasU2CalFocusFresh(d) {
+  const fresh = document.querySelector(`#biCalGrid [data-d="${d}"][role="button"]`);
+  if (fresh) fresh.focus({ preventScroll: false });
+  return fresh;
+}
+document.addEventListener('keydown', (e) => {
+  if (!(e.target instanceof Element)) return;
+  const cal = e.target.closest && e.target.closest('#biCalGrid [data-d][role="button"]');
+  if (!cal) return;
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    const btns = [...document.querySelectorAll('#biCalGrid [data-d][role="button"]')];
+    const idx = btns.indexOf(cal);
+    if (idx < 0) return;
+    e.preventDefault();
+    const next = btns[(idx + (e.key === 'ArrowDown' ? 1 : -1) + btns.length) % btns.length];
+    if (!next) return;
+    const d = next.dataset.d;
+    next.click();
+    atlasU2CalFocusFresh(d);
+    if (typeof atlasScheduleSync === 'function') atlasScheduleSync();
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    cal.click();
+    const d = cal.dataset.d;
+    atlasU2CalFocusFresh(d);
+    if (typeof atlasScheduleSync === 'function') atlasScheduleSync();
+  }
+});
+function atlasU2ChartTable(svg) {
+  const label = svg.getAttribute('aria-label') || svg.querySelector('title')?.textContent?.trim() || 'Gráfico';
+  const circles = [...svg.querySelectorAll('circle')];
+  const rows = circles.map((c) => {
+    const t = c.querySelector('title')?.textContent?.trim() || c.getAttribute('aria-label') || '';
+    return t;
+  }).filter(Boolean);
+  const texts = [...svg.querySelectorAll('text')].map((t) => (t.textContent || '').trim()).filter(Boolean).slice(0, 12);
+  let body = '';
+  if (rows.length) {
+    body = rows.map((r, i) => `<tr><th scope="row">${i + 1}</th><td>${esc(r)}</td></tr>`).join('');
+    return `<details class="chart-alt"><summary>Ver datos en tabla (${rows.length})</summary>`
+      + `<table><caption>${esc(`Datos de: ${label}`)}</caption>`
+      + `<thead><tr><th scope="col">#</th><th scope="col">Punto</th></tr></thead><tbody>${body}</tbody></table></details>`;
+  }
+  if (texts.length) {
+    body = texts.map((t, i) => `<tr><th scope="row">${i + 1}</th><td class="num">${esc(t)}</td></tr>`).join('');
+    return `<details class="chart-alt"><summary>Ver datos en tabla</summary>`
+      + `<table><caption>${esc(`Datos de: ${label}`)}</caption>`
+      + `<thead><tr><th scope="col">#</th><th scope="col" class="num">Valor</th></tr></thead><tbody>${body}</tbody></table></details>`;
+  }
+  return `<details class="chart-alt"><summary>Ver descripción en texto</summary>`
+    + `<table><caption>${esc(`Descripción de: ${label}`)}</caption>`
+    + `<tbody><tr><th scope="row">Descripción</th><td>${esc(label)}</td></tr></tbody></table></details>`;
+}
+function atlasU2ChartAlts(root) {
+  const scope = root || document;
+  $$('svg[role="img"]', scope).forEach((svg) => {
+    if (svg.nextElementSibling && svg.nextElementSibling.classList?.contains('chart-alt')) return;
+    if (svg.closest('.chart-alt')) return;
+    svg.querySelectorAll('circle').forEach((c) => {
+      const t = c.querySelector('title')?.textContent?.trim();
+      if (t && !c.getAttribute('aria-label')) c.setAttribute('aria-label', t);
+      if (!c.hasAttribute('tabindex')) c.setAttribute('tabindex', '0');
+    });
+    const wrap = document.createElement('div');
+    wrap.innerHTML = atlasU2ChartTable(svg);
+    const details = wrap.firstElementChild;
+    if (details) svg.after(details);
+  });
+  const grid = scope.querySelector ? scope.querySelector('#biCalGrid') : null;
+  const grids = scope.querySelectorAll ? [...scope.querySelectorAll('#biCalGrid')] : (grid ? [grid] : []);
+  grids.forEach((g) => {
+    if (!g.hasAttribute('role')) g.setAttribute('role', 'group');
+    if (!g.getAttribute('aria-label')) g.setAttribute('aria-label', 'Calendario de extracciones: flechas para mover, Intro para seleccionar');
+  });
+}
+if (typeof MutationObserver !== 'undefined' && !window.__atlasU2Observer) {
+  window.__atlasU2Observer = new MutationObserver((mut) => {
+    let need = false;
+    for (const m of mut) {
+      if (m.addedNodes && m.addedNodes.length) { need = true; break; }
+    }
+    if (need) {
+      try { atlasU2ChartAlts(document); } catch (_) { /* progresivo */ }
+    }
+  });
+  if (document.documentElement) window.__atlasU2Observer.observe(document.documentElement, { childList: true, subtree: true });
+}
+if (typeof window !== 'undefined' && !window.__atlasU2PrintHook) {
+  window.__atlasU2PrintHook = true;
+  window.addEventListener('beforeprint', () => {
+    document.querySelectorAll('details.chart-alt').forEach((d) => { d.open = true; });
+  });
+}
+/* <<< pulido-u2:contraste-calendario-graficos */
+
 /* -------------------------------------------------------------------- boot */
 async function boot() {
   applyPreferences();

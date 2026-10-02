@@ -2565,3 +2565,77 @@ details[open] > *:not(summary) { animation: atFade var(--dur-fast) var(--ease) b
 @media (prefers-reduced-motion: reduce) {
   .tab-indicator, .seg__bg { transition: none !important; }
 }
+/* ============================================================================
+   PKG-19 U2-06/07/15 + D2-08/09 + G1-08/09: contraste, forced-colors, contraste y print
+   Reserva FE U2. No toca líneas 12–80 (sobrescribe por cascada posterior).
+   Contraste medido texto normal ≥4,5:1, conserva azul Atlas (tinte B>R, --ac/--hi intactos):
+   - claro --faint #636976 (antes #737a8c: 4,29→5,51 sobre #fff; 5,10 sobre #f5f6f9)
+   - claro --fainter #676d7f (antes #a4a9b8: 2,35→5,16 sobre #fff; 4,77 sobre #f5f6f9)
+   - oscuro --faint #8a91a2 (sin cambio: 5,62 sobre #16181e; 6,03 sobre #0e1014; ya ≥4,5)
+   - oscuro --fainter #878d9d (antes #646a7a: 3,28→5,35 sobre #16181e; 5,74 sobre #0e1014; 4,53 sobre #1c2544)
+   Azul Atlas intacto: claro #2f55d4 / oscuro #6583f0 sin cambios (decisión D2).
+   ============================================================================ */
+:root {
+  --faint: #636976;
+  --fainter: #676d7f;
+}
+html[data-theme="oscuro"] {
+  --faint: #8a91a2;
+  --fainter: #878d9d;
+}
+/* alternativa tabular a gráficos role=img (U2-15/G1-08): details denso, sin tarjetas */
+.chart-alt { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+.chart-alt > summary { display: inline-block; cursor: pointer; color: var(--ac); font-size: 12px; font-weight: 500; border-radius: 4px; }
+.chart-alt > summary:hover { text-decoration: underline; }
+.chart-alt > summary:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
+.chart-alt table { width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 12px; background: var(--card); }
+.chart-alt caption { padding: 0 0 4px; font-family: 'Space Mono', monospace; font-size: 10px; color: var(--faint); text-align: left; }
+.chart-alt th, .chart-alt td { padding: 4px 8px; border-top: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
+.chart-alt thead th { border-top: 0; font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); font-weight: 400; }
+.chart-alt td.num, .chart-alt th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* calendario BI: foco teclado siempre visible (complementa PA-43) */
+.bi-cal__med:focus-visible, .bi-cal__grid [data-d][role="button"]:focus-visible { outline: 2px solid var(--ac); outline-offset: 1px; }
+svg circle[tabindex="0"]:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
+/* prefers-contrast: más (D2-09/G1-09): bordes y foco reforzados, sin cambiar paleta */
+@media (prefers-contrast: more) {
+  :root { --border: #c4c8d3; --border-soft: #aeb3c0; --line: #c9cdd6; --line-soft: #d3d6dd; }
+  html[data-theme="oscuro"] { --border: #3d4453; --border-soft: #4a5263; --line: #3a4150; --line-soft: #333947; }
+  a { text-decoration: underline; }
+  :focus-visible { outline-width: 3px; }
+  .card, .kpi, .dash-card, .bi-card, .table-card { border-width: 2px; }
+  .btn, .tool-btn, .icon-btn, .seg button { border-width: 2px; }
+  .bi-cal__focus { border-width: 2px; }
+  .bi-cell.is-empty { box-shadow: inset 0 0 0 2px var(--line); }
+}
+/* forced-colors (D2-08/G1-08): sin pérdida, todo a colores de sistema */
+@media (forced-colors: active) {
+  .card, .kpi, .dash-card, .bi-card, .table-card, .dialog, .palette, .market-menu, .dash-pop, .side-panel { border: 1px solid CanvasText; }
+  .btn, .tool-btn, .icon-btn, .icon-x, .seg button, .search-btn, .market-switch__btn { border: 1px solid ButtonText; forced-color-adjust: auto; }
+  .btn--primary { background: Highlight; color: HighlightText; border-color: Highlight; forced-color-adjust: auto; }
+  a, .link-button, .chart-alt > summary { color: LinkText; }
+  :focus-visible, .bi-cal__med:focus-visible, svg circle[tabindex="0"]:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; }
+  svg text { fill: CanvasText; }
+  svg polyline, svg path, svg line, svg circle { forced-color-adjust: auto; }
+  .bi-cell, .bi-cal__med i, .bi-mini, .dash-meter i, .meter > i, .bar__fill, .dash-curve__track i { forced-color-adjust: auto; border: 1px solid CanvasText; }
+  .bi-cell.is-empty { box-shadow: inset 0 0 0 1px CanvasText; }
+  .bi-cell.is-empty::after { color: CanvasText; }
+  .bi-cal__focus { border: 2px solid Highlight; box-shadow: none; }
+  .map-pin__dot, .dash-swarm__dot, .bi-dot, .bi-pin, .fl-dot { border: 2px solid CanvasText; forced-color-adjust: auto; }
+  .toast, .dash-pop__tip, .dash-swarm__tip { background: Canvas; color: CanvasText; border: 1px solid CanvasText; }
+  .chart-alt table, .chart-alt th, .chart-alt td { border-color: CanvasText; }
+  .ticker-mask::before, .ticker-mask::after { display: none; }
+  .sk { background: Canvas; border: 1px solid CanvasText; animation: none; }
+}
+/* print (U2-07): tablas y alternativas impresas, sin interactivos ni mapa */
+@media print {
+  .sidebar, .topbar__actions, .search-btn, .ticker-mask, .toasts, .overlay, .palette, .dialog, .side-panel, .map-frame__canvas, .dash-pop-layer, .dash-pop, .bi-zones, .fl-plan, .rep-selbar { display: none !important; }
+  .atlas-root, .main, .page, body, html { display: block; background: #fff !important; color: #000 !important; }
+  .page { padding: 0; animation: none; }
+  .card, .kpi, .dash-card, .bi-card, .table-card, .dash-signals { break-inside: avoid; border: 1px solid #000 !important; box-shadow: none !important; background: #fff !important; color: #000 !important; }
+  a, .link-button, .chart-alt > summary { color: #000 !important; text-decoration: underline; }
+  .chart-alt { display: block !important; }
+  .chart-alt > summary { display: none; }
+  .chart-alt table { background: #fff !important; }
+  svg { max-height: 220px; }
+  .bi-cal__body, .bi-cal__rows, .table-scroll { overflow: visible !important; max-height: none !important; }
+}
