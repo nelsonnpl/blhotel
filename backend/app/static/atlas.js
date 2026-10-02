@@ -3473,9 +3473,52 @@ function setAirSort(key) {
   void paintAirOperations().then(() => $(`[data-air-sort="${key}"]`)?.focus());
 }
 
+/* >>> polls-ciclo-vida (PKG-25B W2-11/12/13 · ciclo unificado: tope, visibilitychange, sin huérfanos).
+   Tope uniforme ATLAS_POLL_MAX_TRIES para los 4 polls de jobs; pestaña oculta
+   pausa (intervalo ×4) y reengancha al volver; ningún poll escribe en DOM
+   desmontado ni en otra vista/mercado. No toca líneas 12–80 ni otros marcadores. */
+const ATLAS_POLL_MAX_TRIES = 2880; // tope uniforme (≈2 h a 2,5 s; el resto reutiliza el mismo tope)
+const ATLAS_POLL_HIDDEN_FACTOR = 4; // pestaña oculta pide ≤1/4 y reengancha al volver
+const __atlasPollKicks = new Map();
+function atlasPollDelay(baseMs) {
+  try { return document.hidden ? baseMs * ATLAS_POLL_HIDDEN_FACTOR : baseMs; } catch (_) { return baseMs; }
+}
+function atlasPollRegister(key, kick) {
+  try { __atlasPollKicks.set(key, kick); } catch (_) { /* el registro nunca rompe el poll */ }
+}
+function atlasPollUnregister(key) {
+  try {
+    const kick = __atlasPollKicks.get(key);
+    if (kick && kick.__timer) clearTimeout(kick.__timer);
+    __atlasPollKicks.delete(key);
+  } catch (_) { /* noop */ }
+}
+function atlasPollCanWrite({ view = null, targetId = null, el = null } = {}) {
+  try {
+    if (view && State.view !== view) return false;
+    if (targetId != null && State.targetId !== targetId) return false;
+    if (el && !el.isConnected) return false;
+    return true;
+  } catch (_) { return false; }
+}
+if (typeof document !== 'undefined' && typeof window !== 'undefined' && !window.__atlasPollVisibilityWired) {
+  window.__atlasPollVisibilityWired = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    __atlasPollKicks.forEach((kick) => {
+      try { kick(); } catch (_) { /* un reenganche nunca rompe a otro poll */ }
+    });
+  });
+}
+/* <<< polls-ciclo-vida */
+
 /* ---- captura aérea (desplegable de la cabecera) */
 async function estimateAirCapture() {
   const st = State.flight;
+  if (!st) return;
+  try { if (st.estimateAbort) st.estimateAbort.abort(); } catch (_) { /* cancelar nunca rompe el nuevo cálculo */ }
+  const ctrl = new AbortController();
+  st.estimateAbort = ctrl;
   const requestId = (st.estimateRequest = (st.estimateRequest || 0) + 1);
   st.estimate = null;
   repaintFlightPlan();
@@ -3483,13 +3526,22 @@ async function estimateAirCapture() {
     const estimate = await api('/api/air-data/capture/estimate', {
       method: 'POST',
       body: JSON.stringify({ areaIds: ['gran-canaria'], routeKeys: [], countryIds: [], direct: true, outboundDate: st.firstDate, dailyDays: 14, weeklyUntilDays: 90, maxQueries: Number(st.budget) || 0 }),
+      signal: ctrl.signal,
     });
-    if (requestId !== st.estimateRequest) return;
+    if (requestId !== st.estimateRequest || ctrl.signal.aborted) return;
+    if (!st.planOpen) return;
     st.estimate = estimate;
   } catch (error) {
     if (requestId !== st.estimateRequest) return;
+    if (ctrl.signal.aborted) return;
+    if (typeof __apiIsAbort === 'function' && __apiIsAbort(error)) return;
+    if (error && error.name === 'AbortError') return;
+    if (!st.planOpen) return;
     st.estimate = { error: error.message };
+  } finally {
+    if (st.estimateAbort === ctrl) st.estimateAbort = null;
   }
+  if (requestId !== st.estimateRequest) return;
   repaintFlightPlan();
 }
 
@@ -4257,25 +4309,53 @@ async function launchHotelReviewCapture(hotelKeys, scope) {
   } catch (error) { toast(friendlyErrorMessage(error), 'warn'); }
 }
 
-async function pollHotelReviewJob(jobId) {
+async function pollHotelReviewJob(jobId, tries = 0) {
   if (!jobId || State.reputation.activeJobId !== jobId) return;
+  const key = `review:${jobId}`;
+  if (tries >= ATLAS_POLL_MAX_TRIES) {
+    atlasPollUnregister(key);
+    if (State.reputation.activeJobId === jobId) {
+      State.reputation.activeJobId = null;
+      toast('Seguimiento detenido: el trabajo de reseñas puede continuar en segundo plano.', 'warn');
+    }
+    return;
+  }
+  try {
+    if (document.hidden) {
+      const timer = setTimeout(() => void pollHotelReviewJob(jobId, tries), atlasPollDelay(1800));
+      const kick = () => { clearTimeout(timer); atlasPollUnregister(key); if (State.reputation.activeJobId === jobId) void pollHotelReviewJob(jobId, tries); };
+      kick.__timer = timer;
+      atlasPollRegister(key, kick);
+      return;
+    }
+  } catch (_) { /* sin document sigue el poll normal */ }
+  atlasPollUnregister(key);
   try {
     const result = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+    if (State.reputation.activeJobId !== jobId) return;
     State.reputation.job = result.job;
-    if (State.view === 'reputation') {
+    if (atlasPollCanWrite({ view: 'reputation' })) {
       const old = $('.review-job');
-      if (old) old.outerHTML = reviewJobPanelHTML();
+      if (old && old.isConnected) old.outerHTML = reviewJobPanelHTML();
     }
     if (['queued', 'running'].includes(result.job.status)) {
-      setTimeout(() => void pollHotelReviewJob(jobId), 1800);
+      const timer = setTimeout(() => void pollHotelReviewJob(jobId, tries + 1), atlasPollDelay(1800));
+      const kick = () => { clearTimeout(timer); atlasPollUnregister(key); if (State.reputation.activeJobId === jobId) void pollHotelReviewJob(jobId, tries + 1); };
+      kick.__timer = timer;
+      atlasPollRegister(key, kick);
     } else {
+      atlasPollUnregister(key);
       State.reputation.activeJobId = null;
       if (State.view === 'reputation') void renderHotelReputation();
       if (result.job.status === 'completed') toast('Trabajo de reseñas completado. Revisa los estados parciales y la cobertura de cada fuente.', 'ok');
       else toast(result.job.error || 'El trabajo de reseñas terminó con incidencias.', 'warn');
     }
   } catch (_) {
-    if (State.reputation.activeJobId === jobId) setTimeout(() => void pollHotelReviewJob(jobId), 3000);
+    if (State.reputation.activeJobId !== jobId) return;
+    const timer = setTimeout(() => void pollHotelReviewJob(jobId, tries + 1), atlasPollDelay(3000));
+    const kick = () => { clearTimeout(timer); atlasPollUnregister(key); if (State.reputation.activeJobId === jobId) void pollHotelReviewJob(jobId, tries + 1); };
+    kick.__timer = timer;
+    atlasPollRegister(key, kick);
   }
 }
 
@@ -5046,32 +5126,62 @@ function applyAssistantResponse(response, pend, requestTargetId = State.targetId
 async function pollAssistantJob(jobId, pend, requestSessionId = State.activeSession, requestTargetId = State.targetId) {
   if (!jobId) throw new Error('No se pudo crear el trabajo de Copilot');
   let tries = 0;
+  let fails = 0;
+  const key = `assistant:${jobId}`;
   return new Promise((resolve) => {
+    const cleanup = () => { atlasPollUnregister(key); delete State.copilotActiveJobs[requestSessionId || 'new']; };
+    const finishSend = () => { delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; };
     const tick = async () => {
+      atlasPollUnregister(key);
+      if (!pend.isConnected) { cleanup(); finishSend(); resolve(); return; }
+      try {
+        if (document.hidden) {
+          const timer = setTimeout(tick, atlasPollDelay(900));
+          const kick = () => { clearTimeout(timer); atlasPollUnregister(key); void tick(); };
+          kick.__timer = timer;
+          atlasPollRegister(key, kick);
+          return;
+        }
+      } catch (_) { /* sin document sigue el poll normal */ }
+      if (tries >= ATLAS_POLL_MAX_TRIES) {
+        if (pend.isConnected) pend.querySelector('.msg-bot__body').innerHTML = '<p class="t-err">Seguimiento detenido; el trabajo puede continuar en segundo plano.</p>';
+        cleanup(); finishSend(); resolve(); return;
+      }
       tries++;
       try {
         const r = await api(`/api/assistant/jobs/${encodeURIComponent(jobId)}`);
         const job = r.job || {};
-        if (!pend.isConnected) { delete State.copilotActiveJobs[requestSessionId || 'new']; delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return; }
+        fails = 0;
+        if (!pend.isConnected) { cleanup(); finishSend(); resolve(); return; }
         const body = pend.querySelector('.msg-bot__body');
+        if (!body || !body.isConnected) { cleanup(); finishSend(); resolve(); return; }
         if (job.status === 'succeeded') {
           applyAssistantResponse({ ...(job.result || {}), _requestSessionId: requestSessionId }, requestSessionId === State.activeSession ? pend : null, requestTargetId);
-          delete State.copilotActiveJobs[requestSessionId || 'new']; delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return;
+          cleanup(); finishSend(); resolve(); return;
         }
         if (job.status === 'cancelled') {
-          body.innerHTML = '<p class="assistant-job-cancelled">Trabajo cancelado.</p>';
-          delete State.copilotActiveJobs[requestSessionId || 'new']; delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return;
+          if (atlasPollCanWrite({ targetId: requestTargetId, el: pend })) body.innerHTML = '<p class="assistant-job-cancelled">Trabajo cancelado.</p>';
+          cleanup(); finishSend(); resolve(); return;
         }
         if (job.status === 'failed') {
-          body.innerHTML = `<p class="t-err">No se pudo completar el análisis: ${esc(job.error || 'error del trabajo')}</p>`;
-          delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return;
+          if (atlasPollCanWrite({ targetId: requestTargetId, el: pend })) body.innerHTML = `<p class="t-err">No se pudo completar el análisis: ${esc(job.error || 'error del trabajo')}</p>`;
+          delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; atlasPollUnregister(key); resolve(); return;
         }
-        body.innerHTML = `<p class="assistant-job-progress">${esc(job.message || 'Analizando…')}<span class="caret">▊</span></p><button type="button" class="job-cancel" data-cancel-assistant-job="${esc(jobId)}">Dejar de seguir</button>`;
+        if (atlasPollCanWrite({ targetId: requestTargetId, el: pend })) body.innerHTML = `<p class="assistant-job-progress">${esc(job.message || 'Analizando…')}<span class="caret">▊</span></p><button type="button" class="job-cancel" data-cancel-assistant-job="${esc(jobId)}">Dejar de seguir</button>`;
       } catch (error) {
-        if (tries > 10) { pend.querySelector('.msg-bot__body').innerHTML = `<p class="t-err">No se pudo consultar el trabajo: ${esc(error.message)}</p>`; delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return; }
+        fails++;
+        if (fails > 10) {
+          if (pend.isConnected) {
+            const body = pend.querySelector('.msg-bot__body');
+            if (body && atlasPollCanWrite({ targetId: requestTargetId, el: pend })) body.innerHTML = `<p class="t-err">No se pudo consultar el trabajo: ${esc(error.message)}</p>`;
+          }
+          delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; atlasPollUnregister(key); resolve(); return;
+        }
       }
-      if (tries > 600) { pend.querySelector('.msg-bot__body').innerHTML = '<p class="t-err">Seguimiento detenido; el trabajo puede continuar en segundo plano.</p>'; delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return; }
-      setTimeout(tick, 900);
+      const timer = setTimeout(tick, atlasPollDelay(900));
+      const kick = () => { clearTimeout(timer); atlasPollUnregister(key); void tick(); };
+      kick.__timer = timer;
+      atlasPollRegister(key, kick);
     };
     void tick();
   });
@@ -5548,31 +5658,76 @@ async function launchCapture() {
 
 async function pollJob(jobId, push, worker, targetId) {
   let tries = 0;
+  const key = `capture:${jobId}`;
+  const safePush = (html) => {
+    try {
+      const fresh = $('#captureLog');
+      if (fresh && fresh.isConnected && State.view === 'captures' && State.targetId === targetId && State.captureJob && State.captureJob.id === jobId) {
+        fresh.insertAdjacentHTML('beforeend', html);
+        fresh.scrollTop = fresh.scrollHeight;
+        return;
+      }
+      if (worker && worker.isConnected && State.view === 'captures' && State.targetId === targetId && State.captureJob && State.captureJob.id === jobId) push(html);
+    } catch (_) { /* un log desmontado nunca rompe el poll */ }
+  };
+  const safeWorker = (html) => {
+    try {
+      const fresh = $('#workerState');
+      const node = fresh && fresh.isConnected ? fresh : (worker && worker.isConnected ? worker : null);
+      if (!node) return;
+      if (State.view !== 'captures' || State.targetId !== targetId) return;
+      if (!State.captureJob || State.captureJob.id !== jobId) return;
+      node.innerHTML = html;
+    } catch (_) { /* noop */ }
+  };
   return new Promise((resolve) => {
     const tick = async () => {
+      atlasPollUnregister(key);
+      if (!State.captureJob || State.captureJob.id !== jobId) { atlasPollUnregister(key); resolve(); return; }
+      try {
+        if (document.hidden) {
+          const timer = setTimeout(tick, atlasPollDelay(2500));
+          const kick = () => { clearTimeout(timer); atlasPollUnregister(key); void tick(); };
+          kick.__timer = timer;
+          atlasPollRegister(key, kick);
+          return;
+        }
+      } catch (_) { /* sin document sigue el poll normal */ }
       tries++;
       try {
         const r = await api(`/api/jobs/${jobId}`);
         const j = r.job || {};
+        if (!State.captureJob || State.captureJob.id !== jobId) { atlasPollUnregister(key); resolve(); return; }
         if (j.status === 'succeeded' || j.status === 'completed') {
-          push(`job#${jobId} <span class="ok">completado</span> · snapshot guardado`);
-          push('<span class="done">listo <span class="caret">▊</span></span>');
-          worker.innerHTML = '<i></i>worker inactivo';
+          safePush(`job#${jobId} <span class="ok">completado</span> · snapshot guardado`);
+          safePush('<span class="done">listo <span class="caret">▊</span></span>');
+          safeWorker('<i></i>worker inactivo');
+          atlasPollUnregister(key);
           void finishCapture(targetId, true);
-          renderCaptures(); resolve(); return;
+          if (State.view === 'captures' && State.targetId === targetId) renderCaptures();
+          resolve(); return;
         }
-        if (j.status === 'failed' || j.status === 'error') {
-          push(`job#${jobId} <span class="warn">falló</span> · ${esc(j.error || 'sin detalle')}`);
-          worker.innerHTML = '<i class="dot-warn"></i>worker con error';
-          void finishCapture(targetId, false, j.error); resolve(); return;
+        if (j.status === 'failed' || j.status === 'error' || j.status === 'cancelled') {
+          safePush(`job#${jobId} <span class="warn">falló</span> · ${esc(j.error || j.message || 'sin detalle')}`);
+          safeWorker('<i class="dot-warn"></i>worker con error');
+          atlasPollUnregister(key);
+          void finishCapture(targetId, false, j.error || j.message); resolve(); return;
         }
         if (State.captureJob && State.captureJob.id === jobId) { State.captureJob.pct = Number(j.progress) || State.captureJob.pct; setCaptureProgress(State.captureJob.pct); }
-        if (tries % 3 === 0) push(`job#${jobId} · ${esc(j.message || j.status || 'en curso')}…`);
-      } catch (e) { push(`<span class="warn">poll</span> ${esc(e.message)}`); }
-      if (tries > 2880) { push('<span class="warn">seguimiento detenido</span> · el trabajo puede continuar; revisa su estado antes de lanzar otra captura'); State.captureJob = null; setCaptureProgress(null); resolve(); return; }
-      setTimeout(tick, 2500);
+        if (tries % 3 === 0) safePush(`job#${jobId} · ${esc(j.message || j.status || 'en curso')}…`);
+      } catch (e) {
+        safePush(`<span class="warn">poll</span> ${esc(e.message)}`);
+      }
+      if (tries >= ATLAS_POLL_MAX_TRIES) { safePush('<span class="warn">seguimiento detenido</span> · el trabajo puede continuar; revisa su estado antes de lanzar otra captura'); State.captureJob = null; setCaptureProgress(null); atlasPollUnregister(key); resolve(); return; }
+      const timer = setTimeout(tick, atlasPollDelay(2500));
+      const kick = () => { clearTimeout(timer); atlasPollUnregister(key); void tick(); };
+      kick.__timer = timer;
+      atlasPollRegister(key, kick);
     };
-    setTimeout(tick, 1500);
+    const first = setTimeout(tick, atlasPollDelay(1500));
+    const firstKick = () => { clearTimeout(first); atlasPollUnregister(key); void tick(); };
+    firstKick.__timer = first;
+    atlasPollRegister(key, firstKick);
   });
 }
 
@@ -5996,10 +6151,16 @@ async function trackCaptureJob(jobId, targetId) {
   State.captureJob = { id: jobId, pct: 1, targetId };
   setCaptureProgress(1);
   let misses = 0;
-  for (let tries = 0; tries < 2880; tries++) {
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+  for (let tries = 0; tries < ATLAS_POLL_MAX_TRIES;) {
+    await new Promise((resolve) => setTimeout(resolve, atlasPollDelay(2500)));
+    if (!State.captureJob || State.captureJob.id !== jobId) return;
+    try {
+      if (document.hidden) continue;
+    } catch (_) { /* sin document sigue el poll normal */ }
+    tries++;
     try {
       const job = (await api(`/api/jobs/${jobId}`)).job || {};
+      if (!State.captureJob || State.captureJob.id !== jobId) return;
       misses = 0;
       if (job.status === 'succeeded' || job.status === 'completed') {
         await finishCapture(targetId, true);
@@ -6010,13 +6171,15 @@ async function trackCaptureJob(jobId, targetId) {
         await finishCapture(targetId, false, job.error || job.message);
         return;
       }
-      State.captureJob.pct = Number(job.progress) || State.captureJob.pct;
-      setCaptureProgress(State.captureJob.pct);
+      if (State.captureJob && State.captureJob.id === jobId) {
+        State.captureJob.pct = Number(job.progress) || State.captureJob.pct;
+        setCaptureProgress(State.captureJob.pct);
+      }
     } catch (_) {
       if (++misses >= 5) { State.captureJob = null; setCaptureProgress(null); toast('Se perdió el seguimiento de la captura; el trabajo puede continuar. Revisa Capturas antes de lanzar otra.', 'warn', 7000); return; }
     }
   }
-  State.captureJob = null; setCaptureProgress(null);
+  if (State.captureJob && State.captureJob.id === jobId) { State.captureJob = null; setCaptureProgress(null); }
   toast('Seguimiento detenido: el trabajo puede continuar. Revisa su estado antes de lanzar otra captura.', 'warn', 7000);
 }
 
