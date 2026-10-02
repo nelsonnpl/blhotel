@@ -181,7 +181,7 @@ if (typeof window !== 'undefined') {
 
 /* --------------------------------------------------------------- charts */
 
-/* Línea simple (tendencia) */
+/* Línea simple (tendencia) — D2-11: ejes con unidad (€/noche) y fecha; Y con €, X = fecha de foto. */
 function lineSVG(points, opts = {}) {
   const vals = points.map((p) => p.v).filter((v) => v > 0);
   if (vals.length < 2) return emptyChart(150);
@@ -192,9 +192,11 @@ function lineSVG(points, opts = {}) {
   let d = '';
   points.forEach((p, i) => { d += `${i ? 'L' : 'M'} ${sx(i).toFixed(1)} ${sy(p.v).toFixed(1)} `; });
   const last = points[points.length - 1];
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" class="svg-block">
+  const rangeLabel = `evolución en €/noche por fecha de foto, de ${eur(min)} a ${eur(max)}`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" class="svg-block" role="img" aria-label="${esc(rangeLabel)}">
+    <title>${esc(`Mínimo ${eur(min)} · máximo ${eur(max)} · €/noche por fecha de foto`)}</title>
     <g stroke="var(--line-soft)" stroke-width="1"><line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}"></line><line x1="${x0}" y1="71" x2="${x1}" y2="71"></line><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"></line></g>
-    <g font-family="'Space Mono',monospace" font-size="9" fill="var(--fainter)"><text x="${x0 - 6}" y="23" text-anchor="end">${nEs(max)}</text><text x="${x0 - 6}" y="${y1 + 3}" text-anchor="end">${nEs(min)}</text></g>
+    <g font-family="'Space Mono',monospace" font-size="9" fill="var(--fainter)"><text x="${x0 - 6}" y="23" text-anchor="end">${eur(max)}</text><text x="${x0 - 6}" y="${y1 + 3}" text-anchor="end">${eur(min)}</text><text x="${(x0 + x1) / 2}" y="145" text-anchor="middle">€/noche por fecha de foto</text></g>
     <path d="${d.trim()}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="1400" style="animation:atDraw 1200ms cubic-bezier(.22,1,.36,1) 200ms both;"></path>
     <g style="animation:atPop 380ms cubic-bezier(.22,1,.36,1) 1100ms both; transform-origin:center;"><circle cx="${sx(points.length - 1).toFixed(1)}" cy="${sy(last.v).toFixed(1)}" r="4" fill="var(--ac)"></circle></g>
   </svg>`;
@@ -1118,13 +1120,17 @@ function dashboardRange(values, padRatio, minPad) {
 
 function dashboardAdrCardHTML(medianAdr, photos) {
   let spark = '<div class="dash-spark__empty">Se necesitan dos fotos para la evolución</div>';
+  let sparkRange = '';
   if (photos.length >= 2) {
     const values = photos.map((p) => Number(p.avgPricePerNight));
     const { lo, hi } = dashboardRange(values, 0.25, 8);
+    const minV = Math.min(...values), maxV = Math.max(...values);
     const pts = values.map((v, i) => `${((i / (values.length - 1)) * 300).toFixed(1)},${(90 - ((v - lo) / (hi - lo)) * 80).toFixed(1)}`).join(' ');
-    spark = `<svg viewBox="0 0 300 90" preserveAspectRatio="none" role="img" aria-label="ADR medio de las ${photos.length} fotos del mercado"><polyline points="0,90 ${pts} 300,90" fill="var(--accent-soft)" stroke="none"></polyline><polyline points="${pts}" fill="none" stroke="var(--ac)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"></polyline></svg>`;
+    spark = `<svg viewBox="0 0 300 90" preserveAspectRatio="none" role="img" aria-label="ADR medio de las ${photos.length} fotos del mercado, mínimo ${eur(minV)}, máximo ${eur(maxV)}"><title>ADR medio por foto · mínimo ${eur(minV)} · máximo ${eur(maxV)} · €/noche</title><polyline points="0,90 ${pts} 300,90" fill="var(--accent-soft)" stroke="none"></polyline><polyline points="${pts}" fill="none" stroke="var(--ac)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"></polyline></svg>`;
+    sparkRange = `<div class="dash-spark__range mono" title="Rango observado en las ${photos.length} fotos">mín ${eur(minV)} · máx ${eur(maxV)}</div>`;
   }
-  const axis = photos.length ? `<div class="dash-axis"><span>foto #${photos[0].id}</span><span>${photos.length} ${photos.length === 1 ? 'foto' : 'fotos'}</span><span>#${photos.at(-1).id}</span></div>` : '';
+  const fmtAxisDate = (p) => { try { return new Date(p.scrapedAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }); } catch (_) { return ''; } };
+  const axis = photos.length ? `<div class="dash-axis"><span title="Primera foto · ${esc(fmtAxisDate(photos[0]))}">foto #${photos[0].id}</span><span>${photos.length} ${photos.length === 1 ? 'foto' : 'fotos'}</span><span title="Última foto · ${esc(fmtAxisDate(photos.at(-1)))}">#${photos.at(-1).id}</span></div>${sparkRange}` : '';
   return `<article class="dash-card dash-card--adr">
     <span class="card__kicker">ADR mediano</span>
     <div class="dash-big"><strong>${medianAdr > 0 ? nEs(medianAdr) : '—'}</strong><span>€</span></div>
@@ -1137,7 +1143,7 @@ function dashboardAdrCardHTML(medianAdr, photos) {
 function dashboardSwarmHTML(model) {
   const hotels = model.hotels.filter((h) => h.adr != null).sort((a, b) => a.adr - b.adr);
   const head = `<div class="dash-card__head"><div><span class="card__kicker">Dispersión del set</span><h2>Dónde compite el mercado</h2></div>
-    <div class="dash-legend"><span><i class="is-mid"></i>&lt;${nEs(model.p25)} €</span><span><i class="is-lo"></i>${nEs(model.p25)}–${nEs(model.p75)} €</span><span><i class="is-ac"></i>&gt;${nEs(model.p75)} €</span></div></div>`;
+    <div class="dash-legend" title="Tramos en €/noche por P25/P75 · banda = P25–P75 · línea = mediana"><span><i class="is-mid"></i>&lt;${nEs(model.p25)} €</span><span><i class="is-lo"></i>${nEs(model.p25)}–${nEs(model.p75)} €</span><span><i class="is-ac"></i>&gt;${nEs(model.p75)} €</span></div></div>`;
   if (hotels.length < 2 || !(model.maxAdr > model.minAdr)) return `<article class="dash-card dash-card--swarm">${head}<div class="empty">Se necesitan al menos dos hoteles con tarifa.<br><button type="button" class="btn btn--sm" data-nav="captures">Ir a Capturas</button></div></article>`;
   const x = (v) => ((v - model.minAdr) / (model.maxAdr - model.minAdr)) * 100;
   const placed = [];
@@ -1168,9 +1174,10 @@ function dashboardOutliersHTML(model) {
   const rows = list.map((h) => {
     const w = Math.min(50, (Math.abs(h.vsMedian) / 150) * 50);
     const left = h.vsMedian >= 0 ? 50 : 50 - w;
-    return `<button type="button" class="dash-outlier" data-dash-hotel="${esc(h.name)}"><span class="dash-outlier__name">${esc(h.name)}</span><span class="dash-outlier__adr">${eur(h.adr)}</span><span class="dash-outlier__bar"><span class="dash-outlier__track"><i class="${h.vsMedian >= 0 ? 'is-up' : 'is-down'}" style="left:${left.toFixed(2)}%;width:${w.toFixed(2)}%"></i></span><span class="dash-outlier__vs">${pctTxt(h.vsMedian, 0)}</span></span></button>`;
+    return `<button type="button" class="dash-outlier" data-dash-hotel="${esc(h.name)}" title="${esc(`${h.name} · ${eur(h.adr)} · ${pctTxt(h.vsMedian, 0)} vs mediana (distancia, no juicio)`)}"><span class="dash-outlier__name">${esc(h.name)}</span><span class="dash-outlier__adr">${eur(h.adr)}</span><span class="dash-outlier__bar"><span class="dash-outlier__track"><i class="${h.vsMedian >= 0 ? 'is-up' : 'is-down'}" style="left:${left.toFixed(2)}%;width:${w.toFixed(2)}%"></i></span><span class="dash-outlier__vs">${pctTxt(h.vsMedian, 0)}</span></span></button>`;
   }).join('');
   return `<article class="dash-card dash-card--outliers"><span class="card__kicker">Fuera del centro</span><h2>Mayor distancia a la mediana</h2>
+    <div class="dash-legend dash-legend--outliers" title="El azul indica distancia a la mediana, no un juicio de bueno o malo"><span><i class="is-up"></i>por encima</span><span><i class="is-down"></i>por debajo</span><span class="legend-note">azul = distancia, no juicio</span></div>
     <div class="dash-outliers">${rows || '<div class="empty">Sin tarifas comparables.<br><button type="button" class="btn btn--sm" data-nav="captures">Ir a Capturas</button></div>'}</div></article>`;
 }
 
@@ -1202,13 +1209,16 @@ function dashboardHistoryHTML(photos) {
   const py = (v) => 140 - ((v - lo) / (hi - lo)) * 120;
   const line = photos.map((p, i) => `${px(i).toFixed(1)},${py(Number(p.avgPricePerNight)).toFixed(1)}`).join(' ');
   const every = n > 14 ? 2 : 1;
+  const firstDate = new Date(photos[0].scrapedAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+  const lastDate = new Date(photos.at(-1).scrapedAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
   const points = photos.map((p, i) => {
     const date = new Date(p.scrapedAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
-    const label = i % every === 0 || i === n - 1 ? `<text x="${px(i).toFixed(1)}" y="162" text-anchor="middle">#${p.id}</text>` : '';
+    const label = i % every === 0 || i === n - 1 ? `<text x="${px(i).toFixed(1)}" y="162" text-anchor="middle">#${p.id}·${date}</text>` : '';
     return `<circle cx="${px(i).toFixed(1)}" cy="${py(Number(p.avgPricePerNight)).toFixed(1)}" r="4" fill="var(--card)" stroke="var(--ac)" stroke-width="2"><title>Foto #${p.id} · ${date} · ${eur(p.avgPricePerNight)}</title></circle>${label}`;
   }).join('');
   return `<article class="dash-card dash-card--history">${head(stats)}
-    <svg class="dash-history__chart" viewBox="0 0 700 170" role="img" aria-label="ADR medio por foto"><line x1="0" x2="700" y1="20" y2="20" stroke="var(--line)"></line><line x1="0" x2="700" y1="140" y2="140" stroke="var(--line)"></line><g class="dash-svg-text"><text x="0" y="14">${eur(hi)}</text><text x="0" y="134">${eur(lo)}</text></g><polyline points="${line}" fill="none" stroke="var(--ac)" stroke-width="2" stroke-linejoin="round"></polyline><g class="dash-svg-text">${points}</g></svg>
+    <svg class="dash-history__chart" viewBox="0 0 700 170" role="img" aria-label="ADR medio por foto en €/noche por fecha de captura, #${photos[0].id} ${firstDate} a #${photos.at(-1).id} ${lastDate}"><title>ADR medio por foto · eje X = fecha de captura (${firstDate} → ${lastDate}) · eje Y en €/noche</title><line x1="0" x2="700" y1="20" y2="20" stroke="var(--line)"></line><line x1="0" x2="700" y1="140" y2="140" stroke="var(--line)"></line><g class="dash-svg-text"><text x="0" y="14">${eur(hi)}</text><text x="0" y="134">${eur(lo)}</text></g><polyline points="${line}" fill="none" stroke="var(--ac)" stroke-width="2" stroke-linejoin="round"></polyline><g class="dash-svg-text">${points}</g></svg>
+    <div class="legend dashboard-history-legend mono" title="El eje X es la fecha de captura de cada foto">eje X = fecha de captura · eje Y en €/noche</div>
   </article>`;
 }
 
@@ -1231,6 +1241,34 @@ function dashboardCurveHTML(points) {
     return `<div class="dash-curve__row"><span>${w.label}</span><div class="dash-curve__track"><i class="${windows.length > 1 && w.value === min ? 'is-low' : ''}" style="width:${width.toFixed(1)}%"></i></div><strong title="${w.points} ${w.points === 1 ? 'punto' : 'puntos'}">${eur(w.value)}</strong></div>`;
   }).join('');
   return `<article class="dash-card dash-card--curve">${head}${bars}<span class="dash-curve__note">Observaciones agregadas por horizonte; no es una previsión.</span></article>`;
+}
+
+/* D2-13: causa de «Sin comparativa» sin inventar datos — distingue sin foto anterior
+   (captura para comparar) de sin filas equivalentes (revisa filtros). Reutiliza mv. */
+function dashboardMoveFootHTML(mv, latestId) {
+  if (mv && mv.isComparable) return `${nEs(mv.changedHotels)} hoteles movidos · <span class="pos">▲${nEs(mv.priceIncreases)}</span> <span class="neg">▼${nEs(mv.priceDrops)}</span>`;
+  if (!mv || mv.previousSnapshotId == null) return `Sin foto anterior — <button type="button" class="link-button" data-nav="captures">captura para comparar</button>`;
+  return `Sin filas equivalentes entre fotos — revisa filtros`;
+}
+function dashboardMoveTitle(mv) {
+  if (mv && mv.isComparable) return 'Variación del ADR entre fotos comparables (mismo producto)';
+  if (!mv || mv.previousSnapshotId == null) return 'Sin foto anterior con la que comparar: captura para comparar';
+  return 'Sin filas equivalentes entre fotos (mismo hotel, estancia y producto): revisa filtros';
+}
+
+/* D2-14 (decisión D7): guía de semántica — verde = favorable al revenue propio,
+   rojo = riesgo; outliers en azul por ser comparativa, no estado. Umbrales reales del código. */
+function semanticGuideHTML(id) {
+  return `<details class="semantic-guide"${id ? ` id="${id}"` : ''}><summary>Guía de color · verde = favorable, rojo = riesgo</summary>
+    <table class="semantic-guide__table"><caption class="sr-only">Significado del color por contexto, con umbrales reales</caption>
+    <thead><tr><th scope="col">Contexto</th><th scope="col">Verde (favorable)</th><th scope="col">Rojo (riesgo)</th><th scope="col">Umbral</th></tr></thead><tbody>
+    <tr><th scope="row">Mapa de precios</th><td>por debajo de la mediana</td><td>por encima de la mediana</td><td>±15 % (biMapTone)</td></tr>
+    <tr><th scope="row">Calor calendario</th><td>por debajo de la mediana del día</td><td>por encima de la mediana del día</td><td>±5 % neutro (biHeat)</td></tr>
+    <tr><th scope="row">Value score</th><td>≥ 60 buen valor</td><td>≤ 40 caro para su nota</td><td>60/40</td></tr>
+    <tr><th scope="row">AAI vuelos</th><td>&lt; 0,9 barato</td><td>&gt; 1,1 caro</td><td>0,9/1,1</td></tr>
+    <tr><th scope="row">Alertas</th><td>subida ≥ +5 % (oportunidad)</td><td>bajada ≤ −3 % (presión)</td><td>−3/+5</td></tr>
+    <tr><th scope="row">Fuera del centro</th><td colspan="2">azul = distancia a la mediana, no juicio</td><td>comparativa</td></tr>
+    </tbody></table></details>`;
 }
 
 async function renderDashboard() {
@@ -1271,14 +1309,15 @@ async function renderDashboard() {
       ${dashboardAdrCardHTML(model.median, photos)}
       <article class="dash-card dash-card--count"><span class="card__kicker">Hoteles con tarifa</span><div class="dash-mid"><strong>${nEs(priced.length)}</strong><span>/ ${nEs(rows.length)}</span></div><div class="dash-meter"><i style="width:${pricedPct.toFixed(1)}%"></i></div><span class="dash-foot">${rows.length ? `${nEs(pricedPct, 0)} % con precio observable` : 'Sin hoteles observados'}</span></article>
       ${dashboardSwarmHTML(model)}
-      <article class="dash-card dash-card--move"><span class="card__kicker">Movimiento ADR</span><strong class="dash-move${moveValue > 0 ? ' is-up' : moveValue < 0 ? ' is-down' : ''}">${moveValue == null ? '—' : pctTxt(moveValue, 1)}</strong><span class="dash-foot">${mv.isComparable ? `${nEs(mv.changedHotels)} hoteles movidos · <span class="pos">▲${nEs(mv.priceIncreases)}</span> <span class="neg">▼${nEs(mv.priceDrops)}</span>` : 'Sin comparativa con la foto anterior'}</span></article>
+      <article class="dash-card dash-card--move"><span class="card__kicker">Movimiento ADR</span><strong class="dash-move${moveValue > 0 ? ' is-up' : moveValue < 0 ? ' is-down' : ''}" title="${esc(dashboardMoveTitle(mv))}">${moveValue == null ? '—' : pctTxt(moveValue, 1)}</strong><span class="dash-foot">${dashboardMoveFootHTML(mv, snapshot.id)}</span><span class="dash-foot dash-foot--guide">Verde = favorable · rojo = riesgo · <a href="#guia-semantica-dash">ver guía</a></span></article>
       <article class="dash-card dash-card--map">
-        <div class="dash-card__head"><div><span class="card__kicker">Mapa hotelero</span><h2>Precio por ubicación</h2></div><div class="dash-legend"><span><i class="is-low"></i>bajo</span><span><i class="is-mid-tier"></i>medio</span><span><i class="is-high"></i>alto</span></div></div>
+        <div class="dash-card__head"><div><span class="card__kicker">Mapa hotelero</span><h2>Precio por ubicación</h2></div><div class="dash-legend" title="Tramos por P25/P75 del set · verde = favorable, rojo = riesgo"><span><i class="is-low"></i>bajo (≤ P25)</span><span><i class="is-mid-tier"></i>medio</span><span><i class="is-high"></i>alto (≥ P75)</span></div></div>
         <div class="map-frame dash-map" id="dashMapFrame"><div class="map-frame__canvas" id="dashMap" aria-label="Mapa de hoteles del mercado activo"></div><div class="dash-pop-layer" id="dashPopLayer"></div></div>
       </article>
       ${dashboardOutliersHTML(model)}
       ${dashboardHistoryHTML(photos)}
       ${dashboardCurveHTML(demand.demandCurve || [])}
+      ${semanticGuideHTML('guia-semantica-dash')}
     </div>
   </div>`;
   void renderDashboardHotelMap(model);
@@ -1443,14 +1482,14 @@ function dashboardPopoverHTML(h) {
   const sub = [h.chain, h.zone, h.adultsOnly ? 'Adults only' : ''].filter(Boolean).join(' · ');
   const prevId = st.previousSnapshotId;
   const delta = h.isNew ? ['Nuevo en el set', 'ac']
-    : h.delta == null ? ['Sin comparativa con la foto anterior', 'dim']
+    : h.delta == null ? [prevId == null ? 'Sin foto anterior — captura para comparar' : 'Sin foto comparable con mismo producto — revisa filtros', 'dim']
     : h.delta === 0 ? [`Sin cambio vs foto #${prevId}`, 'dim']
     : [`${h.delta > 0 ? '▲' : '▼'} ${nEs(Math.abs(h.delta), 1)} % vs foto #${prevId} (${eur(h.prevAdr)})`, h.delta > 0 ? 'pos' : 'neg'];
   const modes = [['hist', 'Por foto'], ['dates', 'Por extracción']].map(([id, label]) => `<button type="button" class="${st.chart === id ? 'is-active' : ''}" data-dash-chart="${id}" aria-pressed="${st.chart === id}">${label}</button>`).join('');
   return `<div class="dash-pop__head"><div class="dash-pop__title"><span class="dash-pop__kicker">Inspector de tarifa · puesto ${h.rank} de ${priced}</span><h3 id="dashPopTitle">${esc(h.name)}</h3>${sub ? `<span class="dash-pop__sub">${esc(sub)}</span>` : ''}</div><button type="button" class="icon-x" data-dash-close aria-label="Cerrar inspector">×</button></div>
     <div class="dash-pop__body">
       <div class="dash-pop__chart"><div class="dash-pop__modes"><div class="seg seg--sm" role="group" aria-label="Modo de la gráfica">${modes}</div>${st.chart === 'hist' ? `<button type="button" class="dash-pop__cmp" data-dash-cmp aria-pressed="${st.cmp}"><i aria-hidden="true"></i>Media del set</button>` : ''}</div><div id="dashPopChart">${dashboardPopoverChartHTML(h)}</div></div>
-      <div class="dash-pop__side"><div class="dash-pop__adr"><span class="dash-pop__kicker">ADR hab/noche</span><div class="dash-pop__adrrow"><strong>${eur(h.adr)}</strong>${h.vsMedian == null ? '' : `<span class="dash-pop__vs${h.vsMedian >= 0 ? ' is-up' : ''}">${pctTxt(h.vsMedian, 0)} vs mediana</span>`}</div><span class="dash-pop__delta ${delta[1]}">${esc(delta[0])}</span></div>
+      <div class="dash-pop__side"><div class="dash-pop__adr"><span class="dash-pop__kicker">ADR hab/noche</span><div class="dash-pop__adrrow"><strong>${eur(h.adr)}</strong>${h.vsMedian == null ? '' : `<span class="dash-pop__vs${h.vsMedian >= 0 ? ' is-up' : ''}" title="Distancia a la mediana (azul = distancia, no juicio)">${pctTxt(h.vsMedian, 0)} vs mediana</span>`}</div><span class="dash-pop__delta ${delta[1]}" title="${esc(h.delta == null && !h.isNew ? 'Sin foto comparable con mismo hotel, estancia y producto' : delta[0])}">${esc(delta[0])}</span></div>
         <dl class="dash-pop__facts" id="dashPopFacts">${dashboardPopoverFacts(h).map(([k, v, tone]) => `<div><dt>${esc(k)}</dt><dd class="${tone}" title="${esc(v)}">${esc(v)}</dd></div>`).join('')}</dl></div>
     </div>
     <div class="dash-pop__foot"><button type="button" class="btn btn--primary" data-dash-hotel="${esc(h.name)}">Ver en la hoja de mercado</button><button type="button" class="btn" data-dash-ask="${esc(`¿Cómo ha evolucionado el precio de ${h.name}?`)}">Preguntar al Copilot →</button></div>`;
@@ -1550,6 +1589,8 @@ function showDashboardSwarmTip(dot) {
 function handleDashboardClick(e) {
   const target = e.target instanceof Element ? e.target : null;
   if (!target || !target.closest('#view-dashboard')) return false;
+  const swarmDot = target.closest('.dash-swarm__dot');
+  if (swarmDot) { showDashboardSwarmTip(swarmDot); swarmDot.focus({ preventScroll: true }); return false; }
   if (target.closest('[data-dash-signals]')) {
     State.dashboard.allSignals = !State.dashboard.allSignals;
     const section = $('#dashSignals');
@@ -1574,8 +1615,18 @@ function handleDashboardOver(e) {
   const target = e.target instanceof Element ? e.target : null;
   if (!target || State.view !== 'dashboard') return;
   const tip = $('#dashSwarmTip');
-  if (target.closest('.dash-swarm')) showDashboardSwarmTip(target.closest('.dash-swarm__dot'));
-  else if (tip && !tip.hidden) tip.hidden = true;
+  const hovered = target.closest ? target.closest('.dash-swarm__dot') : null;
+  if (hovered) { showDashboardSwarmTip(hovered); }
+  else if (target.closest && target.closest('.dash-swarm')) {
+    // D2-17: el foco/teclado fija la lectura; el hover en vacío no la oculta si hay foco
+    const focused = document.activeElement instanceof Element ? document.activeElement.closest?.('.dash-swarm__dot') : null;
+    if (focused && focused.isConnected) showDashboardSwarmTip(focused);
+    else showDashboardSwarmTip(null);
+  } else if (tip && !tip.hidden) {
+    const focused = document.activeElement instanceof Element ? document.activeElement.closest?.('.dash-swarm__dot') : null;
+    if (focused && focused.isConnected) showDashboardSwarmTip(focused);
+    else tip.hidden = true;
+  }
   const pt = target.closest('[data-dash-pt]');
   if (pt && Number(pt.dataset.dashPt) !== State.dashboard.ptHover) { State.dashboard.ptHover = Number(pt.dataset.dashPt); paintDashboardPopover('chart'); }
 }
@@ -1707,8 +1758,8 @@ function hotelSheetRowHTML(h, variant) {
     <td class="hsheet__sticky hsheet__sticky--name"><span class="hrow__name">${esc(h.name)}</span>${sub ? `<span class="hrow__sub">${esc(sub)}</span>` : ''}</td>
     <td class="num hrow__adr">${eur(h.adr)}</td>
     ${wide ? `<td class="num hrow__pers">${eur(h.pers)}</td>` : ''}
-    <td><div class="vsbar"><div class="vsbar__track"><i class="vsbar__mid"></i>${h.vsMedian == null ? '' : `<i class="vsbar__fill ${positive ? 'is-up' : 'is-down'}" style="left:${positive ? 50 : 50 - w}%;width:${w}%"></i>`}</div><span class="vsbar__val${positive ? '' : ' is-down'}">${pctTxt(h.vsMedian, 0)}</span></div></td>
-    <td class="num"><span class="hdelta hdelta--${deltaTone}${big}">${deltaText}</span></td>
+    <td><div class="vsbar" title="Distancia a la mediana (azul = distancia, no juicio)"><div class="vsbar__track"><i class="vsbar__mid"></i>${h.vsMedian == null ? '' : `<i class="vsbar__fill ${positive ? 'is-up' : 'is-down'}" style="left:${positive ? 50 : 50 - w}%;width:${w}%"></i>`}</div><span class="vsbar__val${positive ? '' : ' is-down'}">${pctTxt(h.vsMedian, 0)}</span></div></td>
+    <td class="num"><span class="hdelta hdelta--${deltaTone}${big}"${h.delta == null && !h.isNew ? ' title="Sin foto comparable con mismo hotel, estancia y producto"' : ''}>${deltaText}</span></td>
     <td class="num">${h.stab == null ? '<span class="dim">—</span>' : `<span class="hstab hstab--${stabTone}" title="${esc(`${nEs(h.stabObs)} observaciones`)}">${nEs(h.stab, 0)}</span>`}</td>
     <td class="num">${h.nota == null ? '<span class="dim">—</span>' : nEs(h.nota, 1)}</td>
     ${wide ? `<td class="num dim">${h.reviews == null ? '—' : nEs(h.reviews)}</td>` : ''}
@@ -1846,10 +1897,10 @@ function hotelAsideHTML(h) {
   const roomsBody = !cached || cached.status === 'loading' ? '<p class="haside__note">Comprobando tarifas capturadas…</p>'
     : cached.status === 'error' ? `<p class="haside__note neg">${esc(cached.message || 'No se pudo cargar el desglose.')}</p>`
     : roomGroups || '<p class="haside__note">No hay tarifas de detalle capturadas para este hotel.</p>';
-  const vsBadge = h.vsMedian == null ? '' : `<span class="chip haside__vs${h.vsMedian >= 0 ? ' is-up' : ''}">${pctTxt(h.vsMedian, 0)} vs mediana</span>`;
+  const vsBadge = h.vsMedian == null ? '' : `<span class="chip haside__vs${h.vsMedian >= 0 ? ' is-up' : ''}" title="Distancia a la mediana (azul = distancia, no juicio)">${pctTxt(h.vsMedian, 0)} vs mediana</span>`;
   const sub = [h.chain, h.zone, h.adultsOnly ? 'Adults only' : ''].filter(Boolean).join(' · ');
   return `<div class="haside__head"><div class="haside__kicker"><span>Posición ${h.rank} de ${model.hotels.length}</span>${vsBadge}</div><h2>${esc(h.name)}</h2>${sub ? `<span class="haside__sub">${esc(sub)}</span>` : ''}</div>
-    <div class="haside__price"><div><span class="kpi__label">ADR hab/noche</span><strong>${h.adr == null ? '—' : nEs(h.adr)}<span>${NBSP}€</span></strong></div><div class="haside__prev">${h.prevAdr == null ? '' : `<span>antes ${eur(h.prevAdr)}</span>`}<span class="${h.isNew ? 'ac' : h.delta > 0 ? 'pos' : h.delta < 0 ? 'neg' : ''}">${h.isNew ? 'Nuevo en el set' : h.delta == null ? 'Sin comparativa' : pctTxt(h.delta, 1)}</span></div></div>
+    <div class="haside__price"><div><span class="kpi__label">ADR hab/noche</span><strong>${h.adr == null ? '—' : nEs(h.adr)}<span>${NBSP}€</span></strong></div><div class="haside__prev">${h.prevAdr == null ? '' : `<span>antes ${eur(h.prevAdr)}</span>`}<span class="${h.isNew ? 'ac' : h.delta > 0 ? 'pos' : h.delta < 0 ? 'neg' : ''}"${h.delta == null && !h.isNew ? ' title="Sin foto comparable con mismo hotel, estancia y producto"' : ''}>${h.isNew ? 'Nuevo en el set' : h.delta == null ? 'Sin comparativa' : pctTxt(h.delta, 1)}</span></div></div>
     <div class="haside__strip"><span class="kpi__label">Lugar en el set</span><div class="haside__track"><i class="haside__line"></i>${strip}${span ? `<i class="haside__med" style="left:${pos(model.median)}%"></i>` : ''}</div><div class="haside__scale"><span>${eur(model.minAdr)}</span><span>mediana ${eur(model.median)}</span><span>${eur(model.maxAdr)}</span></div></div>
     <dl class="haside__facts">${facts.map(([k, v, tone]) => `<div><dt>${esc(k)}</dt><dd class="${tone}">${esc(v)}</dd></div>`).join('')}</dl>
     <div class="haside__rooms"><div class="haside__roomshead"><span class="kpi__label">Tipos de habitación</span><button type="button" class="link-button haside__link" data-sheet-rooms="${esc(h.key)}">Ver tarifas</button></div>${roomsBody}</div>
@@ -1940,6 +1991,7 @@ function hotelSheetKpisHTML(model, metrics, snapshot) {
   const pct = (n) => (hotels.length ? Math.round((n / hotels.length) * 100) : 0);
   const mv = metrics && metrics.movement;
   const comparable = mv && mv.isComparable;
+  const moveFoot = comparable ? `entre foto #${mv.previousSnapshotId} y #${snapshot.id}` : (!mv || mv.previousSnapshotId == null ? 'Sin foto anterior — captura para comparar' : 'Sin filas equivalentes — revisa filtros');
   const cells = [
     { label: 'En mercado', value: nEs(hotels.length), unit: '', foot: 'con régimen detectado' },
     { label: 'ADR hab/noche', value: nEs(adr, 0), unit: '€', foot: `mediana ${eur(model.median)} · pers. ${eur(pers)}` },
@@ -1947,7 +1999,7 @@ function hotelSheetKpisHTML(model, metrics, snapshot) {
     { label: 'Rating medio', value: rating == null ? '—' : nEs(rating, 1), unit: '', foot: `${nEs(reviews)} reseñas` },
     { label: 'Cancel. gratis', value: String(pct(freeCancel)), unit: '%', foot: `${freeCancel}/${hotels.length} la ofrecen` },
     { label: 'Con escasez', value: String(scarce), unit: '', foot: `${soldOut} sold-out` },
-    { label: 'Movimiento', aria: comparable ? `${mv.priceIncreases} subidas y ${mv.priceDrops} bajadas` : '', value: comparable ? `▲${mv.priceIncreases} ▼${mv.priceDrops}` : '—', unit: '', foot: comparable ? `entre foto #${mv.previousSnapshotId} y #${snapshot.id}` : 'Sin comparativa disponible' },
+    { label: 'Movimiento', aria: comparable ? `${mv.priceIncreases} subidas y ${mv.priceDrops} bajadas` : moveFoot, value: comparable ? `▲${mv.priceIncreases} ▼${mv.priceDrops}` : '—', unit: '', foot: moveFoot },
   ];
   return cells.map((c) => `<div class="kpi-strip__cell"><span class="kpi-strip__label">${esc(c.label)}</span><div class="kpi-strip__value"><strong${c.aria ? ` aria-label="${esc(c.aria)}"` : ''}>${esc(c.value)}</strong>${c.unit ? `<span>${c.unit}</span>` : ''}</div><span class="kpi-strip__foot" title="${esc(c.foot)}">${esc(c.foot)}</span></div>`).join('');
 }
@@ -2259,7 +2311,8 @@ function biKpisHTML(m) {
   const st = State.bi, mv = st.metrics?.movement || {};
   const up = m.hs.filter((h) => h.delta > 0).length, down = m.hs.filter((h) => h.delta < 0).length;
   const latestId = st.metrics?.latestSnapshot?.id;
-  const movement = { label: 'Movimiento del set', value: `▲${up} ▼${down}`, foot: mv.isComparable && mv.previousSnapshotId ? `foto #${mv.previousSnapshotId} → #${latestId}` : 'sin foto comparable' };
+  const moveFoot = mv.isComparable && mv.previousSnapshotId ? `foto #${mv.previousSnapshotId} → #${latestId}` : (!mv.previousSnapshotId ? 'sin foto anterior — captura para comparar' : 'sin filas equivalentes — revisa filtros');
+  const movement = { label: 'Movimiento del set', value: `▲${up} ▼${down}`, foot: moveFoot, title: moveFoot };
   const noCapture = !m.coverage[m.fi];
   const day = biDayLabel(m.dates[m.fi]);
   let cells;
@@ -2286,7 +2339,7 @@ function biKpisHTML(m) {
       movement,
     ];
   }
-  return cells.map((k) => `<div class="kpi-strip__cell"><span class="kpi-strip__label">${esc(k.label)}</span><div class="kpi-strip__value"><strong class="${k.tone === 'ac' ? 'ac' : ''}">${esc(String(k.value))}</strong>${k.unit ? `<span>${esc(k.unit)}</span>` : ''}</div><span class="kpi-strip__foot">${esc(k.foot)}</span></div>`).join('');
+  return cells.map((k) => `<div class="kpi-strip__cell"><span class="kpi-strip__label">${esc(k.label)}</span><div class="kpi-strip__value"><strong class="${k.tone === 'ac' ? 'ac' : ''}"${k.title ? ` title="${esc(k.title)}"` : ''}>${esc(String(k.value))}</strong>${k.unit ? `<span>${esc(k.unit)}</span>` : ''}</div><span class="kpi-strip__foot"${k.title ? ` title="${esc(k.title)}"` : ''}>${esc(k.foot)}</span></div>`).join('');
 }
 
 function biZonesHTML(m) {
@@ -2378,7 +2431,16 @@ function biCalendarHTML(m) {
   const H = m.H;
   const cols = `270px repeat(${H}, minmax(0, 1fr))`;
   const showText = H <= 30;
-  const head = biCalendarHead(m.dates).map((c, i) => `<span class="${i === m.fi ? 'is-focus' : c.month ? 'is-month' : ''}${m.coverage[i] ? '' : ' is-empty'}">${c.text}</span>`).join('');
+  const isoYear = (iso) => String(iso || '').slice(0, 4);
+  const head = biCalendarHead(m.dates).map((c, i) => {
+    const iso = m.dates[i];
+    const isFocus = i === m.fi;
+    let text = c.text;
+    if ((i === 0 || i === H - 1) && iso) text = `${c.text || biDayLabel(iso)} ’${isoYear(iso).slice(2)}`;
+    const cls = `${isFocus ? 'is-focus' : c.month ? 'is-month' : ''}${m.coverage[i] ? '' : ' is-empty'}`;
+    const extra = isFocus ? ` aria-current="date" title="${esc(`${biDayLong(iso)} · ${isoYear(iso)} · extracción seleccionada`)}"` : (c.text ? ` title="${esc(biDayLong(iso))}"` : '');
+    return `<span class="${cls}"${extra}>${text}</span>`;
+  }).join('');
   const meds = m.dayMeds.filter((v) => v != null);
   const mMax = meds.length ? Math.max(...meds) : 1, mMin = meds.length ? Math.min(...meds) : 0;
   const medRow = m.dayMeds.map((v, i) => (v == null ? `<span class="bi-cal__med" data-d="${i}"></span>`
@@ -2396,20 +2458,27 @@ function biCalendarHTML(m) {
   const body = rows.map((h, ri) => {
     const cells = m.dates.map((_, i) => {
       const s = h.status[i], p = h.prices[i];
+      const iso = m.dates[i];
       if (p != null) {
         const heat = biHeat(p, m.dayMeds[i]);
-        return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell${s === 'low' ? ' is-low' : ''}${heat && Math.abs(heat.r) > 0.45 ? ' is-strong' : ''}" style="background:${heat ? heat.bg : 'var(--line-soft)'}">${showText ? nEs(p) : ''}</span>`;
+        const vs = m.dayMeds[i] ? biSigned((p / m.dayMeds[i] - 1) * 100, 0) : '—';
+        const isNeutral = heat && Math.abs(heat.r) < 0.05;
+        const cellTitle = `${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · ${eur(p)} · ${vs} % vs mediana (${eur(m.dayMeds[i])})${s === 'low' ? ' · cupo bajo' : ''}`;
+        return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell${s === 'low' ? ' is-low' : ''}${isNeutral ? ' is-neutral' : ''}${heat && Math.abs(heat.r) > 0.45 ? ' is-strong' : ''}" style="background:${heat ? heat.bg : 'var(--line-soft)'}" title="${esc(cellTitle)}">${showText ? nEs(p) : ''}</span>`;
       }
-      if (s === 'closed') return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-closed"></span>`;
-      return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-empty"></span>`;
+      if (s === 'closed') return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-closed" title="${esc(`${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · cerrado`)}"></span>`;
+      return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-empty" title="${esc(`${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · sin foto`)}"></span>`;
     }).join('');
     const isOwn = h.key === st.own;
     return `<div class="bi-cal__row${isOwn ? ' is-own' : ''}" style="grid-template-columns:${cols}"><button type="button" class="bi-cal__name" data-bi-open="${esc(h.key)}"><span class="bi-cal__pos">${ri + 1}</span><span>${esc(h.name)}</span></button>${cells}</div>`;
   }).join('');
   const captured = m.captured.length;
-  return `<div class="bi-card__head bi-cal__head"><div class="bi-card__title"><span class="card__kicker">Rate calendar · extracciones ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><h2>Tarifa por hotel y extracción</h2></div>
+  const sparse = captured < H && (H >= 60 ? captured / H < 0.3 : captured / H < 0.5);
+  const kickerRange = m.dates[0] && m.dates.at(-1) ? `extracciones ${biDayLabel(m.dates[0])}/${String(m.dates[0]).slice(0, 4)} – ${biDayLabel(m.dates.at(-1))}/${String(m.dates.at(-1)).slice(0, 4)}` : '';
+  return `<div class="bi-card__head bi-cal__head"><div class="bi-card__title"><span class="card__kicker">Rate calendar · ${esc(kickerRange)} · eje X = fecha de entrada</span><h2>Tarifa por hotel y extracción</h2></div>
       <div class="bi-cal__aside"><span class="bi-cal__readout" id="biCalReadout" aria-live="polite">Pasa el cursor por el calendario</span>
-      <div class="bi-legend"><span class="bi-legend__scale" aria-hidden="true"><i style="background:rgba(31,122,82,.55)"></i><i style="background:rgba(31,122,82,.22)"></i><i style="background:var(--line-soft)"></i><i style="background:rgba(185,79,80,.22)"></i><i style="background:rgba(185,79,80,.55)"></i></span><span>vs mediana del día</span><i class="bi-legend__closed" aria-hidden="true"></i><span>cerrado</span><i class="bi-legend__low" aria-hidden="true"></i><span>cupo bajo</span><i class="bi-legend__empty" aria-hidden="true"></i><span>sin foto</span></div></div></div>
+      <div class="bi-legend" title="Verde = por debajo de la mediana (favorable) · rojo = por encima (riesgo) · ±5 % neutro"><span class="bi-legend__scale" aria-hidden="true"><i style="background:rgba(31,122,82,.55)"></i><i style="background:rgba(31,122,82,.22)"></i><i style="background:var(--line-soft)"></i><i style="background:rgba(185,79,80,.22)"></i><i style="background:rgba(185,79,80,.55)"></i></span><span class="sr-only">Escala de verde (barato) a rojo (caro) pasando por neutro · </span><span>vs mediana del día</span><i class="bi-legend__closed" aria-hidden="true"></i><span>cerrado</span><i class="bi-legend__low" aria-hidden="true"></i><span>cupo bajo (─ ámbar)</span><i class="bi-legend__empty" aria-hidden="true"></i><span title="Fecha sin captura: no hay foto para esa extracción">sin foto (sin captura)</span></div></div></div>
+    ${sparse ? `<div class="bi-cal__sparse" role="note">Solo ${captured} de ${H} fechas capturadas — cambia a 14/30 días para una vista densa. El punteado claro es «sin foto», no un error; el rayado diagonal es «cerrado».</div>` : ''}
     <div class="bi-cal__body">
       <div class="bi-cal__grid" id="biCalGrid">
         <div class="bi-cal__row bi-cal__days" style="grid-template-columns:${cols}"><span></span>${head}</div>
@@ -2477,14 +2546,15 @@ function biIndexHTML(m) {
   }
   const xl = m.dates.map((iso, i) => ({ iso, i })).filter(({ iso, i }) => i === 0 || biDate(iso).getUTCDate() === 1 || (H <= 30 && i % 7 === 0)).map(({ iso, i }) => `<text x="${X(i).toFixed(1)}" y="202" text-anchor="middle">${biDayLabel(iso)}</text>`).join('');
   const circles = dots.map((p) => (p ? `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="var(--card)" stroke="var(--ac)" stroke-width="2"></circle>` : '')).join('');
+  const unitLabel = m.own ? 'índice (100 = mediana) por fecha de entrada' : '€/noche por fecha de entrada';
   return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">${esc(kicker)}</span><h2>${esc(title)}</h2></div><span class="bi-card__summary">${esc(summary)}</span></div>
-    <svg class="bi-chart" viewBox="0 0 800 210" role="img" aria-label="${esc(title)}"><line x1="40" x2="800" y1="10" y2="10" stroke="var(--line)"></line><line x1="40" x2="800" y1="95" y2="95" stroke="var(--line)"></line><line x1="40" x2="800" y1="180" y2="180" stroke="var(--line)"></line>
+    <svg class="bi-chart" viewBox="0 0 800 210" role="img" aria-label="${esc(`${title} en ${unitLabel}`)}"><title>${esc(`Eje Y en ${m.own ? 'índice' : '€/noche'} · eje X = fecha de entrada`)}</title><line x1="40" x2="800" y1="10" y2="10" stroke="var(--line)"></line><line x1="40" x2="800" y1="95" y2="95" stroke="var(--line)"></line><line x1="40" x2="800" y1="180" y2="180" stroke="var(--line)"></line>
       <g class="bi-svg-text"><text x="34" y="13" text-anchor="end">${yl[0]}</text><text x="34" y="98" text-anchor="end">${yl[1]}</text><text x="34" y="183" text-anchor="end">${yl[2]}</text>${xl}</g>
       ${band ? `<polygon points="${band}" fill="var(--accent-soft)" opacity=".9"></polygon>` : ''}
       ${refY != null ? `<line x1="40" x2="800" y1="${refY.toFixed(1)}" y2="${refY.toFixed(1)}" stroke="var(--ink)" stroke-dasharray="4 4" opacity=".5"></line>` : ''}
       ${line ? `<polyline points="${line}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linejoin="round"></polyline>` : ''}${circles}
       <line x1="${X(m.fi).toFixed(1)}" x2="${X(m.fi).toFixed(1)}" y1="6" y2="184" stroke="var(--ac)" stroke-width="1" opacity=".6"></line></svg>
-    <div class="bi-legend bi-legend--chart"><span><i class="is-line"></i>${esc(leg1)}</span><span><i class="is-band"></i>${esc(leg2)}</span></div>`;
+    <div class="bi-legend bi-legend--chart" title="Eje Y en ${m.own ? 'índice (100 = mediana)' : '€/noche'} · eje X = fecha de entrada"><span><i class="is-line"></i>${esc(leg1)}</span><span><i class="is-band"></i>${esc(leg2)}</span></div>`;
 }
 
 function biEvolutionHTML(m) {
@@ -2510,14 +2580,14 @@ function biEvolutionHTML(m) {
     ...stats.map((s, k) => (s.med == null ? '' : `<circle cx="${X(k).toFixed(1)}" cy="${Y(s.med).toFixed(1)}" r="3.5" fill="var(--card)" stroke="var(--mid)" stroke-width="2"><title>Foto #${s.e.snapshotId} · extracción ${biDayLabel(s.e.checkIn)} · mediana ${eur(s.med)}</title></circle>`)),
     ...stats.map((s, k) => (s.own == null ? '' : `<circle cx="${X(k).toFixed(1)}" cy="${Y(s.own).toFixed(1)}" r="3.5" fill="var(--card)" stroke="var(--ac)" stroke-width="2"><title>Foto #${s.e.snapshotId} · ${eur(s.own)}</title></circle>`)),
   ].join('');
-  const xl = caps.map((e, k) => `<text x="${X(k).toFixed(1)}" y="202" text-anchor="middle">#${e.snapshotId}</text>`).join('');
+  const xl = caps.map((e, k) => `<text x="${X(k).toFixed(1)}" y="202" text-anchor="middle">#${e.snapshotId}·${biDayLabel(e.checkIn)}</text>`).join('');
   return `${head(`mediana ${eur(first)} → ${eur(last)} · ${biSigned((last / first - 1) * 100)} %`)}
-    <svg class="bi-chart" viewBox="0 0 800 210" role="img" aria-label="Mediana del set por foto"><line x1="40" x2="800" y1="10" y2="10" stroke="var(--line)"></line><line x1="40" x2="800" y1="180" y2="180" stroke="var(--line)"></line>
+    <svg class="bi-chart" viewBox="0 0 800 210" role="img" aria-label="Mediana del set por foto en €/noche por fecha de extracción"><title>Eje Y en €/noche · eje X = foto y fecha de extracción</title><line x1="40" x2="800" y1="10" y2="10" stroke="var(--line)"></line><line x1="40" x2="800" y1="180" y2="180" stroke="var(--line)"></line>
       <g class="bi-svg-text"><text x="34" y="13" text-anchor="end">${eur(hi)}</text><text x="34" y="183" text-anchor="end">${eur(lo)}</text>${xl}</g>
       ${band ? `<polygon points="${band}" fill="var(--accent-soft)" opacity=".9"></polygon>` : ''}
       <polyline points="${biPolyline(medPts)}" fill="none" stroke="var(--mid)" stroke-width="2" stroke-linejoin="round"></polyline>
       ${m.own ? `<polyline points="${biPolyline(ownPts)}" fill="none" stroke="var(--ac)" stroke-width="2.4" stroke-linejoin="round"></polyline>` : ''}${points}</svg>
-    <div class="bi-legend bi-legend--chart"><span><i class="is-mid"></i>Mediana del set</span><span><i class="is-band"></i>P25–P75</span>${m.own ? '<span><i class="is-line"></i>Hotel propio</span>' : ''}</div>`;
+    <div class="bi-legend bi-legend--chart" title="Eje Y en €/noche · eje X = foto y fecha de extracción"><span><i class="is-mid"></i>Mediana del set</span><span><i class="is-band"></i>P25–P75</span>${m.own ? '<span><i class="is-line"></i>Hotel propio</span>' : ''}</div>`;
 }
 
 function biGroupKey(mode, h) { return mode === 'zone' ? h.zone : mode === 'segment' ? h.segment : h.chain; }
@@ -2543,7 +2613,7 @@ function biBoxesHTML(m) {
 function biScatterHTML(m) {
   const st = State.bi;
   const pts = m.open.filter(({ h }) => h.nota != null);
-  const head = `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Reputación vs precio · value score</span><h2>Quién ofrece más por su precio</h2></div><span class="bi-card__summary" id="biScatterReadout">tamaño = reseñas · pulsa para abrir ficha</span></div>`;
+  const head = `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Reputación vs precio · value score</span><h2>Quién ofrece más por su precio</h2></div><span class="bi-card__summary" id="biScatterReadout" title="El diámetro crece con las reseñas (ej. 100 → ${biDotSize(100)}px · 1000 → ${biDotSize(1000)}px) · verde ≥ 60 favorable · rojo ≤ 40 riesgo">tamaño = reseñas (100 → ${biDotSize(100)}px · 1000 → ${biDotSize(1000)}px) · pulsa para abrir ficha</span></div>`;
   if (pts.length < 2 || !m.fMed || m.mNota == null) return `${head}<div class="empty">Se necesitan al menos dos hoteles con tarifa y nota en esta fecha.</div>`;
   const xs = pts.map((x) => x.p), ys = pts.map((x) => x.h.nota);
   const xlo = Math.min(...xs, 100) * 0.92, xhi = Math.max(...xs, 200) * 1.04;
@@ -2585,7 +2655,7 @@ function biAvailabilityHTML(m) {
   const closers = m.hs.map((h) => ({ h, c: h.status.filter((s) => s === 'closed').length, l: h.status.filter((s) => s === 'low').length }))
     .filter((x) => x.c + x.l > 0).sort((a, b) => (b.c * 2 + b.l) - (a.c * 2 + a.l)).slice(0, 6)
     .map((x) => { const s = x.h.status[m.fi]; const now = s === 'closed' ? 'cerrado' : s === 'low' ? 'cupo bajo' : s === 'ok' ? 'abierto' : 'sin dato'; return `<button type="button" class="bi-closer" data-bi-open="${esc(x.h.key)}"><span>${esc(x.h.name)}</span><span class="neg">${x.c} d</span><span class="warn">${x.l} d</span><span>${now}</span></button>`; }).join('');
-  return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Disponibilidad y cierres · extracciones ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><h2>Presión de ocupación en el set</h2></div><div class="bi-legend"><span><i class="bi-sw is-closed"></i>cerrado</span><span><i class="bi-sw is-low"></i>cupo bajo</span></div></div>
+  return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Disponibilidad y cierres · extracciones ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><h2>Presión de ocupación en el set</h2></div><div class="bi-legend" title="Rojo = cerrado (riesgo) · ámbar = cupo bajo (─ además de color)"><span><i class="bi-sw is-closed"></i>cerrado ■</span><span><i class="bi-sw is-low"></i>cupo bajo ─</span></div></div>
     <div class="bi-weeks">${bars}</div><div class="bi-weeks__labels">${labels}</div>
     <div class="bi-closers"><div class="bi-closer bi-closer--head"><span>Hotel</span><span>Cerrado</span><span>Cupo bajo</span><span>Hoy</span></div>${closers || '<div class="empty">Sin cierres ni cupo bajo en las fechas capturadas.</div>'}</div>`;
 }
@@ -2630,7 +2700,7 @@ async function renderHotelsBI(panel, sheetModel, metrics) {
     <section class="kpi-strip kpi-strip--bi" id="biKpis" aria-label="Indicadores del set en la fecha activa"></section>
     <div class="bi-flow">
       <div class="bi-card bi-map-card"><div class="bi-card__head bi-map-card__head"><div class="bi-card__title"><span class="card__kicker" id="biMapKicker"></span><h2>Dónde está caro y dónde barato</h2></div>
-        <div class="bi-legend"><span><i class="bi-sw is-dot tone-low"></i>−15 % o menos</span><span><i class="bi-sw is-dot tone-mid"></i>en la mediana</span><span><i class="bi-sw is-dot tone-high"></i>+15 % o más</span><span>· tamaño = reseñas</span></div></div>
+        <div class="bi-legend" title="Verde = por debajo de la mediana (favorable) · ámbar = en la mediana · rojo = por encima (riesgo) · ±15 %"><span><i class="bi-sw is-dot tone-low"></i>−15 % o menos</span><span><i class="bi-sw is-dot tone-mid"></i>en la mediana</span><span><i class="bi-sw is-dot tone-high"></i>+15 % o más</span><span title="El diámetro crece con las reseñas">· tamaño = reseñas (ej. 100 → ${biPinSize(100)}px · 1000 → ${biPinSize(1000)}px)</span><span class="sr-only">De verde (barato) a rojo (caro) pasando por neutro.</span></div></div>
         <div class="map-frame bi-map" id="biMapFrame"><div class="map-frame__canvas" id="biMap" aria-label="Mapa de precios del set en la fecha activa"></div><div class="bi-zones" id="biZones" role="group" aria-label="Filtrar por zona"></div></div></div>
       <div class="bi-side" id="biSide"></div>
       <section class="bi-card bi-cal" id="biCal" aria-label="Calendario de tarifas"></section>
@@ -2640,6 +2710,7 @@ async function renderHotelsBI(panel, sheetModel, metrics) {
       <section class="bi-card bi-scatter-card" id="biScatter"></section>
       <section class="bi-card bi-alerts-card" id="biAlerts"></section>
       <section class="bi-card bi-avail" id="biAvail"></section>
+      <div class="bi-guide-wrap">${semanticGuideHTML('guia-semantica-bi')}</div>
     </div>
   </div>`;
   paintBi();
@@ -3126,7 +3197,7 @@ function flightHeatHTML(model, focus) {
     }).join('');
     return `<button type="button" class="fl-heat__route${r.code === focus ? ' is-focus' : ''}" data-fl-route="${esc(r.code)}">${esc(r.code)} <small>${esc(r.city)}</small></button>${cells}`;
   }).join('');
-  return `<div class="dash-card__head"><div><span class="card__kicker">Mapa de calor</span><h2>Precio mínimo por ruta y semana de salida</h2></div><div class="fl-heat__legend"><span>bajo su media</span><span class="bi-legend__scale" aria-hidden="true"><i style="background:rgba(31,122,82,.55)"></i><i style="background:rgba(31,122,82,.2)"></i><i style="background:var(--line-soft)"></i><i style="background:rgba(185,79,80,.2)"></i><i style="background:rgba(185,79,80,.55)"></i></span><span>sobre su media</span></div></div>
+  return `<div class="dash-card__head"><div><span class="card__kicker">Mapa de calor</span><h2>Precio mínimo por ruta y semana de salida</h2></div><div class="fl-heat__legend" title="Verde = por debajo de su media (favorable) · rojo = por encima (riesgo) · ±4 % neutro"><span>bajo su media</span><span class="bi-legend__scale" aria-hidden="true"><i style="background:rgba(31,122,82,.55)"></i><i style="background:rgba(31,122,82,.2)"></i><i style="background:var(--line-soft)"></i><i style="background:rgba(185,79,80,.2)"></i><i style="background:rgba(185,79,80,.55)"></i></span><span class="sr-only">Escala de verde (barato) a rojo (caro) pasando por neutro · </span><span>sobre su media</span><span class="mono dim">€/trayecto</span></div></div>
     <div class="fl-heat"><span></span>${weeks.map((w) => `<span class="fl-heat__week">${w}</span>`).join('')}${rows}</div>`;
 }
 
@@ -3203,10 +3274,10 @@ function flightRoutesHTML(model) {
   const rows = rs.map((r) => `<button type="button" class="fl-range" data-fl-route-open="${esc(r.code)}"><span class="fl-range__name"><strong>${esc(r.code)} → LPA</strong><small>${esc(r.city)}</small></span>
     <span class="fl-range__plot"><i class="fl-range__axis"></i><i class="fl-range__span" style="left:${X(r.minP).toFixed(1)}%;width:${(X(r.maxP) - X(r.minP)).toFixed(1)}%"></i><i class="fl-range__min" style="left:${X(r.minP).toFixed(1)}%"></i><i class="fl-range__avg" style="left:${X(r.avgP).toFixed(1)}%"></i><i class="fl-range__max" style="left:${X(r.maxP).toFixed(1)}%"></i></span>
     <span class="mono">${nEs(r.minP)} · ${nEs(r.avgP)} · ${nEs(r.maxP)} €</span><span class="mono dim">${r.directPct} %</span><span class="mono ${r.delta > 0 ? 'neg' : r.delta < 0 ? 'pos' : 'dim'}">${r.delta == null ? '—' : `${biSigned(r.delta)} %`}</span></button>`).join('');
-  return `<article class="card card--pad fl-ranges"><div class="dash-card__head"><div><span class="card__kicker">Precio de entrada vs. medio vs. máximo</span><h2>Amplitud de tarifa por ruta</h2></div><div class="dash-legend"><span><i class="fl-key fl-key--min"></i>mínimo</span><span><i class="fl-key fl-key--avg"></i>medio</span><span><i class="fl-key fl-key--max"></i>máximo</span></div></div>
-    <div class="fl-range fl-range--head"><span>Ruta</span><span></span><span>Mín · medio · máx</span><span>Directos</span><span>Δ foto</span></div>${rows}
+  return `<article class="card card--pad fl-ranges"><div class="dash-card__head"><div><span class="card__kicker">Precio de entrada vs. medio vs. máximo</span><h2>Amplitud de tarifa por ruta</h2></div><div class="dash-legend" title="○ = mínimo · ● = medio · ■ = máximo (forma además de color)"><span><i class="fl-key fl-key--min"></i>mínimo ○</span><span><i class="fl-key fl-key--avg"></i>medio ●</span><span><i class="fl-key fl-key--max"></i>máximo ■</span></div></div>
+    <div class="fl-range fl-range--head"><span>Ruta</span><span></span><span>Mín · medio · máx (€/trayecto)</span><span>Directos</span><span>Δ foto</span></div>${rows}
     <div class="fl-ranges__axis"><span></span><span class="fl-ranges__ticks">${ticks.map((t) => `<span>${eur(t)}</span>`).join('')}</span><span></span><span></span><span></span></div>
-    <p class="fl-note">Ofertas observadas, no billetes vendidos.</p></article>`;
+    <p class="fl-note">Precios en €/trayecto · 1 adulto · solo ida. Ofertas observadas, no billetes vendidos. Eje X en €/trayecto por ruta.</p></article>`;
 }
 
 /* ---- operación aérea (tabla profesional, paginada en el servidor) */
@@ -5369,7 +5440,7 @@ function workspaceHotelTrendHTML(history) {
   const previous = series.at(-2), current = series.at(-1);
   const change = previous.v ? ((current.v / previous.v) - 1) * 100 : null;
   const stat = (label, value, foot, tone = '') => `<div class="ws-trend__stat"><span>${label}</span><strong class="${tone}">${value}</strong><small>${foot}</small></div>`;
-  return `<div class="ws-trend">${stat('Foto anterior', eur(previous.v), `#${nEs(previous.snapshotId)} · ${esc(fmtStamp(previous.scrapedAt))}`)}${stat('Última foto', eur(current.v), `#${nEs(current.snapshotId)} · ${esc(fmtStamp(current.scrapedAt))}`)}${stat('Cambio', signPct(change), 'mediana de sus estancias', change > 0 ? 'neg' : change < 0 ? 'pos' : '')}</div>${lineSVG(series.map((item) => ({ v: item.v })))}`;
+  return `<div class="ws-trend">${stat('Foto anterior', eur(previous.v), `#${nEs(previous.snapshotId)} · ${esc(fmtStamp(previous.scrapedAt))}`)}${stat('Última foto', eur(current.v), `#${nEs(current.snapshotId)} · ${esc(fmtStamp(current.scrapedAt))}`)}${stat('Cambio', signPct(change), 'mediana de sus estancias', change > 0 ? 'neg' : change < 0 ? 'pos' : '')}</div>${lineSVG(series.map((item) => ({ v: item.v })))}<div class="ws-trend__axis mono" title="El eje X es la fecha de foto">€/noche por fecha de foto · #${previous.snapshotId} → #${current.snapshotId}</div>`;
 }
 function miniKpi(k, v) { return `<div class="mini-kpi"><div class="k">${esc(k)}</div><strong>${v}</strong></div>`; }
 
@@ -6065,6 +6136,13 @@ function wireEvents() {
       return;
     }
     if (e.key === 'Escape' && closeDashboardPopover()) {
+      e.preventDefault();
+      return;
+    }
+    // D2-17: Esc suelta la lectura fijada de la dispersión sin romper el foco
+    if (e.key === 'Escape' && e.target instanceof Element && e.target.closest?.('.dash-swarm__dot')) {
+      showDashboardSwarmTip(null);
+      e.target.blur();
       e.preventDefault();
       return;
     }
