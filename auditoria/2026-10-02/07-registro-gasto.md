@@ -5,6 +5,7 @@ El director lo abre en F0.8: tipo USD→EUR fijo del día, precio por búsqueda 
 | 2026-10-02 09:15 | Copilot L1+L2 (reserva 2,00) | 2,00 | ~0,0045 (app 0,00043×2+0,0036; proveedor sin mover a esta precisión) | 0,6786 | 51 | no |
 | 2026-10-02 09:30 | Copilot air+deepseek | (de 2,00) | proveedor 0,6786→0,6851 = 0,0065 total Copilot (air GLM agota tiempo, coste 0; deepseek ok 0,0040) | 0,6851 | 51 | no |
 | 2026-10-02 09:35 | Reseñas Servatur (reserva 0,50) | 0,50 | 0,0076 (proveedor 0,6851→0,6927; job cdf8e7cf FAILED «sin JSON estructurado») | 0,6927 | 51 | sí (run fallido) |
+| 2026-10-02 10:40 | SerpAPI MAD_LPA×3 (reserva 1,00 oleada 1) | 1,00 | 0,00 € (cuota free 51→54; job c5fcac49 succeeded, sin `api_key` persistida) | 0,6992* | 54 | sí (snapshots 171-172) |
 
 Reparto: Copilot live ≤2,00 € (2 casos unitarios primero, nunca `--strict` sin `--case`) · reseñas Servatur Monte Feliz 0,50 € · SerpAPI aérea oleada 1 ≤1,00 € (tras PA-97) · F4 coste ≤0,50 € · colchón 1,00 € (Jev Maps Servatur solo tras PA-81).
 

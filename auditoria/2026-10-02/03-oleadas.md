@@ -54,4 +54,4 @@ Cierre oleada 1: regresión + captura aérea SerpAPI real (≤1 €, tras PKG-01
 | PKG-24 | N+1 + `capture_history` + caché `comparable` + paginar `history` + índices + `rate_calendar` caché (B1-07/08/09/10, I1-19) | B1 | W2 | BE |
 | PKG-25 | Logging redactado + dotenv SerpAPI + endpoints síncronos + reintentos/cancel (B2-09/10/11/16/17, W2-11/12/13) | B2 | I1 | BE |
 | PKG-26 | Worker separado (rápida Copilot vs larga capturas) + `recover_stale` 900 s (B2-07/08; según decisión nº3) | B2 | I1 | BE |
-| PKG-27 | Tests P0/P1 + `qa_flights` con bloqueos esperados + matriz G1 (I1-21, B2-19, G1-14/21) | G1 | W2 | QA |
+| PKG-27 | Tests P0/P1 + `qa_flights` con bloqueos esperados + matriz G1 + aislamiento: `conftest` con sqlite fijo en `/tmp` y dependencia de seed (402 con DB vacía; receta: copia poblada) (I1-21, B2-19, G1-14/21) | G1 | W2 | QA |

@@ -17,5 +17,6 @@ Log de una línea por evento: fecha-hora · fase-paso · quién · qué · resul
 | 2026-10-02 10:20 | F1B | director | Copilot 5 pagos + 1 error gratis (GLM timeout); reseñas Servatur FAILED tras 0,0076 €. Real total ≈0,014 €. Backup pre/post + copias refrescadas, :5070 parada, :5060 reiniciada | OK |
 | 2026-10-02 10:35 | F2 | director | `02-backlog.md` (7 P0, P1/P2/P3) + `03-oleadas.md` (27 PKG) + `04-decisiones.md` (8) + commit `012e01e` | OK |
 | 2026-10-02 10:42 | PARADA-1 | usuario+director | «ejecuta todo el plan» = APROBADO con las 8 recomendaciones D1–D8. Adaptación: sin OpenCode-desktop; F3 con subagentes en modo IMPLEMENTACIÓN | **PARADA-1: APROBADO** |
+| 2026-10-02 11:40 | O1-cierre | director | 8/8 PKG + regresión (pytest 263, node 33, smoke FE) + SerpAPI MAD_LPA×3 (0 €, sin leak) + backup `113738` + copias. *OR 0,6992 con retardo de contador, no gasto nuevo | OK |
 
 Marcas: `PARADA-1: APROBADO` · `PARADA-2: APROBADO` (las anota el director al aprobar el usuario).
