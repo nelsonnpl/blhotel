@@ -195,3 +195,41 @@ def test_response_quality_flags_missing_blocks_and_forbidden_artifacts() -> None
     assert quality["status"] == "warning"
     assert "Evidencia" in quality["missingBlocks"]
     assert "```mermaid" in quality["forbiddenArtifacts"]
+
+
+def test_response_quality_flags_unsupported_metric_without_evidence() -> None:
+    response = (
+        "**Lectura**\nLa ocupación es 82 %.\n"
+        "**Evidencia**\nSin PMS.\n"
+        "**Acción siguiente**\nActualizar captura.\n"
+        "**Límite de confianza**\nBajo sin PMS."
+    )
+
+    quality = validate_assistant_response(response)
+
+    assert quality["status"] == "warning"
+    assert quality["unsupportedMetricClaims"]
+    assert quality["missingBlocks"] == []
+
+
+def test_response_quality_clears_supported_metric_with_evidence() -> None:
+    response = (
+        "**Lectura**\nLa ocupación es 82 %.\n"
+        "**Evidencia**\nSin PMS.\n"
+        "**Acción siguiente**\nActualizar captura.\n"
+        "**Límite de confianza**\nBajo sin PMS."
+    )
+    evidence = {"records": [{"evidenceId": "hotel-market-ocupacion", "metric": "ocupacion", "value": 82}]}
+
+    quality = validate_assistant_response(response, evidence)
+
+    assert quality["unsupportedMetricClaims"] == []
+    assert quality["status"] == "ok"
+
+
+def test_unsupported_pattern_is_shared_with_live_evaluation() -> None:
+    from backend.app.assistant import UNSUPPORTED_METRIC_PATTERN
+    from backend.app.copilot_live_evaluation import UNSUPPORTED_METRIC_PATTERN as live_pattern
+
+    assert live_pattern is UNSUPPORTED_METRIC_PATTERN
+    assert live_pattern.search("ocupación 82 %") is not None

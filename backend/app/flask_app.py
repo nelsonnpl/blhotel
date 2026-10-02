@@ -3271,7 +3271,7 @@ def assistant_chat():
                 "toolErrors": 0,
                 "endpointLatencyMs": telemetry["endpointLatencyMs"],
                 "sessionId": session_id,
-                "responseQuality": validate_assistant_response(reply),
+                "responseQuality": validate_assistant_response(reply, request_context.get("evidencia")),
             }
         )
         if data_meta["responseQuality"]["status"] != "ok":
@@ -3516,7 +3516,7 @@ def assistant_chat():
     if telemetry.get("modelFallback"):
         data_meta["modelFallback"] = telemetry["modelFallback"]
     data_meta["sessionId"] = session_id
-    data_meta["responseQuality"] = validate_assistant_response(reply)
+    data_meta["responseQuality"] = validate_assistant_response(reply, request_context.get("evidencia"))
     if data_meta["responseQuality"]["status"] != "ok":
         logger.warning(
             "assistant outcome=quality_warning request_id=%s model=%s missing_blocks=%s",

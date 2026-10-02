@@ -237,6 +237,14 @@ MAX_TOOL_CALLS = 12
 REQUIRED_RESPONSE_BLOCKS = ("Lectura", "Evidencia", "Acción siguiente", "Límite de confianza")
 FORBIDDEN_RESPONSE_ARTIFACTS = ("```mermaid", "<svg", "</svg>")
 
+# I1-16: patrón canónico para cifras PMS sin evidencia (ocupación/pickup/RevPAR
+# con número). Reutilizado por `copilot_live_evaluation` para no duplicar la
+# expresión; la validación solo avisa (`warning`), nunca bloquea la respuesta.
+UNSUPPORTED_METRIC_PATTERN = re.compile(
+    r"\b(?:ocupaci[oó]n|pickup|revpar)\b[^\n.!?]{0,40}\b\d+(?:[,.]\d+)?\s*(?:%|€|eur\b)",
+    re.IGNORECASE,
+)
+
 
 class AssistantError(Exception):
     """Fallo recuperable al hablar con OpenRouter (se traduce a un error de API claro)."""
@@ -817,18 +825,57 @@ def blocked_decision_reply(gate: dict[str, Any]) -> str:
     )
 
 
-def validate_assistant_response(response: str) -> dict[str, Any]:
-    """Comprueba el contrato editorial sin alterar el texto generado por el modelo."""
+def _fold_metric_text(value: str) -> str:
+    """Normaliza texto para comparar cifras frente a evidencia (sin tildes, `,`→`.`)."""
+    folded = unicodedata.normalize("NFKD", (value or "").lower())
+    folded = "".join(char for char in folded if not unicodedata.combining(char))
+    return folded.replace(",", ".")
+
+
+def _evidence_covers_claim(evidence_folded: str, claim: str) -> bool:
+    """Indica si la evidencia ya contiene la misma métrica y cifra del claim."""
+    claim_folded = _fold_metric_text(claim)
+    numbers = re.findall(r"\d+(?:\.\d+)?", claim_folded)
+    metrics = re.findall(r"ocupacion|pickup|revpar", claim_folded)
+    if not numbers or not metrics:
+        return False
+    for metric in metrics:
+        if metric not in evidence_folded:
+            continue
+        for number in numbers:
+            if re.search(r"(?<!\d)" + re.escape(number) + r"(?!\d)", evidence_folded):
+                return True
+    return False
+
+
+def validate_assistant_response(response: str, evidence: Any | None = None) -> dict[str, Any]:
+    """Comprueba el contrato editorial sin alterar el texto generado por el modelo.
+
+    Reutiliza `UNSUPPORTED_METRIC_PATTERN`: una cifra de ocupación/pickup/RevPAR
+    con número sin respaldo en `evidence` deja `status` en `warning` con
+    `unsupportedMetricClaims`, sin bloquear la respuesta. Si la misma métrica y
+    cifra aparecen en la evidencia aportada, el claim se considera verificado.
+    """
     text = response or ""
     lowered = text.lower()
     missing_blocks = [block for block in REQUIRED_RESPONSE_BLOCKS if block.lower() not in lowered]
     forbidden_artifacts = [artifact for artifact in FORBIDDEN_RESPONSE_ARTIFACTS if artifact.lower() in lowered]
+    unsupported_claims = UNSUPPORTED_METRIC_PATTERN.findall(text)
+    if unsupported_claims and evidence is not None:
+        try:
+            raw_evidence = evidence if isinstance(evidence, str) else json.dumps(evidence, ensure_ascii=False, default=str)
+        except Exception:  # noqa: BLE001 - evidencia no serializable: se trata como ausente
+            raw_evidence = ""
+        evidence_folded = _fold_metric_text(raw_evidence)
+        if evidence_folded:
+            unsupported_claims = [claim for claim in unsupported_claims if not _evidence_covers_claim(evidence_folded, claim)]
     return {
         "schemaVersion": "revenue-response-quality.v1",
-        "status": "ok" if not missing_blocks and not forbidden_artifacts else "warning",
+        "status": "ok" if not missing_blocks and not forbidden_artifacts and not unsupported_claims else "warning",
         "requiredBlocks": list(REQUIRED_RESPONSE_BLOCKS),
         "missingBlocks": missing_blocks,
         "forbiddenArtifacts": forbidden_artifacts,
+        "unsupportedMetricClaims": list(unsupported_claims),
     }
 
 

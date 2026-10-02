@@ -14,7 +14,7 @@ import re
 from typing import Any, Callable
 
 from .air_data import build_air_payload
-from .assistant import AssistantError, ask_openrouter, assistant_data_gate, build_revenue_context, validate_assistant_response
+from .assistant import AssistantError, UNSUPPORTED_METRIC_PATTERN, ask_openrouter, assistant_data_gate, build_revenue_context, validate_assistant_response
 from .config import OpenRouterSettings, load_settings
 from .copilot_gateway import project_context_for_experts
 from .database import Database
@@ -172,10 +172,9 @@ REVENUE_CORPUS_CASES: tuple[LiveEvaluationCase, ...] = (
     ),
 )
 
-UNSUPPORTED_METRIC_PATTERN = re.compile(
-    r"\b(?:ocupaci[oó]n|pickup|revpar)\b[^\n.!?]{0,40}\b\d+(?:[,.]\d+)?\s*(?:%|€|eur\b)",
-    re.IGNORECASE,
-)
+# I1-16: `UNSUPPORTED_METRIC_PATTERN` se reutiliza desde `assistant`
+# (importado arriba); se reexporta aquí para compatibilidad con el harness live.
+
 
 
 def _cases_for_profile(profile: str) -> tuple[LiveEvaluationCase, ...]:
