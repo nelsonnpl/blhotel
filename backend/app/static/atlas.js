@@ -93,6 +93,92 @@ function runCounters(root) {
   requestAnimationFrame(step);
 }
 
+/* >>> api-robustez (PKG-07 W2 · B1-04/B2-13/W2-04): timeout + AbortController + reintento solo GET + red global.
+   No edita líneas 12–80: envuelve api() por reasignación posterior. GET aborta >15 s y reintenta 1 vez;
+   POST/PUT/DELETE abortan >60 s y jamás reintentan (un reenvío de chat duplica gasto). */
+const API_TIMEOUT_MS = 15000;
+const API_POST_TIMEOUT_MS = 60000;
+const API_GET_MAX_ATTEMPTS = 2;
+const API_RETRYABLE_STATUS = new Set([502, 503, 504]);
+const __apiBase = api;
+function __apiIsAbort(err) { return !!err && (err.name === 'AbortError' || err.code === 20); }
+function __apiIsNetwork(err) { return err instanceof TypeError; }
+async function __apiAttempt(path, opts, timeoutMs, externalSignal) {
+  const ctrl = new AbortController();
+  let onExternalAbort = null;
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      ctrl.abort(externalSignal.reason);
+    } else {
+      onExternalAbort = () => ctrl.abort(externalSignal.reason);
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+  }
+  const timer = setTimeout(() => {
+    try {
+      ctrl.abort(new DOMException(`api timeout ${timeoutMs}ms: ${path}`, 'AbortError'));
+    } catch (_) {
+      const fallback = new Error(`api timeout ${timeoutMs}ms: ${path}`);
+      fallback.name = 'AbortError';
+      ctrl.abort(fallback);
+    }
+  }, timeoutMs);
+  try {
+    return await __apiBase(path, Object.assign({}, opts, { signal: ctrl.signal }));
+  } finally {
+    clearTimeout(timer);
+    if (externalSignal && onExternalAbort) externalSignal.removeEventListener('abort', onExternalAbort);
+  }
+}
+api = async function apiWithTimeout(path, opts) {
+  const method = String((opts && opts.method) || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+  const timeoutMs = isGet ? API_TIMEOUT_MS : API_POST_TIMEOUT_MS;
+  const maxAttempts = isGet ? API_GET_MAX_ATTEMPTS : 1;
+  const externalSignal = opts && opts.signal ? opts.signal : null;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await __apiAttempt(path, opts, timeoutMs, externalSignal);
+    } catch (err) {
+      lastErr = err;
+      if (!isGet) throw err;
+      if (externalSignal && externalSignal.aborted) throw err;
+      const retryable = __apiIsAbort(err) || __apiIsNetwork(err) ||
+        (err && typeof err.status === 'number' && API_RETRYABLE_STATUS.has(err.status));
+      if (!retryable || attempt >= maxAttempts) throw err;
+    }
+  }
+  throw lastErr;
+};
+if (typeof window !== 'undefined') {
+  window.API_TIMEOUT_MS = API_TIMEOUT_MS;
+  if (!Array.isArray(window.__atlasErrors)) window.__atlasErrors = [];
+  const __atlasPushError = (kind, value) => {
+    try {
+      const message = value && value.message ? String(value.message) : String(value ?? 'error desconocido');
+      window.__atlasErrors.push({ kind, message, at: Date.now() });
+      while (window.__atlasErrors.length > 20) window.__atlasErrors.shift();
+      if (typeof console !== 'undefined' && console.warn) console.warn(`[atlas:${kind}]`, value);
+      if (typeof toast === 'function') {
+        try { toast('Se produjo un error inesperado. Puedes reintentar la acción.', 'warn'); } catch (_) { /* el toast nunca rompe el render */ }
+      }
+    } catch (_) { /* la red global nunca rompe el render */ }
+  };
+  const __atlasPrevOnerror = window.onerror;
+  window.onerror = (message, source, lineno, colno, error) => {
+    __atlasPushError('error', error || message);
+    if (typeof __atlasPrevOnerror === 'function') {
+      try { return __atlasPrevOnerror(message, source, lineno, colno, error); } catch (_) { return false; }
+    }
+    return false;
+  };
+  window.addEventListener('unhandledrejection', (event) => {
+    __atlasPushError('unhandledrejection', event ? event.reason : 'rechazo sin motivo');
+  });
+}
+/* <<< api-robustez */
+
 /* --------------------------------------------------------------- charts */
 
 /* Línea simple (tendencia) */
