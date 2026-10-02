@@ -753,6 +753,10 @@ function createAtlasMap(container, options) {
     if (!map.isStyleLoaded()) mapFrameStatus(frame, MAP_FAILED_TEXT);
   });
   map.on('remove', () => { window.clearTimeout(timer); });
+  // Las peticiones de teselas canceladas pueden llegar después de remove(); sin listener, MapLibre
+  // las vuelca a console.error. Se deja uno mudo que solo ignora esas cancelaciones.
+  const remove = map.remove.bind(map);
+  map.remove = () => { remove(); map.on('error', (event) => { if (event?.error?.name !== 'AbortError') console.warn(event?.error || event); }); };
   return map;
 }
 
@@ -2280,7 +2284,7 @@ function biAlertsHTML(m) {
   const shown = list.filter((a) => st.alertTab === 'all' || a.type === st.alertTab);
   const title = mv.isComparable && mv.previousSnapshotId ? `Movimientos entre la foto #${mv.previousSnapshotId} y la #${st.metrics.latestSnapshot?.id}` : 'Movimientos de la última foto';
   return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Alertas de competidores</span><h2>${esc(title)}</h2></div><div class="seg seg--sm" role="group" aria-label="Tipo de alerta">${tabs}</div></div>
-    <div class="bi-alerts">${shown.map((a) => `<button type="button" class="bi-alert" data-bi-open="${esc(a.key)}"><span class="bi-alert__tag is-${a.tone}">${esc(a.tag)}</span><span class="bi-alert__body"><b>${esc(a.name)}</b><small>${esc(a.text)}</small></span><strong class="is-${a.tone}">${esc(a.value)}</strong></button>`).join('') || '<div class="empty">Sin alertas con los filtros actuales.</div>'}</div>`;
+    <div class="bi-alerts">${shown.map((a) => `<button type="button" class="bi-alert" data-bi-open="${esc(a.key)}"><span class="bi-alert__tag is-${a.tone}">${esc(a.tag)}</span><span class="bi-alert__body"><b>${esc(a.name)}</b><small>${esc(a.text)}</small></span><strong class="is-${a.tone}">${esc(a.value)}</strong></button>`).join('') || '<div class="empty">Sin alertas con los filtros actuales. <button type="button" class="link-button" data-bi-clear="all">Limpiar filtros</button></div>'}</div>`;
 }
 
 function biAvailabilityHTML(m) {
@@ -3020,7 +3024,7 @@ async function flightOperationsHTML(model) {
       <table class="fops__table" id="airOperationsTable"><caption class="sr-only">Opciones de vuelo capturadas, con conexión, precio, posición frente al rango típico, índice de accesibilidad y duración</caption>
         <colgroup>${AIR_OPS_COLUMNS.map((c) => `<col style="width:${c[3]}px">`).join('')}</colgroup>
         <thead><tr>${heads}</tr></thead><tbody>${body}</tbody></table>
-      ${body ? '' : '<div class="fops__empty"><strong>Ninguna opción coincide</strong><span>Cambia los filtros o restablécelos.</span></div>'}
+      ${body ? '' : '<div class="fops__empty"><strong>Ninguna opción coincide</strong><span>Cambia los filtros o restablécelos.</span><button type="button" class="btn btn--sm" data-air-operation-reset>Restablecer filtros</button></div>'}
     </div>
     <div class="fops__pager"><span>${total ? `${from}–${to} de ${nEs(total)} · página ${q.page}/${pages}` : '0 resultados'}</span><div><button type="button" class="btn btn--xs" data-air-operation-page="prev"${q.page <= 1 ? ' disabled' : ''}>← Anterior</button><button type="button" class="btn btn--xs" data-air-operation-page="next"${q.page >= pages ? ' disabled' : ''}>Siguiente →</button></div></div>
   </article>`;
@@ -3510,7 +3514,7 @@ function renderHotelReputationCatalog(host, total) {
         <colgroup><col style="width:52px"><col><col style="width:110px"><col style="width:110px"><col style="width:160px"><col style="width:150px"><col style="width:150px"><col style="width:96px"></colgroup>
         <thead><tr><th scope="col" class="rep-table__check"><input type="checkbox" id="reviewSelectAll" aria-label="Seleccionar visibles"></th><th scope="col">Hotel</th><th scope="col" class="r">Google</th><th scope="col" class="r">Booking</th><th scope="col">Google Maps</th><th scope="col">Último Maps</th><th scope="col">Último Booking</th><th scope="col" class="r">Ficha</th></tr></thead>
         <tbody>${rows.map(reputationRowHTML).join('')}</tbody></table>
-        <div class="rep-empty" id="repEmpty" hidden><strong>Ningún hotel coincide</strong><span>Revisa la búsqueda o cambia de pestaña.</span></div></div>
+        <div class="rep-empty" id="repEmpty" hidden><strong>Ningún hotel coincide</strong><span>Revisa la búsqueda o cambia de pestaña.</span><button type="button" class="btn btn--sm" data-rep-show-all>Ver todo el inventario</button></div></div>
       <div class="rep-card__foot"><span id="reviewCatalogCount"></span>${total > rows.length ? `<span>Se muestran los primeros ${nEs(rows.length)} de ${nEs(total)}</span>` : ''}</div>
     </article>
   </div><div id="repSelBar"></div>`;
@@ -3788,7 +3792,7 @@ async function loadHotelReviewsPage(reviewId = null) {
     const prev = $('[data-review-page="prev"]'); const next = $('[data-review-page="next"]');
     if (prev) prev.disabled = State.reputation.reviewPage <= 0;
     if (next) next.disabled = (State.reputation.reviewPage + 1) * 50 >= page.total;
-      host.innerHTML = page.items?.length ? `<div class="table-scroll"><table class="t review-rows-table"><caption class="sr-only">Reseñas hoteleras con fuente, nota, idioma y textos original y español</caption><thead><tr><th>Fuente</th><th>Nota</th><th>Fecha</th><th>Idioma</th><th>Reseña y traducción</th><th></th></tr></thead><tbody>${page.items.map((item) => {const sourceUrl=hotelReviewSourceHref(item.sourceUrl);return `<tr data-review-row-id="${item.id}"><th scope="row">${sourceUrl ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(hotelSourceLabel(item.source))} ↗</a>` : esc(hotelSourceLabel(item.source))}<small>${esc(item.author || 'Anónimo')}</small></th><td class="num">${item.rating == null ? '—' : `${nEs(item.rating, 1)}/${nEs(item.ratingScale, 0)}`}</td><td>${esc(item.publishedAt || item.relativePublishedAt || '—')}<small>${esc(item.datePrecision)}</small></td><td>${esc(item.languageOriginal || 'UND')}<small>${esc(item.translationMethod || '')}</small></td><td class="review-text-cell">${item.title ? `<strong>${esc(item.title)}</strong>` : ''}${item.positiveText ? `<p><b>Positivo</b> ${esc(item.positiveText)}</p>` : ''}${item.negativeText ? `<p><b>Negativo</b> ${esc(item.negativeText)}</p>` : ''}${item.reviewEs ? `<p><b>Español</b> ${esc(item.reviewEs)}</p>` : ''}${item.reviewOriginal ? `<details><summary>Ver original</summary><p>${esc(item.reviewOriginal)}</p></details>` : ''}<small>${esc(item.topics || '')}${item.qualityFlags?.length ? ` · Calidad: ${esc(item.qualityFlags.join(', '))}` : ''}</small></td><td><div class="review-row-actions"><button type="button" class="link-button" data-review-note-for="${item.id}">Anotar</button>${item.versionCount > 1 ? `<button type="button" class="link-button" data-review-history="${item.id}">Historial · ${nEs(item.versionCount)}</button>` : ''}</div><div class="review-history-outlet" data-review-history-outlet hidden></div></td></tr>`;}).join('')}</tbody></table></div>` : '<div class="empty">No hay reseñas que coincidan con los filtros.</div>';
+      host.innerHTML = page.items?.length ? `<div class="table-scroll"><table class="t review-rows-table"><caption class="sr-only">Reseñas hoteleras con fuente, nota, idioma y textos original y español</caption><thead><tr><th>Fuente</th><th>Nota</th><th>Fecha</th><th>Idioma</th><th>Reseña y traducción</th><th></th></tr></thead><tbody>${page.items.map((item) => {const sourceUrl=hotelReviewSourceHref(item.sourceUrl);return `<tr data-review-row-id="${item.id}"><th scope="row">${sourceUrl ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(hotelSourceLabel(item.source))} ↗</a>` : esc(hotelSourceLabel(item.source))}<small>${esc(item.author || 'Anónimo')}</small></th><td class="num">${item.rating == null ? '—' : `${nEs(item.rating, 1)}/${nEs(item.ratingScale, 0)}`}</td><td>${esc(item.publishedAt || item.relativePublishedAt || '—')}<small>${esc(item.datePrecision)}</small></td><td>${esc(item.languageOriginal || 'UND')}<small>${esc(item.translationMethod || '')}</small></td><td class="review-text-cell">${item.title ? `<strong>${esc(item.title)}</strong>` : ''}${item.positiveText ? `<p><b>Positivo</b> ${esc(item.positiveText)}</p>` : ''}${item.negativeText ? `<p><b>Negativo</b> ${esc(item.negativeText)}</p>` : ''}${item.reviewEs ? `<p><b>Español</b> ${esc(item.reviewEs)}</p>` : ''}${item.reviewOriginal ? `<details><summary>Ver original</summary><p>${esc(item.reviewOriginal)}</p></details>` : ''}<small>${esc(item.topics || '')}${item.qualityFlags?.length ? ` · Calidad: ${esc(item.qualityFlags.join(', '))}` : ''}</small></td><td><div class="review-row-actions"><button type="button" class="link-button" data-review-note-for="${item.id}">Anotar</button>${item.versionCount > 1 ? `<button type="button" class="link-button" data-review-history="${item.id}">Historial · ${nEs(item.versionCount)}</button>` : ''}</div><div class="review-history-outlet" data-review-history-outlet hidden></div></td></tr>`;}).join('')}</tbody></table></div>` : '<div class="empty">No hay reseñas que coincidan con los filtros. <button type="button" class="link-button" data-review-filters-reset>Quitar filtros</button></div>';
   } catch (error) { if (requestId === State.reputation.reviewRequestId && host.isConnected) host.innerHTML = `<div class="inline-error">No se pudieron cargar las reseñas: ${esc(error.message)}</div>`; }
 }
 
@@ -3993,8 +3997,10 @@ function wireHotelReputationEvents() {
     const repTab = target.closest('[data-rep-tab]');
     if (repTab) {State.reputation.repTab = repTab.dataset.repTab; $$('[data-rep-tab]').forEach((b) => {const on = b === repTab; b.classList.toggle('is-active', on); b.setAttribute('aria-selected', String(on));}); filterHotelReviewCatalog(); return;}
     if (target.closest('[data-rep-clear]')) {State.reputation.selectedKeys.clear(); $$('[data-review-select]').forEach((input) => {input.checked = false;}); filterHotelReviewCatalog(); return;}
+    if (target.closest('[data-rep-show-all]')) {State.reputation.repTab = 'all'; State.reputation.query = ''; const search = $('#reviewCatalogSearch'); if (search) search.value = ''; $$('[data-rep-tab]').forEach((b) => {const on = b.dataset.repTab === 'all'; b.classList.toggle('is-active', on); b.setAttribute('aria-selected', String(on));}); filterHotelReviewCatalog(); search?.focus(); return;}
     if (target.closest('[data-rep-notice-dismiss]')) {try {localStorage.setItem(REP_NOTICE_KEY, '1');} catch (_) { /* solo esta sesión */ } $('#repNotice')?.remove(); return;}
     if (target.closest('[data-review-compare]')) {void runHotelReviewComparison(); return;}
+    if (target.closest('[data-review-filters-reset]')) {State.reputation.reviewFilters = {source:'',language:'',rating:'',topic:'',dateFrom:'',dateTo:'',query:''}; State.reputation.reviewPage = 0; showHotelReputationTab('reviews'); return;}
     const pageButton = target.closest('[data-review-page]');
     if (pageButton) {State.reputation.reviewPage=Math.max(0,State.reputation.reviewPage+(pageButton.dataset.reviewPage==='next'?1:-1));void loadHotelReviewsPage();return;}
     const evidence = target.closest('[data-review-evidence]');

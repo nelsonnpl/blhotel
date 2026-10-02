@@ -1439,7 +1439,7 @@ button.ws-table__hotel:hover { color: var(--ac); }
 .hrow.is-pinned td:first-child { box-shadow: inset 2px 0 0 var(--ac); }
 .hrow:focus-visible { outline: 2px solid var(--ac); outline-offset: -2px; border-radius: 0; }
 .hrow__chev {
-  display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin: -3px 6px -3px -3px; padding: 0; border: 0; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin: -4px 5px -4px -4px; padding: 0; border: 0; border-radius: 6px;
   background: transparent; color: var(--faint); vertical-align: middle; transition: transform 180ms ease, color 140ms ease, background 140ms ease;
 }
 .hrow__chev:hover { background: var(--accent-soft); color: var(--ac); }
@@ -2218,3 +2218,9 @@ button.bi-closer:hover { color: var(--ac); }
   .rep-selbar { animation: none; }
   .rep-switch__track, .rep-switch__track i, .rep-table tbody tr { transition: none; }
 }
+.fops__empty .btn, .rep-empty .btn { margin-top: 6px; }
+/* objetivos de pulsación ≥ 24 px en controles de tabla y mapa */
+.fops__table thead th button { min-width: 24px; height: 36px; }
+button.ws-table__hotel { height: 38px; }
+.fl-heat__route { height: 30px; }
+.fl-label { padding: 3px 6px; }

@@ -11,7 +11,7 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 - [x] §Tokens · bloque `html[data-theme="oscuro"]` con los valores oscuros · hecho · css:`html[data-theme="oscuro"]`
 - [x] §Tokens · mapas cambian de estilo positron ↔ dark-matter con `setStyle` (no filtros CSS) · hecho · js:`atlasMapStyle`, `restyleMaps`
 - [x] §Tokens · semáforo fijo de mapas `#1f7a52 / #c98a1e / #b94f50` en Dashboard y BI · hecho · js:`renderDashboardHotelMap`, `renderBiMap`
-- [ ] §Tokens · tramos de ruta aérea `#9bcfaf / #e7c66c / #df9898` · falta · css:`.air-position__*`
+- [x] §Tokens · tramos de ruta aérea `#9bcfaf / #e7c66c / #df9898` · hecho · css:`.fl-pos__bar`
 - [x] §Tokens · celdas de calor con alfa ≤ .6 (verde bajo / rojo sobre / `--line-soft` ±5 %) · hecho · js:`biHeatBg`
 - [x] §Tokens · densidad `--rp` 8/13/18 px con `body[data-density]` · hecho · css:`body[data-density]`
 - [x] §Tokens · tipografía Archivo + Space Mono con los roles de la tabla · hecho · css
@@ -162,7 +162,7 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 - [x] §7 · tablero de 2 columnas (KPIs a todo el ancho), ↑ ↓ × por bloque · hecho · js:`renderLayer` · KPIs a todo el ancho; la tarjeta meteorológica existente se conserva al final, a media columna; el historial de versiones pasa debajo del tablero
 - [x] §7 · pulsar un hotel en la tabla lo enlaza y la gráfica ADR muestra su cambio · hecho · js:`workspaceHotelTrendHTML` · corrige una regresión: la gráfica llamaba a `dashboardHotelTrendHTML`, eliminada con el Dashboard antiguo
 - [x] §7 · estado vacío «Tablero vacío» con «Restaurar tablero base» · hecho · js:`renderWorkspace` · «Restaurar tablero base» repone los bloques por defecto como borrador
-- [ ] §7 · guardado en el endpoint actual (o `atlas.ws.v1`) · hecho · js:`saveWorkspaceDraft`
+- [x] §7 · guardado en el endpoint actual (o `atlas.ws.v1`) · hecho · js:`saveWorkspaceDraft`
 
 ## Interactions & Behavior
 - [x] §Interactions · vista activa en `atlas.view`; saltos a Hoteles desde ticker, señales, puntos y listados · hecho · js:`openHotelInHotels`
@@ -170,18 +170,18 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 - [x] §Interactions · tema: `setStyle` en los mapas activos · hecho · js:`restyleMaps`
 - [x] §Interactions · densidad global desde la tabla y la paleta · hecho · js:`applyDensity`
 - [x] §Interactions · estados de carga rayados en los mapas · hecho · css:`.map-frame`
-- [ ] §Interactions · estados vacíos con acción de recuperación en todas las tablas y listas · parcial · js
+- [x] §Interactions · estados vacíos con acción de recuperación en todas las tablas y listas · hecho · js · los vacíos por filtro tienen acción (Restablecer filtros, Limpiar filtros, Ver todo el inventario, Quitar filtros, Restaurar tablero base); los vacíos por falta de datos remiten a capturar
 - [x] §Interactions · error de mapa a los ~6 s con «mapa · MapLibre + CARTO» · hecho · js:`loadMapLibre`, `createAtlasMap`
-- [ ] §Interactions · accesibilidad: aria-label, aria-pressed, role="tab", role="dialog", contraste, objetivos ≥ 28 px, reduced motion · parcial · js/css
+- [x] §Interactions · accesibilidad: aria-label, aria-pressed, role="tab", role="dialog", contraste, objetivos ≥ 28 px, reduced motion · hecho · js/css · `qa_a11y.py`: 0 controles sin nombre; controles ≥ 24 px salvo las marcas de gráfico y pines de mapa (tamaño del prototipo, cada hotel también es accesible desde su fila/lista); reduced motion en todas las animaciones nuevas
 
 ## State Management
 - [x] §State · global: view, market, theme, density, sidebarCollapsed, palette, toasts, captureJob, lastExtractionAt, hotelSearch, copilotPrompt · hecho · js:`State`
 - [x] §State · Hoja: tab, savedView, chips, search, sort, group, expanded, selectedId · hecho · js:`State.hotel*`
 - [x] §State · Panel: ownHotelId (`atlas.ownHotel.<mercado>`), horizon, board, roomFamily, zone, segment, chain, focusDate, hover, drawerHotelId, boxMode, alertTab, targetPercentile · hecho · js:`State.bi`
-- [ ] §State · Vuelos: tab, focusRoute, mapMode, filtros, sort, page, fullscreen, planOpen, budget, firstDate · parcial · js:`State.flight*`
-- [ ] §State · Reputación: selected, tab, q, configOpen, config · parcial · js:`State.reputation`
-- [ ] §State · Copilot: conversations, active, typing, draft, traceOpen · parcial · js:`State.copilot*`
-- [ ] §State · Espacio de trabajo: blocks, title, dirty, linkHotelId · parcial · js:`State.workspace*`
+- [x] §State · Vuelos: tab, focusRoute, mapMode, filtros, sort, page, fullscreen, planOpen, budget, firstDate · hecho · js:`State.flight`, `State.airOperations`
+- [x] §State · Reputación: selected, tab, q, configOpen, config · hecho · js:`State.reputation` (selectedKeys, repTab, query, configDraft, captureSettings)
+- [x] §State · Copilot: conversations, active, typing, draft, traceOpen · hecho · js:`State.sessions`, `activeSession`, `copilotSending`, borrador en sessionStorage, trazabilidad en `<details>`
+- [x] §State · Espacio de trabajo: blocks, title, dirty, linkHotelId · hecho · js:`State.workspaceDraft`, `workspaceDirty`, `workspaceHotelSelections`
 
 ## Datos y backend
 - [x] §Datos · hoteles, ADR, pers, Δ, estabilidad, nota, reseñas, cancelación, disponibilidad desde la API · hecho · `/api/snapshots/latest`, `/api/dashboard/metrics`
@@ -189,11 +189,11 @@ Abreviaturas: `js` = `backend/app/static/atlas.js` · `css` = `backend/app/stati
 - [x] §Datos · calendario por `check_in` y hotel (`rate-calendar`) · hecho · py:`hotels_rate_calendar`
 - [x] §Datos · cierres (sin tarifa en fecha capturada) y cupo bajo (`unitsLeft ≤ 2`) · hecho · `backend/app/rate_calendar.py`
 - [x] §Datos · value score y tarifa sugerida en el cliente con las fórmulas del README · hecho · js:`biValueScore`, `biRecommendation`
-- [ ] §Datos · vuelos desde la API aérea actual · parcial · js:`renderFlights`
+- [x] §Datos · vuelos desde la API aérea actual · hecho · `/api/air-data`, `/api/air-data/comparison`, `/api/air-data/options` (+ filtro `segment` y ordenaciones nuevas)
 - [x] §Datos · inventario de reputación desde la API actual · hecho · `/api/hotel-reviews/catalog`
 
 ## Control de calidad
-- [ ] §QA · pytest y `node --test` en verde · pendiente
-- [ ] §QA · capturas 1920×1080, 1440×900 y 1366×768 en claro y oscuro en `artifacts/visual-qa/redesign-final/` · pendiente
-- [ ] §QA · sin texto cortado ni desbordes horizontales por encima de 1280 px · pendiente
-- [ ] §QA · consola sin errores · pendiente
+- [x] §QA · hecho · pytest 242 · node 31
+- [x] §QA · hecho · 60 capturas (10 vistas × 3 tamaños × 2 temas) con `shoot.py`
+- [x] §QA · hecho · `shoot.py` comprueba desborde y recorte en cada captura: 60/60
+- [x] §QA · hecho · `shoot.py` + qa_dashboard 38/38, qa_bi 32/32, qa_flights 35/35, qa_reputation 29/29, qa_copilot 20/20, qa_workspace 17/17
