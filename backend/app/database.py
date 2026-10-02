@@ -4244,10 +4244,10 @@ class Database:
             ],
             "rateShoppingIndex": {
                 "marketAvgAdr": _round(avg_ppn),
-                "medianAdr": _round(median(per_night) if per_night else 0),
+                "medianAdr": _round(median(per_night)) if per_night else None,
                 "totalCompetitors": len(comparable),
-                "topQuartileThreshold": _round(_percentile(per_night, 75)) if per_night else 0,
-                "bottomQuartileThreshold": _round(_percentile(per_night, 25)) if per_night else 0,
+                "topQuartileThreshold": _round(_percentile(per_night, 75)) if per_night else None,
+                "bottomQuartileThreshold": _round(_percentile(per_night, 25)) if per_night else None,
             },
             "demandIndicators": {
                 "bookingPressure": booking_pressure,
@@ -4271,7 +4271,7 @@ class Database:
                 "avgPricePerPersonNight": _round(avg_pppn),
                 "minPricePerNight": _round(min(per_night) if per_night else 0),
                 "maxPricePerNight": _round(max(per_night) if per_night else 0),
-                "medianPricePerNight": _round(median(per_night) if per_night else 0),
+                "medianPricePerNight": _round(median(per_night)) if per_night else None,
             },
             "movement": {
                 "previousSnapshotId": previous.id if previous else None,

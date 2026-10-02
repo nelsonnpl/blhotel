@@ -63,13 +63,13 @@ async function api(path, opts) {
 }
 
 function median(arr) {
-  if (!arr.length) return 0;
+  if (!arr || !arr.length) return null;
   const s = [...arr].sort((a, b) => a - b);
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 function percentileVal(arr, p) {
-  if (!arr.length) return 0;
+  if (!arr || !arr.length) return null;
   const s = [...arr].sort((a, b) => a - b);
   const idx = (p / 100) * (s.length - 1);
   const lo = Math.floor(idx), hi = Math.ceil(idx);

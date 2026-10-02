@@ -10,8 +10,8 @@ const start = source.indexOf('/* >>> hoja-de-mercado:logica');
 const end = source.indexOf('/* <<< hoja-de-mercado:logica */');
 assert.ok(start > 0 && end > start, 'faltan los marcadores del bloque de lógica pura');
 const context = vm.createContext({});
-vm.runInContext(`${utils}\n${source.slice(start, end)}\nthis.api = {hotelSheetModel, hotelSheetFilter, hotelSheetSort, hotelSheetGroups, hotelSheetCsv, hotelStockInfo, hotelZoneLabels, SHEET_VIEWS, SHEET_CHIPS};`, context);
-const {hotelSheetModel, hotelSheetFilter, hotelSheetSort, hotelSheetGroups, hotelSheetCsv, hotelStockInfo, hotelZoneLabels} = context.api;
+vm.runInContext(`${utils}\n${source.slice(start, end)}\nthis.api = {hotelSheetModel, hotelSheetFilter, hotelSheetSort, hotelSheetGroups, hotelSheetCsv, hotelStockInfo, hotelZoneLabels, SHEET_VIEWS, SHEET_CHIPS, median, percentileVal, eur};`, context);
+const {hotelSheetModel, hotelSheetFilter, hotelSheetSort, hotelSheetGroups, hotelSheetCsv, hotelStockInfo, hotelZoneLabels, median, percentileVal, eur} = context.api;
 
 const row = (key, name, adr, extra = {}) => ({hotelKey: key, hotelName: name, pricePerNight: adr, pricePerPersonPerNight: adr / 2, rating: 8, reviewCount: 100, freeCancellation: false, unitsLeft: null, city: 'Maspalomas', ...extra});
 const rows = () => [
@@ -187,4 +187,28 @@ test('un set vacío no rompe el modelo', () => {
   assert.equal(m.minAdr, null);
   assert.deepEqual(hotelSheetFilter(m, {view: 'market'}), []);
   assert.equal(hotelSheetGroups([], 'chain', m).length, 0);
+});
+
+test('desconocido nunca es cero: median/percentileVal con vacío devuelven null', () => {
+  assert.equal(median([]), null);
+  assert.equal(percentileVal([], 25), null);
+  assert.equal(median([100]), 100);
+  assert.equal(median([100, 200]), 150);
+  assert.ok(Math.abs(percentileVal([100, 200, 300, 400], 25) - 175) < 1e-9);
+});
+
+test('hoja sin precios: mediana y cuartiles son null y pintan —', () => {
+  const m = hotelSheetModel([], null, []);
+  assert.equal(m.median, null);
+  assert.equal(m.p25, null);
+  assert.equal(m.p75, null);
+  assert.equal(m.minAdr, null);
+  assert.equal(m.maxAdr, null);
+  assert.equal(eur(m.median), '—');
+  assert.equal(eur(m.p25), '—');
+  assert.equal(eur(m.p75), '—');
+  const single = hotelSheetModel([{hotelKey: 'a', hotelName: 'A', pricePerNight: null, pricePerPersonPerNight: null}], null, []);
+  assert.equal(single.median, null);
+  assert.equal(single.hotels[0].tier, 'none');
+  assert.equal(single.hotels[0].vsMedian, null);
 });
