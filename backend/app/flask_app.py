@@ -94,6 +94,78 @@ _assistant_rate_lock = Lock()
 _assistant_rate_windows: dict[str, deque[float]] = defaultdict(deque)
 
 
+# B1-01: gzip en memoria para estáticos versionados (PKG-00: a partir de
+# aquí ningún cambio FE necesita subir `v=` a mano). La compresión genérica
+# de `apply_security_headers` excluye `send_file` (streamed), así que se sirve
+# antes el cuerpo ya comprimido con caché {(path, mtime_ns): bytes}.
+_STATIC_GZIP_CACHE: dict[tuple[str, int], bytes] = {}
+_static_gzip_lock = Lock()
+_STATIC_GZIP_MIN_BYTES = 1024
+_STATIC_GZIP_MIMETYPES = {
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+    ".txt": "text/plain",
+    ".html": "text/html",
+}
+
+
+@app.before_request
+def serve_gzip_static():
+    """Sirve /static/* ya comprimido cuando el navegador acepta gzip."""
+    if request.method != "GET" or not request.path.startswith("/static/"):
+        return None
+    if "gzip" not in request.accept_encodings:
+        return None
+    if request.headers.get("If-None-Match") is not None:
+        return None
+    if request.headers.get("If-Modified-Since") is not None:
+        return None
+    rel = request.path[len("/static/"):]
+    if not rel or rel.startswith("/") or ".." in rel.split("/"):
+        return None
+    static_root = Path(app.static_folder).resolve()
+    try:
+        resolved = (static_root / rel).resolve()
+        resolved.relative_to(static_root)
+    except (OSError, ValueError):
+        return None
+    if not resolved.is_file():
+        return None
+    mimetype = _STATIC_GZIP_MIMETYPES.get(resolved.suffix.lower())
+    if mimetype is None:
+        return None
+    try:
+        stat = resolved.stat()
+    except OSError:
+        return None
+    if stat.st_size < _STATIC_GZIP_MIN_BYTES:
+        return None
+    key = (str(resolved), stat.st_mtime_ns)
+    with _static_gzip_lock:
+        gzipped = _STATIC_GZIP_CACHE.get(key)
+        if gzipped is None:
+            try:
+                raw = resolved.read_bytes()
+            except OSError:
+                return None
+            if len(raw) < _STATIC_GZIP_MIN_BYTES:
+                return None
+            gzipped = gzip_compress(raw, compresslevel=6)
+            for stale in [k for k in _STATIC_GZIP_CACHE if k[0] == key[0] and k != key]:
+                del _STATIC_GZIP_CACHE[stale]
+            _STATIC_GZIP_CACHE[key] = gzipped
+    response = Response(gzipped, status=200, mimetype=mimetype)
+    response.headers["Content-Encoding"] = "gzip"
+    response.headers.add("Vary", "Accept-Encoding")
+    response.headers["Content-Length"] = str(len(gzipped))
+    response.cache_control.public = True
+    response.cache_control.max_age = 31536000
+    response.cache_control.immutable = True
+    return response
+
+
 @app.after_request
 def apply_security_headers(response):
     """Baseline browser protections for the single-origin internal console."""
