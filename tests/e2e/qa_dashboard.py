@@ -59,7 +59,7 @@ with sync_playwright() as p:
 
     move = page.locator('.dash-move').inner_text()
     check('movimiento ADR con signo', move.startswith('+') or move.startswith('−'), move)
-    check('pie de movimiento ▲▼', '▲' in page.locator('.dash-card--move .dash-foot').inner_text())
+    check('pie de movimiento ▲▼', '▲' in page.locator('.dash-card--move .dash-foot').first.inner_text())
     check('11 hoteles fuera del centro', page.locator('.dash-outlier').count() == 11, str(page.locator('.dash-outlier').count()))
     check('3 tramos en la curva', page.locator('.dash-curve__row').count() >= 1, str(page.locator('.dash-curve__row').count()))
 

@@ -36,7 +36,7 @@ with sync_playwright() as p:
     rows = page.locator('[data-reputation-row]')
     total = rows.count()
     check('5 KPIs', page.locator('.rep-kpis .kpi-strip__cell').count() == 5)
-    check('cabecera: Configurar y Capturar inventario', page.locator('[data-rep-config]').count() == 1 and page.locator('[data-review-capture-all]').count() == 1)
+    check('cabecera: Configurar y Capturar inventario', page.locator('.page-head [data-rep-config]').count() == 1 and page.locator('[data-review-capture-all]').count() == 1)
     check('8 columnas', page.locator('.rep-table thead th').count() == 8)
     check('sin controles de captura a la vista', page.locator('[data-review-capture-controls]').count() == 0)
 
@@ -77,7 +77,8 @@ with sync_playwright() as p:
     page.keyboard.press('Escape')
     expect(page.locator('#sidePanel')).to_be_hidden()
     page.locator('[data-rep-clear]').click()
-    check('× quita la selección', page.locator('.rep-selbar').count() == 0 and page.locator('[data-review-select]:checked').count() == 0)
+    expect(page.locator('.rep-selbar')).to_have_count(0, timeout=3000)
+    check('× quita la selección', page.locator('[data-review-select]:checked').count() == 0)
 
     # casilla de cabecera
     page.locator('[data-rep-tab="maps"]').click()
@@ -88,7 +89,7 @@ with sync_playwright() as p:
     page.locator('[data-rep-tab="all"]').click()
 
     # configuración
-    page.locator('[data-rep-config]').click()
+    page.locator('.page-head [data-rep-config]').click()
     expect(page.locator('#sidePanelBody.side-panel--rep')).to_be_visible()
     w = page.locator('#sidePanelBody').bounding_box()['width']
     check('panel de 460 px', abs(w - 460) < 1, str(w))
@@ -104,12 +105,12 @@ with sync_playwright() as p:
     est = page.locator('#repCfgEstimate').inner_text()
     check('estimación «para N hoteles · US$»', 'Estimación para' in est and 'US$' in est, est)
     page.locator('.rep-cfg__foot [data-side-close]').click()
-    page.locator('[data-rep-config]').click()
+    page.locator('.page-head [data-rep-config]').click()
     check('Cancelar descarta', page.locator('[data-rep-src="google_maps"]').get_attribute('aria-pressed') == 'false')
     page.locator('[data-rep-src="google_hotels"]').click()
     page.locator('[data-rep-config-save]').click()
     expect(page.locator('#sidePanel')).to_be_hidden()
-    page.locator('[data-rep-config]').click()
+    page.locator('.page-head [data-rep-config]').click()
     check('Guardar conserva', page.locator('[data-rep-src="google_hotels"]').get_attribute('aria-pressed') == 'false')
     page.screenshot(path=str(OUT / 'reputation-config-1440.png'))
     page.keyboard.press('Escape')

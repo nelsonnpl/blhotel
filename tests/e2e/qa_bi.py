@@ -34,7 +34,7 @@ with sync_playwright() as p:
 
     check('pestaña por defecto: panel de análisis', page.locator('#hotelTab-bi').get_attribute('aria-selected') == 'true')
     check('6 KPIs', page.locator('#biKpis .kpi-strip__cell').count() == 6)
-    check('sin hotel propio: «Mercado · entrada»', 'MERCADO · ENTRADA' in page.locator('#biSide').inner_text().upper())
+    check('sin hotel propio: «Mercado · extracción»', 'MERCADO · EXTRACCI' in page.locator('#biSide').inner_text().upper())
     check('tarjeta de invitación con select', page.locator('#biOwnInvite').count() == 1)
     pins = page.locator('.maplibregl-marker')
     check('marcadores envueltos en .map-pin', page.locator('.maplibregl-marker > .map-pin').count() == pins.count() and pins.count() > 10)
