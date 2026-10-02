@@ -801,18 +801,60 @@ function restyleMaps() {
 }
 
 function loadMapLibre() {
-  if (window.maplibregl) return Promise.resolve(window.maplibregl);
+  if (window.maplibregl) return mapLibreCSSReady().then(() => window.maplibregl);
   if (State.mapLoader) return State.mapLoader;
   State.mapLoader = new Promise((resolve, reject) => {
+    const css = ensureMapLibreCSS();
     const script = document.createElement('script');
     const fail = () => { window.clearTimeout(timer); State.mapLoader = null; script.remove(); reject(new Error(MAP_FAILED_TEXT)); };
     const timer = window.setTimeout(fail, MAP_LOAD_TIMEOUT_MS);
-    script.src = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
-    script.onload = () => { window.clearTimeout(timer); if (window.maplibregl) resolve(window.maplibregl); else fail(); };
+    // El mapa se crea tras este await: el CSS debe estar aplicado antes,
+    // como cuando vivía en <head>. Sin esto el constructor mide mal el
+    // contenedor y el lienzo queda en blanco (regresión detectada en QA).
+    const done = () => { window.clearTimeout(timer); if (window.maplibregl) resolve(window.maplibregl); else fail(); };
+    script.src = '/static/vendor/maplibre-gl-4.7.1.js';
+    script.onload = () => { mapLibreCSSReady(css).then(done, done); };
     script.onerror = fail;
     document.head.appendChild(script);
   });
   return State.mapLoader;
+}
+
+/* CSS de MapLibre autoalojado (B1-03/D2-04): se inyecta de forma diferida solo
+   cuando el mapa se necesita, nunca bloquea el pintado inicial. Deduplicado por
+   atributo para llamadas concurrentes y cambios de tema (setStyle intacto). */
+function ensureMapLibreCSS() {
+  let link = document.querySelector('link[data-atlas-maplibre]');
+  if (link) return link;
+  link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = '/static/vendor/maplibre-gl-4.7.1.css';
+  link.setAttribute('data-atlas-maplibre', '4.7.1');
+  // atlas.css gana a maplibre-gl.css por orden de cascada (.map-frame__canvas
+  // absolute inset:0 frente a .maplibregl-map relative): insertar ANTES de
+  // atlas.css reproduce el orden anterior en <head>. Sin esto el contenedor
+  // colapsa a altura 0 y el lienzo queda en blanco (regresión QA ab2/ab3).
+  const atlasCSS = document.querySelector('link[href*="atlas.css"]');
+  if (atlasCSS && atlasCSS.parentNode) atlasCSS.parentNode.insertBefore(link, atlasCSS);
+  else document.head.appendChild(link);
+  return link;
+}
+
+/* Resuelve cuando el CSS de MapLibre está aplicado (link.sheet disponible).
+   Garantiza el orden CSS-antes-de-crear-el-mapa de la vía anterior en <head>.
+   Si el CSS falla, resuelve igualmente: el mapa funciona sin estilos propios. */
+function mapLibreCSSReady(link) {
+  const el = link || ensureMapLibreCSS();
+  return new Promise((resolve) => {
+    try {
+      if (el.sheet) { resolve(); return; }
+    } catch (_) { /* hoja aún no accesible: se espera al evento load */ }
+    let settled = false;
+    const ok = () => { if (!settled) { settled = true; resolve(); } };
+    el.addEventListener('load', ok, { once: true });
+    el.addEventListener('error', ok, { once: true });
+    window.setTimeout(ok, 2500);
+  });
 }
 
 /* Marca un marco de mapa como no disponible: fondo rayado y el aviso del README. */
