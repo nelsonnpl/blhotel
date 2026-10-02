@@ -4,6 +4,14 @@ Log de una línea por evento: fecha-hora · fase-paso · quién · qué · resul
 
 | Fecha | Paso | Quién | Evento |
 | --- | --- | --- | --- |
-| — | — | — | (director: abrir en F0.8) |
+| 2026-10-02 08:30 | F0.1 | director | Fuentes leídas (contrato, preauditoría, AGENTS, README hi-fi, CHECKLIST 199/199) | OK |
+| 2026-10-02 08:35 | F0.2 | director | Humos: árbol limpio, 2 tareas paralelo OK, PNG legible, `.env` intacto | OK |
+| 2026-10-02 08:37 | F0.3 | director | Commit kit `4105fb1` + tag `pre-pulido` + rama `pulido/auditoria` (61 ficheros; `.pyc` excluidos; archivo 28-09 sin versionar) | OK |
+| 2026-10-02 08:40 | F0.4B | usuario | Autoriza detener :5012 (PID 23824) | OK |
+| 2026-10-02 08:41 | F0.5 | director | Captura Booking mercado 1 (job 2ae52e7c, 4 fotos, perfil 06-10/7n/2ad) → succeeded; run 26 partial | OK |
+| 2026-10-02 08:43 | F0.5B | director | Lección WAL: captura en `-wal` sin checkpoint; `cp` solo-`.sqlite` rancia → copias desde backup nº2; `sqlite3 -readonly` falla en WAL (quitado en `estado_jobs.sh`; usar Python `mode=ro`) | OK |
+| 2026-10-02 08:44 | F0.6 | director | Backup nº2 `backups/pulido-20261002-084342.sqlite` → `trabajo.sqlite`+`be.sqlite` (run 26 verificado) → :5060 (claves en blanco) + :8001 | OK |
+| 2026-10-02 09:00 | F0.7 | director | Base: pytest 242/242, node 31/31. Chromium bloquea :5060 (SIP) → flag en 9 scripts. `analytics/query` a blanca. Desbordes 768 (42–105 px). qa en verde salvo flights (bloqueo de pago por diseño) y a11y (desglose pendiente). perf 4×CPU en `baseline.md` (LCP 0: revisar) | OK |
+| 2026-10-02 09:05 | F0.8 | director | Registro abierto. Gasto: BCE 1,1298; saldos iniciales pendientes de F1B (sin claves en este entorno) | OK |
 
 Marcas: `PARADA-1: APROBADO` · `PARADA-2: APROBADO` (las anota el director al aprobar el usuario).
