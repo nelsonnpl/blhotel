@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from hashlib import sha256
 import os
+import re
 import time
 from typing import Any
 
@@ -14,6 +15,30 @@ from .config import ROOT
 
 
 SERPAPI_URL = "https://serpapi.com/search.json"
+
+# B2-01: punto único de redacción para que `api_key` de SerpAPI nunca salga
+# del proceso en errores persistidos/logueados. El placeholder evita a
+# propósito la subcadena `api_key` para que `rg api_key` no dé positivos.
+_SERPAPI_KEY_PLACEHOLDER = "[clave oculta]"
+_SERPAPI_API_KEY_RE = re.compile(
+    r"(?i)[\"']?api[_-]?key[\"']?\s*(?:[:=]|%3D|%253D)\s*[\"']?[^\s&'\"`}\],;]+[\"']?"
+)
+
+
+def redact_serpapi_key_text(value: Any, api_key: str | None = None) -> str:
+    """Devuelve `value` sin `api_key=...` ni el valor literal de la clave.
+
+    Cubre URLs de httpx (`...?api_key=SECRETO&...`), JSON
+    (`"api_key": "SECRETO"`) y el secreto literal cuando se conoce.
+    """
+    text = "" if value is None else value if isinstance(value, str) else str(value)
+    # Patrón primero: evita que el placeholder (con espacio) se re-procese.
+    text = _SERPAPI_API_KEY_RE.sub(_SERPAPI_KEY_PLACEHOLDER, text)
+    if api_key:
+        key = str(api_key).strip()
+        if len(key) >= 4 and key in text:
+            text = text.replace(key, _SERPAPI_KEY_PLACEHOLDER)
+    return text
 
 
 @dataclass(frozen=True)
@@ -108,12 +133,15 @@ def fetch_google_flights(route: AirSearchRoute, api_key: str, force_live: bool =
     if force_live:
         params["no_cache"] = "true"
 
-    with httpx.Client(timeout=90) as client:
-        response = client.get(SERPAPI_URL, params=params)
-        response.raise_for_status()
-        data = response.json()
+    try:
+        with httpx.Client(timeout=90) as client:
+            response = client.get(SERPAPI_URL, params=params)
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:  # noqa: BLE001 - B2-01: nunca propagar api_key en el mensaje
+        raise ValueError(redact_serpapi_key_text(str(exc), api_key)) from None
     if data.get("error"):
-        raise ValueError(str(data["error"]))
+        raise ValueError(redact_serpapi_key_text(str(data["error"]), api_key))
     return data
 
 
@@ -131,12 +159,15 @@ def fetch_booking_options(booking_token: str, api_key: str, *, force_live: bool 
     }
     if force_live:
         params["no_cache"] = "true"
-    with httpx.Client(timeout=90) as client:
-        response = client.get(SERPAPI_URL, params=params)
-        response.raise_for_status()
-        data = response.json()
+    try:
+        with httpx.Client(timeout=90) as client:
+            response = client.get(SERPAPI_URL, params=params)
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:  # noqa: BLE001 - B2-01: nunca propagar api_key en el mensaje
+        raise ValueError(redact_serpapi_key_text(str(exc), api_key)) from None
     if data.get("error"):
-        raise ValueError(str(data["error"]))
+        raise ValueError(redact_serpapi_key_text(str(data["error"]), api_key))
     return data
 
 
@@ -160,6 +191,22 @@ def fetch_google_flights_with_retry(
             if attempt == max_attempts:
                 break
             time.sleep(0.2 * (2 ** (attempt - 1)))
+    if last_error is not None:
+        # B2-01: punto único de salida; el mensaje re-lanzado ya va redactado
+        # para que ningún `str(exc)` posterior (persistencia, API, logs) vea la clave.
+        try:
+            redacted = redact_serpapi_key_text(str(last_error), api_key)
+            if last_error.args:
+                last_error.args = (redacted,) + tuple(last_error.args[1:])
+            else:
+                last_error.args = (redacted,)
+            if hasattr(last_error, "_message"):
+                try:
+                    last_error._message = redacted  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+        except Exception:
+            pass
     raise last_error or RuntimeError("Error desconocido de SerpAPI")
 
 

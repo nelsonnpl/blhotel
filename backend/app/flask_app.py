@@ -72,7 +72,7 @@ from .models import (
     ScrapeSearchPayload,
     WorkspacePayload,
 )
-from .serpapi_flights import AirSearchRoute, fetch_booking_options, fetch_google_flights, fetch_google_flights_with_retry, normalize_serpapi_response, serpapi_key
+from .serpapi_flights import AirSearchRoute, fetch_booking_options, fetch_google_flights, fetch_google_flights_with_retry, normalize_serpapi_response, redact_serpapi_key_text, serpapi_key
 from .services import MarketService
 
 settings = load_settings(require_decodo=False)
@@ -754,6 +754,83 @@ def _redact_attachment_text(value: str) -> str:
     )
     text = re.sub(r"\b(?:reserva|booking|localizador|pnr)\s*[:#-]?\s*[A-Z0-9-]{5,}\b", "[referencia oculta]", text, flags=re.I)
     return text
+
+
+def _redact_serpapi_key_text(value: str | None) -> str:
+    """B2-01: `api_key` de SerpAPI nunca sale del proceso.
+
+    Punto único real en `serpapi_flights.redact_serpapi_key_text`; este
+    wrapper sigue el mismo patrón que `_redact_attachment_text` y se usa en
+    `capture_air_payload` y en el `fail_job` redactado.
+    """
+    return redact_serpapi_key_text(value or "")
+
+
+class _SerpApiKeyRedactFilter(logging.Filter):
+    """B2-11: redacción de `api_key=...` en logs (cubre `jobs.py:89`)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            if isinstance(record.msg, str):
+                record.msg = _redact_serpapi_key_text(record.msg)
+            if isinstance(record.args, tuple):
+                record.args = tuple(
+                    _redact_serpapi_key_text(arg) if isinstance(arg, str) else arg
+                    for arg in record.args
+                )
+            elif isinstance(record.args, dict):
+                record.args = {
+                    key: _redact_serpapi_key_text(val) if isinstance(val, str) else val
+                    for key, val in record.args.items()
+                }
+            exc_info = getattr(record, "exc_info", None)
+            if exc_info and len(exc_info) == 3 and exc_info[1] is not None:
+                exc = exc_info[1]
+                try:
+                    redacted = _redact_serpapi_key_text(str(exc))
+                    if redacted != str(exc):
+                        if getattr(exc, "args", None):
+                            exc.args = (redacted,) + tuple(exc.args[1:])  # type: ignore[union-attr]
+                        else:
+                            exc.args = (redacted,)
+                        if hasattr(exc, "_message"):
+                            try:
+                                exc._message = redacted  # type: ignore[attr-defined]
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return True
+
+
+def _install_serpapi_redact_filter() -> None:
+    filt = _SerpApiKeyRedactFilter()
+    for name in ("", "backend.app.jobs", __name__):
+        target = logging.getLogger(name)
+        if not any(isinstance(item, _SerpApiKeyRedactFilter) for item in target.filters):
+            target.addFilter(filt)
+
+
+_install_serpapi_redact_filter()
+
+
+def _install_redacted_fail_job() -> None:
+    """B2-12: `fail_job` redactado para TODOS los jobs (vía `flask_app`)."""
+    current = Database.fail_job
+    if getattr(current, "_b2_redacted", False):
+        return
+    original = current
+
+    def _redacted_fail_job(self: Database, job_id: str, error: str) -> None:
+        return original(self, job_id, _redact_serpapi_key_text(error or ""))
+
+    _redacted_fail_job._b2_redacted = True  # type: ignore[attr-defined]
+    Database.fail_job = _redacted_fail_job  # type: ignore[method-assign]
+
+
+_install_redacted_fail_job()
 
 
 @app.post("/api/assistant/attachments")
@@ -2214,7 +2291,7 @@ def capture_air_payload(payload: AirCapturePayload, progress=lambda _value, _mes
             if bool((raw_payload.get("search_metadata") or {}).get("cached")):
                 cache_hits += 1
         except Exception as exc:
-            errors.append({"routeKey": route.route_key, "outboundDate": route.outbound_date, "message": str(exc)[:500]})
+            errors.append({"routeKey": route.route_key, "outboundDate": route.outbound_date, "message": _redact_serpapi_key_text(str(exc))[:500]})
             continue
         flights = [normalize_flight(row) for row in raw_rows]
         flights = [flight for flight in flights if bool(flight["is_direct"]) == payload.direct]
