@@ -1292,6 +1292,18 @@ def photo_detail(snapshot_id: int):
     detail = db.photo_detail(snapshot_id)
     if detail is None:
         return error_response("Foto no encontrada", 404)
+    snapshot = detail.get("snapshot") if isinstance(detail, dict) else None
+    target_id = None
+    if isinstance(snapshot, dict):
+        raw = snapshot.get("targetId", snapshot.get("target_id"))
+        try:
+            target_id = int(raw)
+        except (TypeError, ValueError):
+            target_id = None
+    if target_id is None:
+        return error_response("No tienes acceso a este mercado", 403)
+    if hasattr(db, "can_access_target") and not db.can_access_target(current_owner_key(), target_id):
+        return error_response("No tienes acceso a este mercado", 403)
     return ok(detail)
 
 
@@ -1307,7 +1319,11 @@ def hotel_price_history():
     hotel_key = request.args.get("hotelKey")
     if not hotel_key:
         return error_response("hotelKey es obligatorio", 400)
-    target_id = parse_int_arg("targetId", minimum=1) if request.args.get("targetId") is not None else None
+    if request.args.get("targetId") is None:
+        return error_response("No tienes acceso a este mercado", 403)
+    target_id = parse_int_arg("targetId", minimum=1)
+    if hasattr(db, "can_access_target") and not db.can_access_target(current_owner_key(), target_id):
+        return error_response("No tienes acceso a este mercado", 403)
     limit = parse_int_arg("limit", default=24, minimum=1, maximum=100)
     return ok({"history": db.hotel_price_history(hotel_key, target_id=target_id, limit=limit)})
 
@@ -1333,6 +1349,41 @@ def hotel_inventory():
     hotel_key = request.args.get("hotelKey")
     if not hotel_key:
         return error_response("hotelKey es obligatorio", 400)
+    raw_target = request.args.get("targetId")
+    if raw_target is not None:
+        try:
+            target_id = int(raw_target)
+        except (TypeError, ValueError):
+            return error_response("targetId debe ser numerico", 400)
+        if hasattr(db, "can_access_target") and not db.can_access_target(current_owner_key(), target_id):
+            return error_response("No tienes acceso a este mercado", 403)
+        try:
+            belongs = db.conn.execute(
+                "SELECT 1 FROM market_snapshot_hotels msh "
+                "JOIN market_snapshots ms ON ms.id = msh.snapshot_id "
+                "WHERE msh.hotel_key = ? AND ms.target_id = ? LIMIT 1",
+                (hotel_key, target_id),
+            ).fetchone()
+        except Exception:  # noqa: BLE001 - db mocked in unit tests without conn
+            belongs = True
+        if not belongs:
+            return error_response("No tienes acceso a este mercado", 403)
+    elif hasattr(db, "can_access_target"):
+        try:
+            rows = db.conn.execute(
+                "SELECT DISTINCT ms.target_id AS tid FROM market_snapshot_hotels msh "
+                "JOIN market_snapshots ms ON ms.id = msh.snapshot_id "
+                "WHERE msh.hotel_key = ?",
+                (hotel_key,),
+            ).fetchall()
+        except Exception:  # noqa: BLE001 - db mocked in unit tests without conn
+            rows = None
+        if rows is not None:
+            market_ids = [int(dict(item).get("tid")) for item in rows if dict(item).get("tid") is not None]
+            if not market_ids:
+                return error_response("No tienes acceso a este mercado", 403)
+            if not any(db.can_access_target(current_owner_key(), tid) for tid in market_ids):
+                return error_response("No tienes acceso a este mercado", 403)
     row = db.get_hotel_inventory(hotel_key)
     if row is None:
         return ok({"inventory": None})
