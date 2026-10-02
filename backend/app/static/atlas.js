@@ -1341,15 +1341,17 @@ async function renderDashboardHotelMap(model) {
   if (!frame || !container) return;
   const request = {};
   frame._mapRequest = request;
+  frame.setAttribute('aria-busy', 'true');
+  const done = () => frame.removeAttribute('aria-busy');
   const points = model.hotels.filter((h) => h.adr != null && validLngLat(h.row));
-  if (!points.length) { mapFrameStatus(frame, 'No hay hoteles con tarifa y coordenadas válidas en esta foto.'); return; }
-  try { await loadMapLibre(); } catch (_) { if (frame.isConnected && frame._mapRequest === request) mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
-  if (!frame.isConnected || frame._mapRequest !== request || State.view !== 'dashboard') return;
+  if (!points.length) { mapFrameStatus(frame, 'No hay hoteles con tarifa y coordenadas válidas en esta foto.'); done(); return; }
+  try { await loadMapLibre(); } catch (_) { if (frame.isConnected && frame._mapRequest === request) mapFrameStatus(frame, MAP_FAILED_TEXT); done(); return; }
+  if (!frame.isConnected || frame._mapRequest !== request || State.view !== 'dashboard') { done(); return; }
   destroyDashboardMap();
   const ml = window.maplibregl;
   let map;
   try { map = createAtlasMap(container, { center: [-15.655, 27.782], zoom: 10.7 }); }
-  catch (_) { mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
+  catch (_) { mapFrameStatus(frame, MAP_FAILED_TEXT); done(); return; }
   State.dashboardMap = map;
   const bounds = new ml.LngLatBounds();
   points.forEach((h) => {
@@ -1365,6 +1367,7 @@ async function renderDashboardHotelMap(model) {
     State.dashboardMapResizeObserver = new ResizeObserver(() => { if (State.dashboardMap === map) { map.resize(); positionDashboardPopover(); } });
     State.dashboardMapResizeObserver.observe(frame);
   }
+  done();
 }
 
 /* ---- ventana del mapa (inspector de tarifa) */
@@ -1536,11 +1539,20 @@ function closeDashboardPopover() {
   st.sel = null;
   st.ptHover = null;
   const layer = $('#dashPopLayer');
-  if (layer) layer.innerHTML = '';
-  $$('[data-dash-pin].is-selected').forEach((pin) => pin.classList.remove('is-selected'));
-  const origin = st.returnFocus;
-  st.returnFocus = null;
-  if (origin instanceof HTMLElement && origin.isConnected) origin.focus({ preventScroll: true });
+  const pop = $('#dashPop');
+  const finish = () => {
+    if (layer) layer.innerHTML = '';
+    $$('[data-dash-pin].is-selected').forEach((pin) => pin.classList.remove('is-selected'));
+    const origin = st.returnFocus;
+    st.returnFocus = null;
+    if (origin instanceof HTMLElement && origin.isConnected) origin.focus({ preventScroll: true });
+  };
+  if (pop && !atlasReduceMotion()) {
+    pop.classList.add('is-leaving');
+    setTimeout(finish, atlasExitMs());
+  } else {
+    finish();
+  }
   return true;
 }
 
@@ -2466,11 +2478,11 @@ function biCalendarHTML(m) {
         const heat = biHeat(p, m.dayMeds[i]);
         const vs = m.dayMeds[i] ? biSigned((p / m.dayMeds[i] - 1) * 100, 0) : '—';
         const isNeutral = heat && Math.abs(heat.r) < 0.05;
-        const cellTitle = `${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · ${eur(p)} · ${vs} % vs mediana (${eur(m.dayMeds[i])})${s === 'low' ? ' · cupo bajo' : ''}`;
+        const cellTitle = `${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · ${isoYear(iso)} · ${eur(p)} · ${vs} % vs mediana (${eur(m.dayMeds[i])})${s === 'low' ? ' · cupo bajo' : ''}`;
         return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell${s === 'low' ? ' is-low' : ''}${isNeutral ? ' is-neutral' : ''}${heat && Math.abs(heat.r) > 0.45 ? ' is-strong' : ''}" style="background:${heat ? heat.bg : 'var(--line-soft)'}" title="${esc(cellTitle)}">${showText ? nEs(p) : ''}</span>`;
       }
-      if (s === 'closed') return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-closed" title="${esc(`${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · cerrado`)}"></span>`;
-      return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-empty" title="${esc(`${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · sin foto`)}"></span>`;
+      if (s === 'closed') return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-closed" title="${esc(`${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · ${isoYear(iso)} · cerrado`)}"></span>`;
+      return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-empty" title="${esc(`${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · ${isoYear(iso)} · sin foto`)}"></span>`;
     }).join('');
     const isOwn = h.key === st.own;
     return `<div class="bi-cal__row${isOwn ? ' is-own' : ''}" style="grid-template-columns:${cols}"><button type="button" class="bi-cal__name" data-bi-open="${esc(h.key)}"><span class="bi-cal__pos">${ri + 1}</span><span>${esc(h.name)}</span></button>${cells}</div>`;
@@ -2734,14 +2746,16 @@ async function renderBiMap() {
   if (!frame || !container || !st?.data) return;
   const request = {};
   frame._mapRequest = request;
+  frame.setAttribute('aria-busy', 'true');
+  const done = () => frame.removeAttribute('aria-busy');
   const points = st.data.hotels.filter((h) => validLngLat({ latitude: h.lat, longitude: h.lng }));
-  if (!points.length) { mapFrameStatus(frame, 'No hay hoteles con coordenadas en el alcance.'); return; }
-  try { await loadMapLibre(); } catch (_) { if (frame.isConnected) mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
-  if (!frame.isConnected || frame._mapRequest !== request || State.bi !== st) return;
+  if (!points.length) { mapFrameStatus(frame, 'No hay hoteles con coordenadas en el alcance.'); done(); return; }
+  try { await loadMapLibre(); } catch (_) { if (frame.isConnected) mapFrameStatus(frame, MAP_FAILED_TEXT); done(); return; }
+  if (!frame.isConnected || frame._mapRequest !== request || State.bi !== st) { done(); return; }
   destroyBiMap();
   let map;
   try { map = createAtlasMap(container, { center: [-15.66, 27.782], zoom: 10.8 }); }
-  catch (_) { mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
+  catch (_) { mapFrameStatus(frame, MAP_FAILED_TEXT); done(); return; }
   State.biMap = map;
   const ml = window.maplibregl;
   points.forEach((h) => {
@@ -2750,6 +2764,7 @@ async function renderBiMap() {
     st.markers[h.key] = { marker, root, pin: root.querySelector('.bi-pin'), label: root.querySelector('.bi-pin__label') };
   });
   if (st.model) syncBiMarkers(st.model);
+  done();
 }
 
 function syncBiMarkers(m) {
@@ -3536,13 +3551,15 @@ function paintFlightMap() {
 async function renderFlightMap(model) {
   const frame = $('#flMapFrame'), container = $('#flMap');
   if (!frame || !container) return;
+  frame.setAttribute('aria-busy', 'true');
+  const done = () => frame.removeAttribute('aria-busy');
   const routes = model.routes.filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
-  if (!routes.length) { mapFrameStatus(frame, 'No hay aeropuertos con coordenadas en la foto aérea.'); return; }
-  try { await loadMapLibre(); } catch (_) { if (frame.isConnected) mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
-  if (!frame.isConnected || State.view !== 'flights') return;
+  if (!routes.length) { mapFrameStatus(frame, 'No hay aeropuertos con coordenadas en la foto aérea.'); done(); return; }
+  try { await loadMapLibre(); } catch (_) { if (frame.isConnected) mapFrameStatus(frame, MAP_FAILED_TEXT); done(); return; }
+  if (!frame.isConnected || State.view !== 'flights') { done(); return; }
   destroyFlightMap();
   let map;
-  try { map = createAtlasMap(container, { center: [-1.5, 43], zoom: 3.05 }); } catch (_) { mapFrameStatus(frame, MAP_FAILED_TEXT); return; }
+  try { map = createAtlasMap(container, { center: [-1.5, 43], zoom: 3.05 }); } catch (_) { mapFrameStatus(frame, MAP_FAILED_TEXT); done(); return; }
   State.flightMap = map;
   const ml = window.maplibregl;
   const geo = { type: 'FeatureCollection', features: routes.map((r) => ({ type: 'Feature', properties: { code: r.code, color: AIR_TIER_COLORS[r.tier], opts: r.options, air: r.airlines.length, price: r.avgP }, geometry: { type: 'LineString', coordinates: flightArc([r.lng, r.lat], [AIR_LPA.lng, AIR_LPA.lat]) } })) };
@@ -3566,6 +3583,7 @@ async function renderFlightMap(model) {
   const hub = mapPinElement('<span class="fl-hub"><i></i><b>LPA</b></span>');
   State.flightMarkers.push(new ml.Marker({ element: hub, anchor: 'left', offset: [-7, 0] }).setLngLat([AIR_LPA.lng, AIR_LPA.lat]).addTo(map));
   paintFlightMap();
+  done();
 }
 
 function destroyFlightMap() {
@@ -3924,8 +3942,17 @@ function paintReputationSelectionBar() {
   const bar = $('#repSelBar');
   if (!bar) return;
   const had = !!bar.firstElementChild;
-  bar.innerHTML = reputationSelectionBarHTML();
-  bar.firstElementChild?.classList.toggle('is-steady', had);
+  const html = reputationSelectionBarHTML();
+  if (had && !html) {
+    const old = bar.firstElementChild;
+    if (old && !atlasReduceMotion()) {
+      old.classList.add('is-leaving');
+      setTimeout(() => { if (bar) bar.innerHTML = ''; }, atlasExitMs());
+      return;
+    }
+  }
+  bar.innerHTML = html;
+  if (had && html) bar.firstElementChild?.classList.add('is-steady');
 }
 
 /* Evaluación de una captura con una configuración dada (la vigente o el borrador del panel). */
@@ -5329,7 +5356,7 @@ async function renderWorkspace() {
     <section class="workspace__main">
       <div class="ws-head">
         <div><span class="card__kicker">Pizarra personal</span><label class="ws-title"><span class="sr-only">Nombre del análisis</span><input id="workspaceName" value="${esc(ws.name)}" maxlength="120" aria-label="Nombre del análisis"></label></div>
-        <div class="ws-head__actions"><span class="saved-chip${State.workspaceDirty ? ' is-dirty' : ''}"><i></i>${saveLabel}</span><button type="button" class="btn page-head__btn" data-workspace-ask data-workspace-anchor="${nEs(context?.anchorSnapshotId)}" data-workspace-checkin="${esc(context?.checkIn || '')}">Preguntar al Copilot →</button><button type="button" class="btn btn--primary page-head__btn" id="workspaceSave"${State.workspaceDirty ? '' : ' disabled'}>Guardar</button></div>
+        <div class="ws-head__actions"><span class="saved-chip${State.workspaceDirty ? ' is-dirty' : ''}" role="status"><i aria-hidden="true"></i>${saveLabel}</span><button type="button" class="btn page-head__btn" data-workspace-ask data-workspace-anchor="${nEs(context?.anchorSnapshotId)}" data-workspace-checkin="${esc(context?.checkIn || '')}">Preguntar al Copilot →</button><button type="button" class="btn btn--primary page-head__btn" id="workspaceSave"${State.workspaceDirty ? '' : ' disabled'}>Guardar</button></div>
       </div>
       ${State.workspaceSaveError ? `<div class="inline-error workspace-save-error" role="alert">${esc(State.workspaceSaveError)}</div>` : ''}
       ${workspaceContextHTML(context, semantic, selections)}
@@ -5580,20 +5607,61 @@ function toast(message, kind = 'info', ms = TOAST_MS) {
   if (!host) return;
   const el = document.createElement('div');
   el.className = `toast toast--${kind}`;
-  el.setAttribute('role', 'status');
+  el.setAttribute('role', kind === 'warn' || kind === 'error' ? 'alert' : 'status');
   el.tabIndex = 0;
   el.title = 'Pulsa para cerrar';
   el.innerHTML = `<i aria-hidden="true"></i><span>${esc(message)}</span>`;
   let timer = 0;
-  const dismiss = () => { if (timer) clearTimeout(timer); el.remove(); };
+  const reduceExit = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } };
+  const dismiss = () => {
+    if (timer) clearTimeout(timer);
+    timer = 0;
+    if (!el.isConnected) return;
+    if (reduceExit()) { el.remove(); return; }
+    if (el.classList.contains('is-leaving')) return;
+    el.classList.add('is-leaving');
+    setTimeout(() => el.remove(), 120);
+  };
   el.addEventListener('click', dismiss);
   el.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape') { event.preventDefault(); dismiss(); }
   });
   host.appendChild(el);
-  timer = setTimeout(() => el.remove(), ms);
+  timer = setTimeout(() => {
+    if (!el.isConnected) return;
+    if (reduceExit()) { el.remove(); return; }
+    el.classList.add('is-leaving');
+    setTimeout(() => el.remove(), 120);
+  }, ms);
   while (host.children.length > 4) host.firstElementChild.remove();
 }
+/* >>> pulido-u2:movimiento (PKG-16 U2-01/02/03/11/12 MM-01/03/04/06/07/08/09/10/11/12/14/15 MX-01/04/06/07)
+   Reserva FE: solo ganchos de animacion y ocupado (aria-busy, salidas).
+   No toca lineas 12-80 ni marcadores existentes. Entradas conservadas;
+   salidas solo opacidad y transform en micro; reduce las anula. */
+function atlasReduceMotion() {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; }
+}
+function atlasExitMs() { return atlasReduceMotion() ? 0 : 120; }
+function atlasAnimateExit(el, done) {
+  if (!el || !el.isConnected) { if (typeof done === 'function') done(); return; }
+  if (atlasReduceMotion()) { if (typeof done === 'function') done(); return; }
+  if (el.classList.contains('is-leaving')) { if (typeof done === 'function') setTimeout(done, 120); return; }
+  el.classList.add('is-leaving');
+  setTimeout(() => { if (typeof done === 'function') done(); }, 120);
+}
+/* contadores solo primer pintado (MM-05): la primera llamada anima, el resto fija final */
+let __atlasCountersDone = false;
+const __atlasRunCountersBase = runCounters;
+runCounters = function atlasRunCountersOnce(root) {
+  const nodes = $$('[data-count]', root).map((n) => ({ n, target: Number(n.getAttribute('data-count')) }));
+  if (!nodes.length) return;
+  if (atlasReduceMotion()) { nodes.forEach(({ n, target }) => (n.textContent = nEs(target))); __atlasCountersDone = true; return; }
+  if (__atlasCountersDone) { nodes.forEach(({ n, target }) => (n.textContent = nEs(target))); return; }
+  __atlasCountersDone = true;
+  return __atlasRunCountersBase(root);
+};
+/* <<< pulido-u2:movimiento */
 
 /* capas modales (paleta y confirmación de captura) */
 function overlayFocusable(overlay) {
@@ -5623,11 +5691,17 @@ function openOverlay(id, focusSelector) {
 function closeOverlay(id, { restoreFocus = true } = {}) {
   const overlay = $(`#${id}`);
   if (!overlay || overlay.hidden) return false;
-  overlay.hidden = true;
-  if (!$('.overlay:not([hidden])')) $('.atlas-root')?.removeAttribute('inert');
-  const previous = State.overlayReturnFocus;
-  State.overlayReturnFocus = null;
-  if (restoreFocus && previous && previous.isConnected) previous.focus();
+  const finish = () => {
+    overlay.hidden = true;
+    overlay.classList.remove('is-leaving');
+    if (!$('.overlay:not([hidden])')) $('.atlas-root')?.removeAttribute('inert');
+    const previous = State.overlayReturnFocus;
+    State.overlayReturnFocus = null;
+    if (restoreFocus && previous && previous.isConnected) previous.focus();
+  };
+  if (atlasReduceMotion()) { finish(); return true; }
+  overlay.classList.add('is-leaving');
+  setTimeout(finish, atlasExitMs());
   return true;
 }
 
@@ -5663,9 +5737,15 @@ async function openMarketMenu() {
 function closeMarketMenu(restoreFocus = false) {
   const menu = $('#marketMenu');
   if (!menu || menu.hidden) return false;
-  menu.hidden = true;
-  $('#marketBtn').setAttribute('aria-expanded', 'false');
-  if (restoreFocus) $('#marketBtn').focus();
+  const finish = () => {
+    menu.hidden = true;
+    menu.classList.remove('is-leaving');
+    $('#marketBtn').setAttribute('aria-expanded', 'false');
+    if (restoreFocus) $('#marketBtn').focus();
+  };
+  if (atlasReduceMotion()) { finish(); return true; }
+  menu.classList.add('is-leaving');
+  setTimeout(finish, atlasExitMs());
   return true;
 }
 function toggleMarketMenu() {
@@ -5677,7 +5757,15 @@ function toggleMarketMenu() {
 function renderTicker(metrics) {
   const host = $('#ticker');
   const moved = ((metrics && metrics.competitiveSet) || []).filter((h) => h.priceChangePct != null && Number(h.priceChangePct) !== 0);
-  if (!moved.length) { host.innerHTML = ''; return; }
+  const mask = host ? host.closest('.ticker-mask') : null;
+  if (!moved.length) {
+    host.innerHTML = '';
+    if (host) host.style.animation = 'none';
+    if (mask) mask.hidden = true;
+    return;
+  }
+  if (mask) mask.hidden = false;
+  if (host) host.style.animation = '';
   const inner = moved.map((h) => {
     const delta = Number(h.priceChangePct);
     return `<button type="button" class="ticker__item" data-ticker-hotel="${esc(h.hotelName)}"><span>${esc(h.hotelName)}</span><b>${eur(h.pricePerNight)}</b><span class="${delta > 0 ? 'up' : 'down'}">${delta > 0 ? '▲' : '▼'}${nEs(Math.abs(delta), 1)}%</span></button>`;
@@ -5791,6 +5879,19 @@ function setCaptureProgress(pct) {
   $('#captureFill').style.width = running ? `${Math.max(2, Math.min(100, pct))}%` : '0';
   $('#captureLabel').textContent = running ? `Capturando ${Math.round(pct)}%` : 'Capturar';
   button.setAttribute('aria-label', running ? `Captura en curso, ${Math.round(pct)} %` : 'Capturar mercado activo');
+  if (running) {
+    button.setAttribute('aria-busy', 'true');
+    button.setAttribute('role', 'progressbar');
+    button.setAttribute('aria-valuemin', '0');
+    button.setAttribute('aria-valuemax', '100');
+    button.setAttribute('aria-valuenow', String(Math.round(pct)));
+  } else {
+    button.removeAttribute('aria-busy');
+    button.removeAttribute('role');
+    button.removeAttribute('aria-valuemin');
+    button.removeAttribute('aria-valuemax');
+    button.removeAttribute('aria-valuenow');
+  }
 }
 
 async function openCaptureDialog() {
