@@ -22,5 +22,7 @@ Log de una línea por evento: fecha-hora · fase-paso · quién · qué · resul
 | 2026-10-02 13:30 | O3-cierre | director | 6/6 PKG (15+15B tokens, 16 movimiento con 1 fix, 17 tabs, 18 mapas, 19 contraste) + 1 NO APTO→APTO + 1 APTO-PARCIAL→15B + cota gzip 42 KB + pytest 263 + humo 16/16. Desvío doc: MM-02/03 animan width (cubierto por reduce) | OK |
 | 2026-10-02 14:10 | O4-cierre | director | 4/4 PKG (20 cifras, 21 search+modelos+adjuntos, 22 MoA+comparable 4.5×, 23 history+Jev) + pytest 292 + node 33 | OK |
 | 2026-10-02 15:00 | O5-cierre | director | 5/5 PKG (24 escala, 25 BE+25B FE robustez, 26 dos colas, 27 tests+qa) + pytest 317 + node 33 + humo 3/3. Nota: conftest tmpdir+seed → receta copia poblada (en PKG-27) | OK |
+| 2026-10-02 17:00 | F4-INC | director | INCIDENTE: `trabajo.sqlite`+`be.sqlite` corruptos (doble referencia de página) por `cp` bajo servidores en marcha (WAL+handles). Operativa y backups intactos. Reconstruidas desde backup `163010` verificado, con servidores parados. F4 relanzada (f4b). REGLA: jamás sustituir el sqlite de un servidor en marcha, ni siquiera desde backup limpio | OK |
+| 2026-10-02 17:40 | F4 | director | Batería completa: e2e 120+20 en verde, qa 7+2 en verde (3 fixes de selectores + 1 espera), perf FCP −39 %, coste run 40 verificado, prototipo conforme, `09-informe-final.md`, commit F4 | **PARADA 2: pendiente tu APROBADO** |
 
 Marcas: `PARADA-1: APROBADO` · `PARADA-2: APROBADO` (las anota el director al aprobar el usuario).
