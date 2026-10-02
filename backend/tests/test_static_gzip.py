@@ -48,7 +48,9 @@ def test_static_css_gzip_encoding_vary_immutable() -> None:
     raw_len = (STATIC_ROOT / "atlas.css").stat().st_size
     assert raw_len >= 150_000, raw_len
     wire_len = len(response.get_data())
-    assert 25_000 <= wire_len <= 35_000, wire_len
+    # Cota holgada: el CSS crece con tokens/motion/forced-colors (oleada 3);
+    # el objetivo vinculante es el total js+css <= 160 KB.
+    assert 25_000 <= wire_len <= 42_000, wire_len
 
     plain = _get("/static/atlas.css", gzip_ok=False)
     assert gzip.decompress(response.get_data()) == plain.get_data()
