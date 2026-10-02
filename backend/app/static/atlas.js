@@ -529,7 +529,8 @@ const State = {
   overlayReturnFocus: null,
   copilotMode: 'auto',
   copilotHistoryOpen: (() => {
-    try { const saved = localStorage.getItem('atlas:copilot:history-open'); return saved == null ? window.innerWidth >= 1440 : saved === '1'; } catch (_) { return window.innerWidth >= 1440; }
+    /* U1-11: historial visible desde 1280 (cubre 1366); a 768 sigue plegado. Persiste en localStorage. */
+    try { const saved = localStorage.getItem('atlas:copilot:history-open'); return saved == null ? window.innerWidth >= 1280 : saved === '1'; } catch (_) { return window.innerWidth >= 1280; }
   })(),
   copilotSessionQuery: '',
   copilotSending: false,
@@ -887,10 +888,10 @@ async function getHotelPriceHistory(targetId, hotelKey, force = false) {
 }
 
 function adrHistorySVG(photos) {
+  /* D1-09: eje X por fecha de captura (no por índice); tooltip conserva Foto #id · fecha · ADR. */
   const rows = (photos || []).filter((photo) => photo.scrapedAt && Number(photo.avgPricePerNight)).map((photo) => ({
-    date: new Date(photo.scrapedAt), avg: Number(photo.avgPricePerNight), capturedRows: photo.capturedRows || 0,
-  })).filter((row) => !Number.isNaN(row.date.getTime())).sort((a, b) => a.date - b.date);
-  rows.forEach((row, index) => { row.index = index + 1; });
+    id: photo.id, date: new Date(photo.scrapedAt), avg: Number(photo.avgPricePerNight), capturedRows: photo.capturedRows || 0,
+  })).filter((row) => !Number.isNaN(row.date.getTime())).sort((a, b) => a.date - b.date || Number(a.id) - Number(b.id));
   if (rows.length < 2) return emptyChart(230);
   const values = rows.map((row) => row.avg).filter((value) => Number.isFinite(value));
   const min = Math.floor(Math.min(...values) / 10) * 10;
@@ -899,12 +900,15 @@ function adrHistorySVG(photos) {
   const sx = (index) => x0 + (index / (rows.length - 1)) * (x1 - x0);
   const sy = (value) => y0 + (1 - (value - min) / (max - min || 1)) * (y1 - y0);
   const line = rows.map((row, index) => `${index ? 'L' : 'M'} ${sx(index).toFixed(1)} ${sy(row.avg).toFixed(1)}`).join(' ');
+  const every = rows.length > 14 ? 2 : 1;
   const points = rows.map((row, index) => {
     const label = row.date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', timeZone: 'UTC' }).replace('.', '');
+    const short = row.date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
     const time = row.date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
-    return `<circle cx="${sx(index).toFixed(1)}" cy="${sy(row.avg).toFixed(1)}" r="4.5" fill="var(--ac)"><title>Captura ${row.index} · ${label} ${time}: ADR medio ${eur(row.avg)} · ${row.capturedRows} hoteles</title></circle><text x="${sx(index).toFixed(1)}" y="207" text-anchor="middle">${row.index}</text>`;
+    const showLabel = index % every === 0 || index === rows.length - 1;
+    return `<circle cx="${sx(index).toFixed(1)}" cy="${sy(row.avg).toFixed(1)}" r="4.5" fill="var(--ac)"><title>Foto #${row.id} · ${label} ${time}: ADR medio ${eur(row.avg)} · ${row.capturedRows} hoteles</title></circle>${showLabel ? `<text x="${sx(index).toFixed(1)}" y="207" text-anchor="middle">${short}</text>` : ''}`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="238" class="svg-block" role="img" aria-label="Evolución temporal del ADR por captura"><g stroke="var(--line-soft)" stroke-width="1"><line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}"></line><line x1="${x0}" y1="${(y0 + y1) / 2}" x2="${x1}" y2="${(y0 + y1) / 2}"></line><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"></line></g><g font-family="'Space Mono',monospace" font-size="9" fill="var(--fainter)"><text x="${x0 - 8}" y="${y0 + 3}" text-anchor="end">${eur(max)}</text><text x="${x0 - 8}" y="${y1 + 3}" text-anchor="end">${eur(min)}</text></g><path d="${line}" fill="none" stroke="var(--ac)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><g>${points}</g></svg><div class="legend dashboard-history-legend"><span><i style="width:12px;height:2px;border-radius:0;background:var(--ac);"></i>ADR medio por captura · eje X = número de captura</span></div>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="238" class="svg-block" role="img" aria-label="Evolución temporal del ADR por captura"><g stroke="var(--line-soft)" stroke-width="1"><line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}"></line><line x1="${x0}" y1="${(y0 + y1) / 2}" x2="${x1}" y2="${(y0 + y1) / 2}"></line><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"></line></g><g font-family="'Space Mono',monospace" font-size="9" fill="var(--fainter)"><text x="${x0 - 8}" y="${y0 + 3}" text-anchor="end">${eur(max)}</text><text x="${x0 - 8}" y="${y1 + 3}" text-anchor="end">${eur(min)}</text></g><path d="${line}" fill="none" stroke="var(--ac)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><g>${points}</g></svg><div class="legend dashboard-history-legend"><span><i style="width:12px;height:2px;border-radius:0;background:var(--ac);"></i>ADR medio por captura · eje X = fecha de captura</span></div>`;
 }
 
 /* --------------------------------------------------------- head helpers */
@@ -4342,7 +4346,6 @@ async function renderCaptures() {
   try { const r = await getPhotoHistory(State.targetId); photos = r.photos || []; }
   catch (e) { host.innerHTML = `<div class="page">${pageHead('Capturas', 'Trazabilidad', '')}${inlineErrorHTML('No se pudieron cargar las fotos', e)}</div>`; return; }
 
-  const t = activeTarget();
   const selectedPhoto = photos.find((photo) => photo.id === State.selectedPhotoId) || photos[0] || null;
   const selectedIndex = photos.findIndex((photo) => photo.id === selectedPhoto?.id);
   const previousPhoto = selectedIndex >= 0 ? photos[selectedIndex + 1] || null : null;
@@ -4394,9 +4397,8 @@ async function renderCaptures() {
       <article class="card card--pad">
         <div class="card__kicker" style="margin-bottom:5px;">Captura manual</div>
         <h2 style="margin-bottom:15px;">Nueva captura</h2>
-        <div class="grid grid--2" style="gap:11px; margin-bottom:15px;">
+        <div style="margin-bottom:15px;">
           <label class="field"><span>Límite hoteles</span><input class="input input--mono" id="capLimit" value="200" /></label>
-          <label class="field"><span>Mercado</span><input class="input" id="capMarket" value="${esc(t ? t.name : '')}" disabled /></label>
         </div>
         <div class="grid grid--2" style="gap:11px; margin-bottom:15px;">
           <label class="field"><span>Primera extracción</span><input type="date" required class="input" id="capCheckIn" /></label>
@@ -4407,8 +4409,11 @@ async function renderCaptures() {
           <label class="field"><span>Régimen solicitado</span><select class="input" id="capBoard"><option value="all_inclusive">Todo incluido</option><option value="saved_filters">Filtros del mercado guardado</option></select></label>
         </div>
         <p class="capture-profile-note">Moneda solicitada: EUR · una habitación · sin niños. Las ofertas observadas conservan sus condiciones reales. La captura se ejecuta ahora; no programa repeticiones.</p>
-        <div class="choices" id="capMarkets" style="margin-bottom:16px;">
-          ${State.targets.map((x) => `<button type="button" class="choice ${x.id === State.targetId ? 'is-active' : ''}" aria-pressed="${x.id === State.targetId}" data-cap-market="${x.id}">${esc(x.name)}</button>`).join('')}
+        <div class="field" style="margin-bottom:16px;">
+          <span>Mercado · sincronizado con el selector lateral</span>
+          <div class="choices" id="capMarkets">
+            ${State.targets.map((x) => `<button type="button" class="choice ${x.id === State.targetId ? 'is-active' : ''}" aria-pressed="${x.id === State.targetId}" data-cap-market="${x.id}">${esc(x.name)}</button>`).join('')}
+          </div>
         </div>
         <button type="button" class="btn btn--primary btn--block" id="launchCapture">Lanzar captura · Booking.com</button>
       </article>
@@ -4489,7 +4494,7 @@ async function renderCopilot() {
       <div class="note-box">Respuestas basadas en capturas de Booking y vuelos. No sustituye pickup ni ocupación del PMS.</div>
     </aside>
     <section class="copilot__main">
-      <div class="copilot__head"><div class="copilot-head-title"><button type="button" class="copilot-history-toggle icon-btn" id="toggleCopilotHistoryMain" aria-label="Mostrar u ocultar historial" aria-expanded="${State.copilotHistoryOpen}">☰</button><div><h1>Copilot</h1><p id="copilotCtx">${esc(activeTarget() ? activeTarget().name : 'Mercado')} · asistente de revenue${esc(workspaceScopeLabel)}</p></div></div><div class="copilot__scope">${copilotAgeChipHTML()}<label class="sr-only" for="copilotMode">Modelo</label><select id="copilotMode" class="copilot-mode">${[['auto', 'Modelo automático'], ['quick', 'Rápido'], ['analysis', 'Razonamiento']].map(([v, l]) => `<option value="${v}"${State.copilotMode === v ? ' selected' : ''}>${l}</option>`).join('')}</select><button type="button" class="btn btn--quiet copilot-panel-toggle" id="toggleCopilotPanel" aria-expanded="false">Resultados</button></div></div>
+      <div class="copilot__head"><div class="copilot-head-title"><button type="button" class="copilot-history-toggle icon-btn" id="toggleCopilotHistoryMain" aria-label="Mostrar u ocultar historial" aria-expanded="${State.copilotHistoryOpen}">☰</button><div><h1>Copilot</h1><p id="copilotCtx">${esc(activeTarget() ? activeTarget().name : 'Mercado')} · asistente de revenue${esc(workspaceScopeLabel)}</p></div></div><div class="copilot__scope">${copilotAgeChipHTML()}<label class="sr-only" for="copilotMode">Modelo</label><select id="copilotMode" class="copilot-mode">${[['auto', 'Modelo automático'], ['quick', 'Rápido'], ['analysis', 'Razonamiento']].map(([v, l]) => `<option value="${v}"${State.copilotMode === v ? ' selected' : ''}>${l}</option>`).join('')}</select><button type="button" class="btn copilot-panel-toggle" id="toggleCopilotPanel" aria-expanded="false">Resultados</button></div></div>
       <div class="thread" id="thread" role="log" aria-live="polite" aria-relevant="additions text"></div>
       <div class="composer">
         <div class="suggest" id="chatSuggestions">
@@ -4506,7 +4511,7 @@ async function renderCopilot() {
           </button>
         </div>
       </div>
-      <aside class="copilot__results" id="copilotResults" hidden aria-label="Resultados de Copilot"><div class="copilot-results__head"><strong>Resultados</strong><button type="button" class="icon-btn" id="closeCopilotPanel" aria-label="Cerrar resultados">×</button></div><div class="copilot-results__tabs" role="tablist"><button type="button" class="is-active" data-copilot-panel-tab="result" role="tab" aria-selected="true">Resultado</button><button type="button" data-copilot-panel-tab="sources" role="tab" aria-selected="false">Fuentes</button><button type="button" data-copilot-panel-tab="files" role="tab" aria-selected="false">Archivos</button></div><div class="copilot-results__body" id="copilotResultsBody"><p class="empty">Selecciona un resultado para inspeccionarlo.</p></div></aside>
+      <aside class="copilot__results" id="copilotResults" hidden aria-label="Resultados de Copilot"><div class="copilot-results__head"><strong>Resultados</strong><button type="button" class="icon-btn" id="closeCopilotPanel" aria-label="Cerrar resultados">×</button></div><div class="copilot-results__tabs" role="tablist"><button type="button" class="is-active" data-copilot-panel-tab="result" role="tab" aria-selected="true">Resultado</button><button type="button" data-copilot-panel-tab="sources" role="tab" aria-selected="false">Fuentes</button><button type="button" data-copilot-panel-tab="files" role="tab" aria-selected="false">Archivos</button></div><div class="copilot-results__body" id="copilotResultsBody"><p class="empty">Selecciona un resultado para inspeccionarlo.<br><button type="button" class="btn btn--sm" data-copilot-ask>Hacer una pregunta</button></p></div></aside>
     </section>
   </div>`;
 
@@ -4581,6 +4586,14 @@ function updateCopilotHistory(open) {
   ['toggleCopilotHistory','toggleCopilotHistoryMain'].forEach((id) => { const el = $(`#${id}`); if (el) { el.setAttribute('aria-expanded', String(State.copilotHistoryOpen)); el.setAttribute('title', State.copilotHistoryOpen ? 'Plegar historial' : 'Mostrar historial'); } });
   try { localStorage.setItem('atlas:copilot:history-open', State.copilotHistoryOpen ? '1' : '0'); } catch (_) {}
 }
+/* U1-12: el botón Resultados indica cuando hay gráfica disponible. */
+function updateCopilotPanelToggle() {
+  const toggle = $('#toggleCopilotPanel');
+  if (!toggle) return;
+  const hasViz = Boolean(State.copilotLastResult?.visualization);
+  toggle.classList.toggle('has-result', hasViz);
+  toggle.setAttribute('aria-label', hasViz ? 'Resultados (hay gráfica disponible)' : 'Resultados');
+}
 function copilotPanelHTML(tab = 'result', focusOrigin = null) {
   const panel = $('#copilotResults'); if (!panel) return;
   if (panel.hidden) State.copilotPanelFocusOrigin = focusOrigin || document.activeElement;
@@ -4602,13 +4615,15 @@ function copilotPanelHTML(tab = 'result', focusOrigin = null) {
     body.innerHTML = ids.length ? `<div class="result-source-list">${ids.map((ref, index) => `<div class="result-source"><strong>Fuente ${index + 1}${ref.tool ? ` · ${esc(ref.tool)}` : ref.metric ? ` · ${esc(ref.metric)}` : ''}</strong><span>${esc(String(ref.evidenceId || ref))}</span><small>${ref.sourceObservedAt || ref.observedAt ? `Dato observado ${esc(fmtStamp(ref.sourceObservedAt || ref.observedAt))}` : 'Consulta registrada'}${ref.queriedAt ? ` · consultada ${esc(fmtStamp(ref.queriedAt))}` : ''}${ref.snapshotId ? ` · foto #${esc(String(ref.snapshotId))}` : ''}</small></div>`).join('')}</div>` : '<p class="empty">Fuente histórica no disponible para esta respuesta.</p>';
     return;
   }
-  body.innerHTML = result.visualization ? copilotVisualizationHTML(result.visualization) : '<p class="empty">La última respuesta no contiene una gráfica estructurada.</p>';
+  body.innerHTML = result.visualization ? copilotVisualizationHTML(result.visualization) : '<p class="empty">La última respuesta no contiene una gráfica estructurada.<br><button type="button" class="btn btn--sm" data-copilot-ask>Hacer una pregunta</button></p>';
+  updateCopilotPanelToggle();
 }
 
 function greetThread() {
   const thread = $('#thread'); if (!thread) return;
   setCopilotSuggestionsState(true);
   thread.innerHTML = `<div class="msg-bot">${COPILOT_AVATAR}<article class="msg-card"><div class="msg-bot__body"><p>Hola. Puedo leer el mercado activo (${esc(activeTarget() ? activeTarget().name : '—')}), comparar hoteles y rutas, y calcular gráficas sobre tus capturas. Pregúntame o usa una sugerencia.</p></div></article></div>`;
+  updateCopilotPanelToggle();
 }
 
 /* Las sugerencias quedan siempre a la vista, como en el prototipo. */
@@ -4620,6 +4635,7 @@ function setCopilotSuggestionsState() {
 async function loadSession(id) {
   State.activeSession = id;
   State.copilotLastResult = null;
+  updateCopilotPanelToggle();
   renderSessionList();
   const thread = $('#thread');
   thread.innerHTML = '<div class="empty">Cargando…</div>';
@@ -4634,6 +4650,7 @@ async function loadSession(id) {
     thread.innerHTML = msgs.map(renderMsg).join('');
     thread.scrollTop = thread.scrollHeight;
     restoreCopilotDraftIntoInput();
+    updateCopilotPanelToggle();
   } catch (e) { if (State.activeSession !== id || !thread.isConnected) return; thread.innerHTML = `<div class="inline-error">${esc(friendlyErrorMessage(e))}</div>`; }
 }
 
@@ -4870,6 +4887,7 @@ async function sendChat(text) {
     if (responseFresh) State.copilotLastResult = r;
     if (responseFresh) {
       pend.innerHTML = copilotReplyHTML(r.reply, r.visualization, r.dataMeta);
+      updateCopilotPanelToggle();
     }
     if (r.session && requestSessionId === State.activeSession) {
       State.activeSession = r.session.id;
@@ -4892,6 +4910,7 @@ function applyAssistantResponse(response, pend, requestTargetId = State.targetId
   const isActive = (!response._requestSessionId || response._requestSessionId === State.activeSession) && requestTargetId === State.targetId;
   if (isActive && pend?.isConnected) State.copilotLastResult = response;
   if (pend?.isConnected && isActive) pend.innerHTML = copilotReplyHTML(response.reply || '', response.visualization, response.dataMeta);
+  if (isActive) updateCopilotPanelToggle();
   if (response.session && (!response._requestSessionId || response._requestSessionId === State.activeSession)) {
     State.activeSession = response.session.id;
     const exists = State.sessions.find((s) => s.id === response.session.id);
@@ -5479,14 +5498,24 @@ function applyPreferences() {
 }
 
 /* avisos emergentes */
+/* D1-14: descartables con clic/Esc sin cambiar aspecto README; se mantiene TOAST_MS y máx 4. */
 function toast(message, kind = 'info', ms = TOAST_MS) {
   const host = $('#toasts');
   if (!host) return;
   const el = document.createElement('div');
   el.className = `toast toast--${kind}`;
+  el.setAttribute('role', 'status');
+  el.tabIndex = 0;
+  el.title = 'Pulsa para cerrar';
   el.innerHTML = `<i aria-hidden="true"></i><span>${esc(message)}</span>`;
+  let timer = 0;
+  const dismiss = () => { if (timer) clearTimeout(timer); el.remove(); };
+  el.addEventListener('click', dismiss);
+  el.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape') { event.preventDefault(); dismiss(); }
+  });
   host.appendChild(el);
-  setTimeout(() => el.remove(), ms);
+  timer = setTimeout(() => el.remove(), ms);
   while (host.children.length > 4) host.firstElementChild.remove();
 }
 
@@ -5876,8 +5905,14 @@ function closeTopOverlay() {
 function wireEvents() {
   wireHotelReputationEvents();
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !chromeLayerOpen() && !$('#copilotResults')?.hidden) {
+    const copilotResults = $('#copilotResults');
+    if (e.key === 'Escape' && !chromeLayerOpen() && copilotResults && !copilotResults.hidden) {
       const close = $('#closeCopilotPanel'); close?.click(); e.preventDefault(); return;
+    }
+    /* D1-14: Esc descarta el toast visible cuando no hay capa abierta. */
+    if (e.key === 'Escape' && !chromeLayerOpen()) {
+      const toastHost = $('#toasts');
+      if (toastHost?.lastElementChild) { toastHost.lastElementChild.remove(); e.preventDefault(); }
     }
   });
   document.addEventListener('mouseover', (e) => {
@@ -5999,11 +6034,12 @@ function wireEvents() {
       } catch (error) { alert(friendlyErrorMessage(error)); }
       return;
     }
-    if (e.target.closest('#newSession')) { State.activeSession = null; State.copilotAttachments = []; renderCopilotAttachments(); renderSessionList(); greetThread(); return; }
+    if (e.target.closest('#newSession')) { State.activeSession = null; State.copilotLastResult = null; State.copilotAttachments = []; renderCopilotAttachments(); renderSessionList(); greetThread(); updateCopilotPanelToggle(); return; }
     const ses = e.target.closest('[data-session]');
     if (ses) { loadSession(Number(ses.dataset.session)); return; }
     const ask = e.target.closest('[data-ask]');
     if (ask) { sendChat(ask.dataset.ask); return; }
+    if (e.target.closest('[data-copilot-ask]')) { $('#chatInput')?.focus(); return; }
     if (e.target.closest('[data-capture-compare-close]')) { State.captureComparisonOpen = false; renderCaptures(); return; }
     if (e.target.closest('[data-capture-compare]')) { State.captureComparisonOpen = true; renderCaptures(); return; }
     const loadPhoto = e.target.closest('[data-load-photo]');
