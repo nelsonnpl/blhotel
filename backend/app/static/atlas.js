@@ -197,8 +197,8 @@ function lineSVG(points, opts = {}) {
     <title>${esc(`Mínimo ${eur(min)} · máximo ${eur(max)} · €/noche por fecha de foto`)}</title>
     <g stroke="var(--line-soft)" stroke-width="1"><line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}"></line><line x1="${x0}" y1="71" x2="${x1}" y2="71"></line><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"></line></g>
     <g font-family="'Space Mono',monospace" font-size="9" fill="var(--fainter)"><text x="${x0 - 6}" y="23" text-anchor="end">${eur(max)}</text><text x="${x0 - 6}" y="${y1 + 3}" text-anchor="end">${eur(min)}</text><text x="${(x0 + x1) / 2}" y="145" text-anchor="middle">€/noche por fecha de foto</text></g>
-    <path d="${d.trim()}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="1400" style="animation:atDraw 1200ms cubic-bezier(.22,1,.36,1) 200ms both;"></path>
-    <g style="animation:atPop 380ms cubic-bezier(.22,1,.36,1) 1100ms both; transform-origin:center;"><circle cx="${sx(points.length - 1).toFixed(1)}" cy="${sy(last.v).toFixed(1)}" r="4" fill="var(--ac)"></circle></g>
+    <path d="${d.trim()}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="1400" class="anim-draw"></path>
+    <g class="anim-pop"><circle cx="${sx(points.length - 1).toFixed(1)}" cy="${sy(last.v).toFixed(1)}" r="4" fill="var(--ac)"></circle></g>
   </svg>`;
 }
 
@@ -381,6 +381,7 @@ const BI_HORIZONS = [14, 30, 60, 90];
 const BI_TARGET = { min: 25, max: 90, step: 5, initial: 60 };
 const BI_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const BI_WEEKDAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+/* fijos README §mapas/semáforo (PKG-15 D1-02 excepción documentada; closed gris mapa) */
 const BI_MAP_COLORS = { low: '#1f7a52', mid: '#c98a1e', high: '#b94f50', closed: '#8b91a3' };
 const BI_CLOSURE_WINDOW = 14; // «Cierres»: dos o más fechas cerradas en los próximos 14 días
 
@@ -805,11 +806,11 @@ async function renderView(view) {
 
 function skeleton(host, kind) {
   if (kind === 'dashboard') {
-    host.innerHTML = `<div class="page sk-page" aria-busy="true"><div class="sk" style="height:90px;margin-bottom:12px"></div><div class="grid grid--4">
-      ${'<div class="sk" style="height:104px;"></div>'.repeat(4)}
-    </div><div class="sk" style="height:520px;"></div></div>`;
+    host.innerHTML = `<div class="page sk-page" aria-busy="true"><div class="sk sk--h90"></div><div class="grid grid--4">
+      ${'<div class="sk sk--h104"></div>'.repeat(4)}
+    </div><div class="sk sk--h520"></div></div>`;
   } else {
-    host.innerHTML = `<div class="page sk-page" aria-busy="true"><div class="sk" style="height:90px;margin-bottom:12px"></div><div class="sk" style="height:480px"></div></div>`;
+    host.innerHTML = `<div class="page sk-page" aria-busy="true"><div class="sk sk--h90"></div><div class="sk sk--h480"></div></div>`;
   }
 }
 
@@ -910,7 +911,7 @@ function adrHistorySVG(photos) {
     const showLabel = index % every === 0 || index === rows.length - 1;
     return `<circle cx="${sx(index).toFixed(1)}" cy="${sy(row.avg).toFixed(1)}" r="4.5" fill="var(--ac)"><title>Foto #${row.id} · ${label} ${time}: ADR medio ${eur(row.avg)} · ${row.capturedRows} hoteles</title></circle>${showLabel ? `<text x="${sx(index).toFixed(1)}" y="207" text-anchor="middle">${short}</text>` : ''}`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="238" class="svg-block" role="img" aria-label="Evolución temporal del ADR por captura"><g stroke="var(--line-soft)" stroke-width="1"><line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}"></line><line x1="${x0}" y1="${(y0 + y1) / 2}" x2="${x1}" y2="${(y0 + y1) / 2}"></line><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"></line></g><g font-family="'Space Mono',monospace" font-size="9" fill="var(--fainter)"><text x="${x0 - 8}" y="${y0 + 3}" text-anchor="end">${eur(max)}</text><text x="${x0 - 8}" y="${y1 + 3}" text-anchor="end">${eur(min)}</text></g><path d="${line}" fill="none" stroke="var(--ac)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><g>${points}</g></svg><div class="legend dashboard-history-legend"><span><i style="width:12px;height:2px;border-radius:0;background:var(--ac);"></i>ADR medio por captura · eje X = fecha de captura</span></div>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="238" class="svg-block" role="img" aria-label="Evolución temporal del ADR por captura"><g stroke="var(--line-soft)" stroke-width="1"><line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}"></line><line x1="${x0}" y1="${(y0 + y1) / 2}" x2="${x1}" y2="${(y0 + y1) / 2}"></line><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}"></line></g><g font-family="'Space Mono',monospace" font-size="9" fill="var(--fainter)"><text x="${x0 - 8}" y="${y0 + 3}" text-anchor="end">${eur(max)}</text><text x="${x0 - 8}" y="${y1 + 3}" text-anchor="end">${eur(min)}</text></g><path d="${line}" fill="none" stroke="var(--ac)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><g>${points}</g></svg><div class="legend dashboard-history-legend"><span><i class="legend-line"></i>ADR medio por captura · eje X = fecha de captura</span></div>`;
 }
 
 /* --------------------------------------------------------- head helpers */
@@ -1459,7 +1460,7 @@ function dashboardPopoverChartHTML(h) {
       ${s2 ? `<polyline points="${line(s2)}" fill="none" stroke="${c2}" stroke-width="1.6" stroke-dasharray="${dashed ? '4 4' : '0'}" stroke-linejoin="round"></polyline>` : ''}
       ${area ? `<polyline points="${area}" fill="var(--accent-soft)" stroke="none" opacity=".7"></polyline>` : ''}
       <polyline points="${l1}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"></polyline>${pts}</svg>
-    <div class="dash-pop__legend"><span><i style="background:var(--ac)"></i>${esc(leg1)}</span>${s2 ? `<span><i style="background:${c2}"></i>${esc(leg2)}</span>` : ''}</div>`;
+    <div class="dash-pop__legend"><span><i class="bg-ac"></i>${esc(leg1)}</span>${s2 ? `<span><i style="background:${c2}"></i>${esc(leg2)}</span>` : ''}</div>`;
 }
 
 function dashboardPopoverFacts(h) {
@@ -2479,7 +2480,7 @@ function biCalendarHTML(m) {
   const kickerRange = m.dates[0] && m.dates.at(-1) ? `extracciones ${biDayLabel(m.dates[0])}/${String(m.dates[0]).slice(0, 4)} – ${biDayLabel(m.dates.at(-1))}/${String(m.dates.at(-1)).slice(0, 4)}` : '';
   return `<div class="bi-card__head bi-cal__head"><div class="bi-card__title"><span class="card__kicker">Rate calendar · ${esc(kickerRange)} · eje X = fecha de entrada</span><h2>Tarifa por hotel y extracción</h2></div>
       <div class="bi-cal__aside"><span class="bi-cal__readout" id="biCalReadout" aria-live="polite">Pasa el cursor por el calendario</span>
-      <div class="bi-legend" title="Verde = por debajo de la mediana (favorable) · rojo = por encima (riesgo) · ±5 % neutro"><span class="bi-legend__scale" aria-hidden="true"><i style="background:rgba(31,122,82,.55)"></i><i style="background:rgba(31,122,82,.22)"></i><i style="background:var(--line-soft)"></i><i style="background:rgba(185,79,80,.22)"></i><i style="background:rgba(185,79,80,.55)"></i></span><span class="sr-only">Escala de verde (barato) a rojo (caro) pasando por neutro · </span><span>vs mediana del día</span><i class="bi-legend__closed" aria-hidden="true"></i><span>cerrado</span><i class="bi-legend__low" aria-hidden="true"></i><span>cupo bajo (─ ámbar)</span><i class="bi-legend__empty" aria-hidden="true"></i><span title="Fecha sin captura: no hay foto para esa extracción">sin foto (sin captura)</span></div></div></div>
+      <div class="bi-legend" title="Verde = por debajo de la mediana (favorable) · rojo = por encima (riesgo) · ±5 % neutro"><span class="bi-legend__scale" aria-hidden="true"><i class="heat-lo-strong"></i><i class="heat-lo-soft22"></i><i class="bg-linesoft"></i><i class="heat-hi-soft22"></i><i class="heat-hi-strong"></i></span><span class="sr-only">Escala de verde (barato) a rojo (caro) pasando por neutro · </span><span>vs mediana del día</span><i class="bi-legend__closed" aria-hidden="true"></i><span>cerrado</span><i class="bi-legend__low" aria-hidden="true"></i><span>cupo bajo (─ ámbar)</span><i class="bi-legend__empty" aria-hidden="true"></i><span title="Fecha sin captura: no hay foto para esa extracción">sin foto (sin captura)</span></div></div></div>
     ${sparse ? `<div class="bi-cal__sparse" role="note">Solo ${captured} de ${H} fechas capturadas — cambia a 14/30 días para una vista densa. El punteado claro es «sin foto», no un error; el rayado diagonal es «cerrado».</div>` : ''}
     <div class="bi-cal__body">
       <div class="bi-cal__grid" id="biCalGrid">
@@ -2692,7 +2693,7 @@ async function renderHotelsBI(panel, sheetModel, metrics) {
   st.sheet = sheetModel;
   st.metrics = metrics;
   destroyBiMap();
-  panel.innerHTML = '<div class="bi" aria-busy="true"><div class="sk" style="height:62px"></div><div class="sk" style="height:84px"></div><div class="sk" style="height:560px"></div></div>';
+  panel.innerHTML = '<div class="bi" aria-busy="true"><div class="sk sk--h62"></div><div class="sk sk--h84"></div><div class="sk sk--h560"></div></div>';
   try { await loadBiData(); }
   catch (e) { if (panel.isConnected) panel.innerHTML = inlineErrorHTML('No se pudo cargar el panel de análisis', e); return; }
   if (!panel.isConnected || State.bi !== st || State.hotelTab !== 'bi' || State.targetId !== targetId) return;
@@ -3019,7 +3020,7 @@ function captureComparisonHTML(currentDetail, previousDetail, currentPhoto, prev
     return `<tr><td class="name">${esc(item.row.hotelName)}</td><td class="num dim">${eur(item.previousAdr)}</td><td class="num">${eur(item.currentAdr)}</td><td class="num capture-change capture-change--${tone}">${signedEur}</td><td class="num capture-change capture-change--${tone}">${signPct(item.pct)}</td><td>${boardTag(item.row.board)}</td></tr>`;
   }).join('');
   const deltaTone = avgChange != null && avgChange > .5 ? 'up' : avgChange != null && avgChange < -.5 ? 'down' : 'flat';
-  return `<article class="card table-card mb12" id="captureComparison"><div class="table-card__head capture-comparison__head"><div><div class="card__kicker" style="margin-bottom:5px;">Comparación de fotos</div><strong style="font-size:15px;">Foto #${currentPhoto.id} frente a foto #${previousPhoto.id}</strong><span class="capture-comparison__stamp">${fmtStamp(currentPhoto.scrapedAt)} vs. ${fmtStamp(previousPhoto.scrapedAt)} · Emparejamiento por hotel, estancia, habitación, régimen y condiciones</span></div><button type="button" class="btn btn--quiet" data-capture-compare-close>Cerrar comparación</button></div><div class="capture-comparison-summary"><div><span>Filas equivalentes</span><strong>${avgCurrent == null ? '—' : eur(avgCurrent)}</strong><small>${comparable.length} con el mismo producto</small></div><div><span>Δ ADR comparable</span><strong class="capture-change capture-change--${deltaTone}">${signPct(avgChange)}</strong><small>solo filas equivalentes</small></div><div><span>Producto actual</span><strong>${onlyCurrent.length}</strong><small>sin equivalente anterior</small></div><div><span>Producto anterior</span><strong>${onlyPrevious.length}</strong><small>sin equivalente actual</small></div></div><div class="table-scroll"><table class="t" style="min-width:760px;"><caption class="sr-only">Mayores variaciones de ADR entre las dos capturas seleccionadas</caption><thead><tr><th>Hotel</th><th class="r">ADR anterior</th><th class="r">ADR actual</th><th class="r">Δ €</th><th class="r">Δ ADR</th><th>Régimen</th></tr></thead><tbody>${movementRows || '<tr><td colspan="6" class="empty">No hay filas con el mismo hotel, estancia y producto en ambas capturas.</td></tr>'}</tbody></table></div></article>`;
+  return `<article class="card table-card mb12" id="captureComparison"><div class="table-card__head capture-comparison__head"><div><div class="card__kicker u-mb5">Comparación de fotos</div><strong class="t-strong15">Foto #${currentPhoto.id} frente a foto #${previousPhoto.id}</strong><span class="capture-comparison__stamp">${fmtStamp(currentPhoto.scrapedAt)} vs. ${fmtStamp(previousPhoto.scrapedAt)} · Emparejamiento por hotel, estancia, habitación, régimen y condiciones</span></div><button type="button" class="btn btn--quiet" data-capture-compare-close>Cerrar comparación</button></div><div class="capture-comparison-summary"><div><span>Filas equivalentes</span><strong>${avgCurrent == null ? '—' : eur(avgCurrent)}</strong><small>${comparable.length} con el mismo producto</small></div><div><span>Δ ADR comparable</span><strong class="capture-change capture-change--${deltaTone}">${signPct(avgChange)}</strong><small>solo filas equivalentes</small></div><div><span>Producto actual</span><strong>${onlyCurrent.length}</strong><small>sin equivalente anterior</small></div><div><span>Producto anterior</span><strong>${onlyPrevious.length}</strong><small>sin equivalente actual</small></div></div><div class="table-scroll"><table class="t u-minw760"><caption class="sr-only">Mayores variaciones de ADR entre las dos capturas seleccionadas</caption><thead><tr><th>Hotel</th><th class="r">ADR anterior</th><th class="r">ADR actual</th><th class="r">Δ €</th><th class="r">Δ ADR</th><th>Régimen</th></tr></thead><tbody>${movementRows || '<tr><td colspan="6" class="empty">No hay filas con el mismo hotel, estancia y producto en ambas capturas.</td></tr>'}</tbody></table></div></article>`;
 }
 
 /* ================================================================== VUELOS */
@@ -3029,6 +3030,7 @@ const FLIGHT_TABS = ['overview', 'routes', 'operations'];
 const FLIGHT_TAB_KEY = 'atlas.flightTab';
 const AIR_PAGE_SIZE = 50;
 const AIR_LPA = { code: 'LPA', lat: 27.9319, lng: -15.3866 };
+/* fijos README §mapas/semáforo (PKG-15 D1-02 excepción documentada) */
 const AIR_TIER_COLORS = ['#1f7a52', '#c98a1e', '#b94f50'];
 const AIR_OPS_COLUMNS = [
   // [etiqueta, clave de ordenación del servidor, alineación, ancho]
@@ -3199,7 +3201,7 @@ function flightHeatHTML(model, focus) {
     }).join('');
     return `<button type="button" class="fl-heat__route${r.code === focus ? ' is-focus' : ''}" data-fl-route="${esc(r.code)}">${esc(r.code)} <small>${esc(r.city)}</small></button>${cells}`;
   }).join('');
-  return `<div class="dash-card__head"><div><span class="card__kicker">Mapa de calor</span><h2>Precio mínimo por ruta y semana de salida</h2></div><div class="fl-heat__legend" title="Verde = por debajo de su media (favorable) · rojo = por encima (riesgo) · ±4 % neutro"><span>bajo su media</span><span class="bi-legend__scale" aria-hidden="true"><i style="background:rgba(31,122,82,.55)"></i><i style="background:rgba(31,122,82,.2)"></i><i style="background:var(--line-soft)"></i><i style="background:rgba(185,79,80,.2)"></i><i style="background:rgba(185,79,80,.55)"></i></span><span class="sr-only">Escala de verde (barato) a rojo (caro) pasando por neutro · </span><span>sobre su media</span><span class="mono dim">€/trayecto</span></div></div>
+  return `<div class="dash-card__head"><div><span class="card__kicker">Mapa de calor</span><h2>Precio mínimo por ruta y semana de salida</h2></div><div class="fl-heat__legend" title="Verde = por debajo de su media (favorable) · rojo = por encima (riesgo) · ±4 % neutro"><span>bajo su media</span><span class="bi-legend__scale" aria-hidden="true"><i class="heat-lo-strong"></i><i class="heat-lo-soft20"></i><i class="bg-linesoft"></i><i class="heat-hi-soft20"></i><i class="heat-hi-strong"></i></span><span class="sr-only">Escala de verde (barato) a rojo (caro) pasando por neutro · </span><span>sobre su media</span><span class="mono dim">€/trayecto</span></div></div>
     <div class="fl-heat"><span></span>${weeks.map((w) => `<span class="fl-heat__week">${w}</span>`).join('')}${rows}</div>`;
 }
 
@@ -3754,7 +3756,7 @@ function reviewSourceMap(item, key = 'source') {
 async function renderHotelReputation() {
   const host = mount('reputation');
   if (State.reputation.hotelKey) {
-    host.innerHTML = `<div class="page"><div class="sk" style="height:90px;margin-bottom:12px"></div><div class="sk" style="height:340px"></div></div>`;
+    host.innerHTML = `<div class="page"><div class="sk sk--h90"></div><div class="sk sk--h340"></div></div>`;
     try {
       const result = await api(reputationKeyPath(State.reputation.hotelKey, 'profile'));
       State.reputation.profile = result.profile;
@@ -3768,7 +3770,7 @@ async function renderHotelReputation() {
     }
     return;
   }
-  host.innerHTML = `<div class="page"><div class="sk" style="height:90px;margin-bottom:12px"></div><div class="sk" style="height:480px"></div></div>`;
+  host.innerHTML = `<div class="page"><div class="sk sk--h90"></div><div class="sk sk--h480"></div></div>`;
   try {
     const result = await api('/api/hotel-reviews/catalog?limit=200');
     State.reputation.catalog = result.items || [];
@@ -3873,7 +3875,7 @@ function renderHotelReputationCatalog(host, total) {
       <div class="rep-card__bar"><div class="seg rep-tabs" role="tablist" aria-label="Filtrar inventario">${REP_TABS.map(([id, label]) => `<button type="button" role="tab" class="${tab === id ? 'is-active' : ''}" aria-selected="${tab === id}" data-rep-tab="${id}">${label}<span>${nEs(counts[id])}</span></button>`).join('')}</div>
         <label class="rep-search"><span class="sr-only">Buscar hotel</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" id="reviewCatalogSearch" value="${esc(State.reputation.query)}" placeholder="Nombre, dirección o ciudad" autocomplete="off"></label></div>
       <div class="rep-table__scroll"><table class="rep-table"><caption class="sr-only">Inventario hotelero con cobertura de reseñas por fuente</caption>
-        <colgroup><col style="width:52px"><col><col style="width:110px"><col style="width:110px"><col style="width:160px"><col style="width:150px"><col style="width:150px"><col style="width:96px"></colgroup>
+        <colgroup><col class="w-52"><col><col class="w-110"><col class="w-110"><col class="w-160"><col class="w-150"><col class="w-150"><col class="w-96"></colgroup>
         <thead><tr><th scope="col" class="rep-table__check"><input type="checkbox" id="reviewSelectAll" aria-label="Seleccionar visibles"></th><th scope="col">Hotel</th><th scope="col" class="r">Google</th><th scope="col" class="r">Booking</th><th scope="col">Google Maps</th><th scope="col">Último Maps</th><th scope="col">Último Booking</th><th scope="col" class="r">Ficha</th></tr></thead>
         <tbody>${rows.map(reputationRowHTML).join('')}</tbody></table>
         <div class="rep-empty" id="repEmpty" hidden><strong>Ningún hotel coincide</strong><span>Revisa la búsqueda o cambia de pestaña.</span><button type="button" class="btn btn--sm" data-rep-show-all>Ver todo el inventario</button></div></div>
@@ -4455,7 +4457,7 @@ async function renderCaptures() {
     return `<tr${activeRow ? ' class="capture-history-row is-selected"' : ' class="capture-history-row"'}>
       <td>${activeRow ? `<span class="capture-active-label"><i></i>Foto #${p.id}</span>` : `<span class="name">Foto #${p.id}</span>`}</td>
       <td class="mono dim">${fmtStamp(p.scrapedAt)}</td>
-      <td class="num" style="font-weight:700;">${eur(p.avgPricePerNight)}</td>
+      <td class="num t-bold">${eur(p.avgPricePerNight)}</td>
       <td class="num dim">${eur(p.avgPricePerPersonNight)}</td>
       <td class="mono dim">${nEs(p.minPricePerNight)} — ${nEs(p.maxPricePerNight)} €</td>
       <td class="num">${nEs(p.capturedRows)}</td>
@@ -4468,12 +4470,12 @@ async function renderCaptures() {
 
     <div class="grid mb12 capture-manual-grid">
       <article class="card card--pad">
-        <div class="card__kicker" style="margin-bottom:5px;">Captura manual</div>
-        <h2 style="margin-bottom:15px;">Nueva captura</h2>
-        <div style="margin-bottom:15px;">
+        <div class="card__kicker u-mb5">Captura manual</div>
+        <h2 class="u-mb15">Nueva captura</h2>
+        <div class="u-mb15">
           <label class="field"><span>Límite hoteles</span><input class="input input--mono" id="capLimit" value="200" /></label>
         </div>
-        <div class="grid grid--2" style="gap:11px; margin-bottom:15px;">
+        <div class="grid grid--2 u-gap11-mb15">
           <label class="field"><span>Primera extracción</span><input type="date" required class="input" id="capCheckIn" /></label>
           <label class="field"><span>Noches</span><input type="number" min="1" max="30" value="7" required class="input" id="capNights" /></label>
           <label class="field"><span>Adultos</span><input type="number" min="1" max="10" value="2" required class="input" id="capAdults" /></label>
@@ -4482,7 +4484,7 @@ async function renderCaptures() {
           <label class="field"><span>Régimen solicitado</span><select class="input" id="capBoard"><option value="all_inclusive">Todo incluido</option><option value="saved_filters">Filtros del mercado guardado</option></select></label>
         </div>
         <p class="capture-profile-note">Moneda solicitada: EUR · una habitación · sin niños. Las ofertas observadas conservan sus condiciones reales. La captura se ejecuta ahora; no programa repeticiones.</p>
-        <div class="field" style="margin-bottom:16px;">
+        <div class="field u-mb16">
           <span>Mercado · sincronizado con el selector lateral</span>
           <div class="choices" id="capMarkets">
             ${State.targets.map((x) => `<button type="button" class="choice ${x.id === State.targetId ? 'is-active' : ''}" aria-pressed="${x.id === State.targetId}" data-cap-market="${x.id}">${esc(x.name)}</button>`).join('')}
@@ -4505,11 +4507,11 @@ async function renderCaptures() {
 
     <div class="grid mb12 capture-analysis-grid">
       <article class="card card--pad">
-        <div class="card__head" style="margin-bottom:8px;"><div><div class="card__kicker" style="margin-bottom:5px;">Histórico de ADR</div><h2>Fotos disponibles</h2><p>Un punto por foto guardada del mercado activo.</p></div><span class="pill-tag">${photos.length} fotos</span></div>
+        <div class="card__head u-mb8"><div><div class="card__kicker u-mb5">Histórico de ADR</div><h2>Fotos disponibles</h2><p>Un punto por foto guardada del mercado activo.</p></div><span class="pill-tag">${photos.length} fotos</span></div>
         ${adrHistorySVG(photos)}
       </article>
       <article class="card card--pad">
-        <div class="card__kicker" style="margin-bottom:5px;">Foto seleccionada</div>
+        <div class="card__kicker u-mb5">Foto seleccionada</div>
         <h2>Foto #${selectedPhoto ? selectedPhoto.id : '—'}</h2>
         <p class="capture-selected-stamp">${selectedPhoto ? fmtStamp(selectedPhoto.scrapedAt) : 'Sin fotos disponibles'}</p>
         <div class="capture-summary">
@@ -4527,9 +4529,9 @@ async function renderCaptures() {
     ${State.captureComparisonOpen && previousPhoto ? (previousDetail ? captureComparisonHTML(detail, previousDetail, selectedPhoto, previousPhoto) : `<div class="inline-error mb12">No se pudo cargar la foto de comparación: ${esc(comparisonError ? friendlyErrorMessage(comparisonError) : 'sin detalle')} <button type="button" class="btn btn--sm" data-nav="captures">Ir a Capturas</button></div>`) : ''}
 
     <article class="card table-card mb12">
-      <div class="table-card__head"><div><div class="card__kicker" style="margin-bottom:5px;">Booking · trazabilidad</div><strong style="font-size:15px;">Histórico de fotos</strong></div><span class="table-filter-status">Selecciona una foto para inspeccionarla</span></div>
+      <div class="table-card__head"><div><div class="card__kicker u-mb5">Booking · trazabilidad</div><strong class="t-strong15">Histórico de fotos</strong></div><span class="table-filter-status">Selecciona una foto para inspeccionarla</span></div>
       <div class="table-scroll">
-        <table class="t" style="min-width:760px;">
+        <table class="t u-minw760">
           <thead><tr><th>Foto</th><th>Fecha</th><th class="r">ADR hab/noche</th><th class="r">ADR pers/noche</th><th>Rango</th><th class="r">Filas</th><th class="r"></th></tr></thead>
           <tbody>${hist || `<tr><td colspan="7" class="empty">Sin fotos registradas.</td></tr>`}</tbody>
         </table>
@@ -4542,9 +4544,9 @@ async function renderCaptures() {
         <div class="table-tools"><input type="search" class="input input--search" id="captureHotelSearch" value="${esc(State.captureHotelSearch)}" placeholder="Hotel, régimen o habitación…" aria-label="Buscar en la captura seleccionada" /></div>
       </div>
       <div class="table-scroll">
-        <table class="t" style="min-width:900px;" id="captureHotelTable">
+        <table class="t u-minw900" id="captureHotelTable">
           <caption class="sr-only">Hoteles y condiciones de la captura seleccionada</caption>
-          <thead><tr><th class="r" style="width:44px;">#</th><th>Hotel / habitación</th><th class="r">ADR/hab</th><th class="r">Total</th><th>Régimen</th><th class="r">Nota</th><th>Cancel.</th><th class="r">Disponibilidad</th></tr></thead>
+          <thead><tr><th class="r w-44">#</th><th>Hotel / habitación</th><th class="r">ADR/hab</th><th class="r">Total</th><th>Régimen</th><th class="r">Nota</th><th>Cancel.</th><th class="r">Disponibilidad</th></tr></thead>
           <tbody>${rowMarkup || '<tr><td colspan="8" class="empty">No hay hoteles que coincidan con la búsqueda.</td></tr>'}</tbody>
         </table>
       </div>
@@ -4642,7 +4644,7 @@ async function renderCopilotEvaluation() {
 
 function renderSessionList() {
   const list = $('#sessionList'); if (!list) return;
-  if (!State.sessions.length) { list.innerHTML = '<div class="empty" style="padding:20px 0;">Sin conversaciones que coincidan.</div>'; return; }
+  if (!State.sessions.length) { list.innerHTML = '<div class="empty u-pad20-0">Sin conversaciones que coincidan.</div>'; return; }
   list.innerHTML = State.sessions.map((s) => `<div class="session-wrap ${s.id === State.activeSession ? 'is-active' : ''}">
     <button type="button" class="session" data-session="${s.id}" aria-current="${s.id === State.activeSession ? 'true' : 'false'}" title="${esc(s.title || 'Conversación')}"><strong>${s.pinned ? '<span class="session-pin" aria-label="Fijada">●</span>' : ''}${esc(s.title || 'Conversación')}</strong><span class="session-date">${fmtStamp(s.lastMessageAt || s.updatedAt)}</span></button>
     <div class="session-actions" aria-label="Acciones de conversación"><button type="button" data-session-action="pin" data-session-id="${s.id}" aria-label="${s.pinned ? 'Desfijar' : 'Fijar'} conversación">${s.pinned ? '★' : '☆'}</button><button type="button" data-session-action="rename" data-session-id="${s.id}" aria-label="Renombrar conversación">✎</button><button type="button" data-session-action="archive" data-session-id="${s.id}" aria-label="Archivar conversación">×</button></div>
@@ -4971,7 +4973,7 @@ async function sendChat(text) {
   } catch (e) {
     if (requestSessionId !== State.activeSession || requestTargetId !== State.targetId || !pend.isConnected) return;
     const msg = e.status === 503 ? 'El Copilot no está configurado en este entorno (falta OPENROUTER_API_KEY).' : e.message;
-    pend.querySelector('.msg-bot__body').innerHTML = `<p style="color:var(--red);">${esc(msg)}</p>`;
+    pend.querySelector('.msg-bot__body').innerHTML = `<p class="t-err">${esc(msg)}</p>`;
     if (input) { input.value = text; saveCopilotDraft(text); }
   }
   delete State.copilotSendingBySession[sendingKey];
@@ -5012,14 +5014,14 @@ async function pollAssistantJob(jobId, pend, requestSessionId = State.activeSess
           delete State.copilotActiveJobs[requestSessionId || 'new']; delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return;
         }
         if (job.status === 'failed') {
-          body.innerHTML = `<p style="color:var(--red);">No se pudo completar el análisis: ${esc(job.error || 'error del trabajo')}</p>`;
+          body.innerHTML = `<p class="t-err">No se pudo completar el análisis: ${esc(job.error || 'error del trabajo')}</p>`;
           delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return;
         }
         body.innerHTML = `<p class="assistant-job-progress">${esc(job.message || 'Analizando…')}<span class="caret">▊</span></p><button type="button" class="job-cancel" data-cancel-assistant-job="${esc(jobId)}">Dejar de seguir</button>`;
       } catch (error) {
-        if (tries > 10) { pend.querySelector('.msg-bot__body').innerHTML = `<p style="color:var(--red);">No se pudo consultar el trabajo: ${esc(error.message)}</p>`; delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return; }
+        if (tries > 10) { pend.querySelector('.msg-bot__body').innerHTML = `<p class="t-err">No se pudo consultar el trabajo: ${esc(error.message)}</p>`; delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return; }
       }
-      if (tries > 600) { pend.querySelector('.msg-bot__body').innerHTML = '<p style="color:var(--red);">Seguimiento detenido; el trabajo puede continuar en segundo plano.</p>'; delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return; }
+      if (tries > 600) { pend.querySelector('.msg-bot__body').innerHTML = '<p class="t-err">Seguimiento detenido; el trabajo puede continuar en segundo plano.</p>'; delete State.copilotSendingBySession[requestSessionId || 'new']; State.copilotSending = false; resolve(); return; }
       setTimeout(tick, 900);
     };
     void tick();
@@ -5357,8 +5359,8 @@ async function loadWorkspaceWeatherExample(host) {
     const association = await api(`/api/analytics/weather-price-association?targetId=${encodeURIComponent(State.targetId)}&snapshots=12`).catch(() => null);
     const associationLabel = association?.status === 'ready' ? `${nEs(association.samplePairs)} pares` : 'Muestra insuficiente';
     card.innerHTML = `<div class="wblock__head"><div class="lhs"><span class="badge">MET</span><strong>Cobertura meteorológica por mercado</strong></div><span class="link-badge">Open-Meteo</span></div>
-      <p class="dim" style="margin:0 0 12px;">${nEs(payload.hotelCount)} hoteles · ${nEs(payload.hotelsWithCoordinates)} con coordenadas · ${nEs(payload.geographicGroups)} grupos · ${nEs(payload.weatherRequests)} peticiones</p>
-      <div class="mini-kpis" style="grid-template-columns:repeat(4,1fr);">${miniKpi('Asignaciones', nEs((payload.assignments || []).length))}${miniKpi('Grupos guardados', nEs(summaries.length))}${miniKpi('Conocidas en foto', nEs(known))}${miniKpi('Asociación', associationLabel)}</div>
+      <p class="dim u-m0-b12">${nEs(payload.hotelCount)} hoteles · ${nEs(payload.hotelsWithCoordinates)} con coordenadas · ${nEs(payload.geographicGroups)} grupos · ${nEs(payload.weatherRequests)} peticiones</p>
+      <div class="mini-kpis">${miniKpi('Asignaciones', nEs((payload.assignments || []).length))}${miniKpi('Grupos guardados', nEs(summaries.length))}${miniKpi('Conocidas en foto', nEs(known))}${miniKpi('Asociación', associationLabel)}</div>
       <small class="dim">Foto de mercado #${esc(payload.marketSnapshotId)} · Las consultas posteriores se marcan como enriquecimiento posterior. La asociación no demuestra demanda ni causalidad.</small>`;
    } catch (error) {
     card.innerHTML = `<div class="wblock__head"><div class="lhs"><span class="badge">MET</span><strong>Cobertura meteorológica por mercado</strong></div></div><div class="inline-error">${esc(friendlyErrorMessage(error))}</div>`;
@@ -5489,7 +5491,7 @@ async function launchCapture() {
     await pollJob(jobId, push, worker, t.id);
   } catch (e) {
     push(`<span class="warn">error</span> ${esc(e.message)}`);
-    worker.innerHTML = '<i style="background:#e7bd5f;"></i>worker con error';
+    worker.innerHTML = '<i class="dot-warn"></i>worker con error';
   } finally {
     btn.disabled = false; btn.textContent = 'Lanzar captura · Booking.com';
   }
@@ -5512,7 +5514,7 @@ async function pollJob(jobId, push, worker, targetId) {
         }
         if (j.status === 'failed' || j.status === 'error') {
           push(`job#${jobId} <span class="warn">falló</span> · ${esc(j.error || 'sin detalle')}`);
-          worker.innerHTML = '<i style="background:#e7bd5f;"></i>worker con error';
+          worker.innerHTML = '<i class="dot-warn"></i>worker con error';
           void finishCapture(targetId, false, j.error); resolve(); return;
         }
         if (State.captureJob && State.captureJob.id === jobId) { State.captureJob.pct = Number(j.progress) || State.captureJob.pct; setCaptureProgress(State.captureJob.pct); }
@@ -5533,6 +5535,7 @@ function applyTheme(theme, persist = true) {
   State.theme = THEMES.includes(theme) ? theme : 'claro';
   const dark = State.theme === 'oscuro';
   if (dark) document.documentElement.dataset.theme = 'oscuro'; else document.documentElement.removeAttribute('data-theme');
+  /* fijos README tokens bg claro/oscuro (PKG-15 D1-02 excepción documentada) */
   $('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0e1014' : '#f5f6f9');
   if ($('#themeBtn')) {
     $('#themeLabel').textContent = dark ? 'Tema claro' : 'Tema oscuro';
