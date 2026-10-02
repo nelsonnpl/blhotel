@@ -1356,7 +1356,15 @@ def capture_history():
     """Extraction-level history. A capture may contain several weekly slices."""
     target_id = parse_int_arg("targetId", minimum=1)
     limit = parse_int_arg("limit", default=24, minimum=1, maximum=100)
-    return ok({"captures": db.capture_history(target_id, limit)})
+    offset = parse_int_arg("offset", default=0, minimum=0, maximum=100000)
+    # PKG-24 (B1-08): paginado + bulk en DB (antes 500 fotos de golpe).
+    page = db.capture_history_page(target_id, limit, offset) if hasattr(db, "capture_history_page") else {
+        "items": db.capture_history(target_id, limit),
+        "total": len(db.capture_history(target_id, limit)),
+        "limit": limit,
+        "offset": offset,
+    }
+    return ok({"captures": page["items"], "pagination": {"limit": page["limit"], "offset": page["offset"], "total": page["total"]}})
 
 
 @app.get("/api/photos/<int:snapshot_id>")
@@ -1383,6 +1391,12 @@ def photo_detail(snapshot_id: int):
 def hotels_history():
     target_id = parse_int_arg("targetId", minimum=1)
     limit_snapshots = parse_int_arg("limitSnapshots", default=12, minimum=1, maximum=50)
+    # PKG-24 (B1-09): paginado por filas (antes 449 KB de golpe).
+    limit = parse_int_arg("limit", default=100, minimum=1, maximum=500)
+    offset = parse_int_arg("offset", default=0, minimum=0, maximum=1000000)
+    if hasattr(db, "hotel_row_history_page"):
+        page = db.hotel_row_history_page(target_id, limit_snapshots=limit_snapshots, limit=limit, offset=offset)
+        return ok({"rows": page["rows"], "pagination": {"limit": page["limit"], "offset": page["offset"], "total": page["total"], "snapshots": page["snapshots"]}})
     return ok({"rows": db.hotel_row_history(target_id, limit_snapshots)})
 
 
@@ -1413,7 +1427,23 @@ def hotel_rate_calendar():
     family = (request.args.get("roomFamily") or "all").strip()[:40] or "all"
     if family != "all" and family not in rate_calendar.ROOM_FAMILIES:
         return error_response("roomFamily no reconocido", 400)
-    return ok(rate_calendar.build_rate_calendar(db, target_id, start, days, board, family))
+    # PKG-24 (B1-10): caché TTL 30 s + ETag. Los inputs solo cambian con una
+    # captura manual (`clear_cache` invalida), así que el calendario (85 KB,
+    # ~12 snapshots + detalles) no se recalcula en cada poll.
+    cache_key = ("rate-calendar", target_id, start.isoformat(), days, board, family)
+    payload = cached(cache_key, lambda: rate_calendar.build_rate_calendar(db, target_id, start, days, board, family))
+    etag = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+    quoted = f'"{etag}"'
+    if request.headers.get("If-None-Match") in {quoted, etag}:
+        response = Response(status=304)
+        response.headers["ETag"] = quoted
+        return response
+    body, status = ok(payload)
+    body.headers["ETag"] = quoted
+    body.headers["Cache-Control"] = "private, max-age=30"
+    return body, status
 
 
 @app.get("/api/hotels/inventory")

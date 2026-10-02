@@ -970,10 +970,34 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_market_snapshot_hotels_snapshot "
             "ON market_snapshot_hotels(snapshot_id, position ASC)"
         )
+        # PKG-24 (B1-10): índices que faltaban para N+1/paginación/history.
+        # - rate_calendar._latest_snapshot_per_date filtra por check_in en
+        #   ventana: sin índice era SCAN de market_snapshot_hotels.
+        # - hotel_price_history filtra por hotel_key y ordena por captura:
+        #   sin índice era SCAN.
+        # - hotel_review_profile agrupa por (hotel_key, source, published_at):
+        #   cubre datedTrend/distribución en bulk.
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_market_snapshot_hotels_checkin "
+            "ON market_snapshot_hotels(check_in, snapshot_id)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_market_snapshot_hotels_hotelkey "
+            "ON market_snapshot_hotels(hotel_key, snapshot_id)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hotel_reviews_profile "
+            "ON hotel_reviews(hotel_key, source, published_at DESC)"
+        )
         self.conn.execute(
             "UPDATE market_snapshots SET capture_status = 'unknown' WHERE capture_profile_json IS NULL AND capture_status = 'complete'"
         )
         self._ensure_column("hotel_rate_details", "snapshot_id", "INTEGER REFERENCES market_snapshots(id)")
+        # snapshot_id se añade por migración: el índice debe crearse después.
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hotel_rate_details_snapshot "
+            "ON hotel_rate_details(snapshot_id, hotel_key)"
+        )
         self.conn.execute(
             """
             CREATE VIEW IF NOT EXISTS latest_hotel_price_observations AS
@@ -2619,29 +2643,81 @@ class Database:
             observations[row["attribute"]].append({"id": row["id"], "value": value, "source": row["source"],
                                                      "observedAt": row["observed_at"], "selected": bool(row["selected"])})
         source_stats = []
-        for row in self.conn.execute(
+        base_rows = self.conn.execute(
             "SELECT source, COUNT(*) AS captured, SUM(CASE WHEN COALESCE(review_original,'')<>'' OR COALESCE(review_es,'')<>'' OR COALESCE(positive_text,'')<>'' OR COALESCE(negative_text,'')<>'' THEN 1 ELSE 0 END) AS withText, AVG(rating) AS sampleAverage FROM hotel_reviews WHERE hotel_key=? GROUP BY source ORDER BY source",
             (hotel_key,),
-        ).fetchall():
+        ).fetchall()
+        # PKG-24 (B1-07): bulk sin N+1. Antes: 4 queries × fuente
+        # (ratingScale, distribution, datedTrend, latestRun). Ahora: 4 queries
+        # fijas totales, agrupadas en Python por fuente.
+        if base_rows:
+            scales = {
+                row["source"]: row["scale"]
+                for row in self.conn.execute(
+                    "SELECT source, MAX(rating_scale) AS scale FROM hotel_reviews WHERE hotel_key=? GROUP BY source",
+                    (hotel_key,),
+                ).fetchall()
+            }
+            dist_by_source: dict[str, list] = defaultdict(list)
+            for row in self.conn.execute(
+                "SELECT source, rating, COUNT(*) AS count FROM hotel_reviews WHERE hotel_key=? AND rating IS NOT NULL GROUP BY source, rating ORDER BY source, rating DESC",
+                (hotel_key,),
+            ).fetchall():
+                dist_by_source[row["source"]].append({"rating": row["rating"], "count": row["count"]})
+            trend_by_source: dict[str, list] = defaultdict(list)
+            for row in self.conn.execute(
+                "SELECT source, substr(published_at,1,7) AS month, COUNT(*) AS count, AVG(rating) AS sampleAverage FROM hotel_reviews WHERE hotel_key=? AND date_precision='exact' AND published_at IS NOT NULL GROUP BY source, substr(published_at,1,7) ORDER BY source, month",
+                (hotel_key,),
+            ).fetchall():
+                trend_by_source[row["source"]].append(
+                    {"month": row["month"], "count": row["count"], "sampleAverage": row["sampleAverage"]}
+                )
+            # Última ejecución por fuente normalizada (google absorbe
+            # google_maps/google_hotels). Una sola lectura ordenada; en Python
+            # se queda la primera (más reciente) por cada familia.
+            latest_by_run_source: dict[str, dict] = {}
+            for row in self.conn.execute(
+                "SELECT source, status, coverage_json, started_at FROM hotel_review_runs WHERE hotel_key=? ORDER BY started_at DESC, rowid DESC",
+                (hotel_key,),
+            ).fetchall():
+                latest_by_run_source.setdefault(row["source"], dict(row))
+            # Agregados publicados: se resuelven en memoria desde
+            # `observations` ya cargado (selected primero, luego reciente),
+            # sin 2 queries × fuente. Equivale a
+            # ORDER BY selected DESC, observed_at DESC, id DESC LIMIT 1.
+            aggregate_winner: dict[str, dict | None] = {}
+            for attribute in ("google_aggregate", "booking_aggregate"):
+                candidates = observations.get(attribute, [])
+                winner = None
+                for item in candidates:
+                    if item.get("selected"):
+                        winner = item
+                        break
+                if winner is None and candidates:
+                    # observations ya viene en observed_at DESC, id DESC.
+                    winner = candidates[0]
+                aggregate_winner[attribute] = winner
+        else:
+            scales = {}
+            dist_by_source = {}
+            trend_by_source = {}
+            latest_by_run_source = {}
+            aggregate_winner = {"google_aggregate": None, "booking_aggregate": None}
+        for row in base_rows:
             stats = dict(row)
-            stats["ratingScale"] = self.conn.execute(
-                "SELECT MAX(rating_scale) FROM hotel_reviews WHERE hotel_key=? AND source=?",
-                (hotel_key, row["source"]),
-            ).fetchone()[0]
-            stats["ratingDistribution"] = [dict(value) for value in self.conn.execute(
-                "SELECT rating,COUNT(*) AS count FROM hotel_reviews WHERE hotel_key=? AND source=? AND rating IS NOT NULL GROUP BY rating ORDER BY rating DESC",
-                (hotel_key, row["source"]),
-            ).fetchall()]
-            stats["datedTrend"] = [dict(value) for value in self.conn.execute(
-                "SELECT substr(published_at,1,7) AS month,COUNT(*) AS count,AVG(rating) AS sampleAverage FROM hotel_reviews WHERE hotel_key=? AND source=? AND date_precision='exact' AND published_at IS NOT NULL GROUP BY substr(published_at,1,7) ORDER BY month",
-                (hotel_key, row["source"]),
-            ).fetchall()]
-            run_sources = ("google", "google_maps", "google_hotels") if row["source"] == "google" else (row["source"],)
-            placeholders = ",".join("?" for _ in run_sources)
-            latest = self.conn.execute(
-                f"SELECT status,coverage_json,started_at FROM hotel_review_runs WHERE hotel_key=? AND source IN ({placeholders}) ORDER BY started_at DESC LIMIT 1",
-                (hotel_key, *run_sources),
-            ).fetchone()
+            stats["ratingScale"] = scales.get(row["source"])
+            stats["ratingDistribution"] = dist_by_source.get(row["source"], [])
+            stats["datedTrend"] = trend_by_source.get(row["source"], [])
+            if row["source"] == "google":
+                run_sources = ("google", "google_maps", "google_hotels")
+                dated = [
+                    latest_by_run_source[source]
+                    for source in run_sources
+                    if source in latest_by_run_source
+                ]
+                latest = max(dated, key=lambda item: str(item.get("started_at") or "")) if dated else None
+            else:
+                latest = latest_by_run_source.get(row["source"])
             stats["latestRun"] = None
             if latest:
                 try:
@@ -2654,9 +2730,7 @@ class Database:
             if not any(item["source"] == "booking" for item in source_stats):
                 source_stats.append({"source": "booking", "captured": 0, "withText": 0, "sampleAverage": None,
                                      "ratingScale": 10, "ratingDistribution": [], "datedTrend": [], "latestRun": None})
-        if self.conn.execute(
-            "SELECT 1 FROM hotel_attribute_observations WHERE hotel_key=? AND attribute='google_aggregate' LIMIT 1", (hotel_key,)
-        ).fetchone() and not any(item["source"] == "google" for item in source_stats):
+        if "google_aggregate" in observations and not any(item["source"] == "google" for item in source_stats):
             source_stats.append({"source": "google", "captured": 0, "withText": 0, "sampleAverage": None,
                                  "ratingScale": 5, "ratingDistribution": [], "datedTrend": [], "latestRun": None})
         for source, attribute, fallback_score, fallback_count in (
@@ -2665,17 +2739,26 @@ class Database:
         ):
             if not any(item["source"] == source for item in source_stats):
                 continue
-            observation = self.conn.execute(
-                "SELECT value_json,source,observed_at FROM hotel_attribute_observations WHERE hotel_key=? AND attribute=? ORDER BY selected DESC,observed_at DESC,id DESC LIMIT 1",
-                (hotel_key, attribute),
-            ).fetchone()
-            try: aggregate = json.loads(observation["value_json"]) if observation else {}
-            except (TypeError, ValueError): aggregate = {}
+            # PKG-24: sin query por fuente; ganador ya resuelto en memoria.
+            observation = aggregate_winner.get(attribute)
+            if observation is not None:
+                aggregate = observation.get("value")
+                if not isinstance(aggregate, dict):
+                    try:
+                        aggregate = json.loads(observation.get("value_json") or "{}")
+                    except (TypeError, ValueError):
+                        aggregate = {}
+                aggregate_source = observation.get("source")
+                aggregate_observed_at = observation.get("observedAt") or observation.get("observed_at")
+            else:
+                aggregate = {}
+                aggregate_source = None
+                aggregate_observed_at = None
             source_row = next(item for item in source_stats if item["source"] == source)
-            source_row["publishedRating"] = aggregate.get("rating") if aggregate.get("rating") is not None else fallback_score
-            source_row["publishedReviewCount"] = aggregate.get("reviewCount") if aggregate.get("reviewCount") is not None else fallback_count
-            source_row["aggregateSource"] = observation["source"] if observation else ("booking_graphql" if fallback_score is not None else None)
-            source_row["aggregateObservedAt"] = observation["observed_at"] if observation else inventory.get("updated_at")
+            source_row["publishedRating"] = aggregate.get("rating") if isinstance(aggregate, dict) and aggregate.get("rating") is not None else fallback_score
+            source_row["publishedReviewCount"] = aggregate.get("reviewCount") if isinstance(aggregate, dict) and aggregate.get("reviewCount") is not None else fallback_count
+            source_row["aggregateSource"] = aggregate_source if aggregate_source else ("booking_graphql" if fallback_score is not None else None)
+            source_row["aggregateObservedAt"] = aggregate_observed_at if aggregate_observed_at else inventory.get("updated_at")
         latest_run = [dict(row) for row in self.conn.execute(
             "SELECT id,source,status,source_url AS sourceUrl,budget_usd AS budgetUsd,rows_seen AS rowsSeen,rows_inserted AS rowsInserted,rows_updated AS rowsUpdated,estimated_spend_usd AS estimatedSpendUsd,actual_spend_usd AS actualSpendUsd,error,coverage_json,started_at AS startedAt,completed_at AS completedAt FROM hotel_review_runs WHERE hotel_key=? ORDER BY started_at DESC LIMIT 30",
             (hotel_key,),
@@ -3489,7 +3572,9 @@ class Database:
         ).fetchone()
         return MarketSnapshot(**dict(row)) if row else None
 
-    def snapshot_history(self, target_id: int, limit: int = 20) -> list[MarketSnapshot]:
+    def snapshot_history(self, target_id: int, limit: int = 20, offset: int = 0) -> list[MarketSnapshot]:
+        safe_limit = max(1, min(500, int(limit)))
+        safe_offset = max(0, int(offset))
         rows = self.conn.execute(
             """
             SELECT id, target_id AS targetId, source_url AS sourceUrl, capture_profile_json AS captureProfile,
@@ -3499,22 +3584,20 @@ class Database:
             FROM market_snapshots
             WHERE target_id = ?
             ORDER BY scraped_at DESC, id DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (target_id, limit),
+            (target_id, safe_limit, safe_offset),
         ).fetchall()
         return [MarketSnapshot(**dict(row)) for row in rows]
 
-    def capture_group_snapshot_ids(self, target_id: int, snapshot_id: int) -> dict | None:
-        """Resolve an anchor snapshot to its coherent extraction (``foto``).
+    @staticmethod
+    def _capture_group_from_snapshots(snapshots: list, snapshot_id: int) -> dict | None:
+        """Resuelve un ancla sobre una lista ya cargada (sin I/O).
 
-        New captures carry a durable ``capture_group_id``. Older rows predate
-        that field and were persisted once per weekly check-in; contiguous
-        legacy snapshots less than two minutes apart are therefore exposed as
-        one explicitly labelled inferred group. This is read-only: we do not
-        rewrite historical evidence merely to make it easier to display.
+        Misma semántica que `capture_group_snapshot_ids`: grupo durable por
+        `capture_group_id`, o cadena legacy contigua (≤2 min) etiquetada como
+        `legacy_inferred_capture_group`. Solo lectura.
         """
-        snapshots = self.snapshot_history(target_id, limit=500)
         anchor_index = next((index for index, item in enumerate(snapshots) if item.id == snapshot_id), None)
         if anchor_index is None:
             return None
@@ -3553,23 +3636,71 @@ class Database:
             "observedAt": ordered[-1].scrapedAt,
         }
 
-    def capture_history(self, target_id: int, limit: int = 24) -> list[dict]:
-        """Return extraction-level history, keeping legacy inference visible."""
+    def capture_group_snapshot_ids(self, target_id: int, snapshot_id: int) -> dict | None:
+        """Resolve an anchor snapshot to its coherent extraction (``foto``).
+
+        New captures carry a durable ``capture_group_id``. Older rows predate
+        that field and were persisted once per weekly check-in; contiguous
+        legacy snapshots less than two minutes apart are therefore exposed as
+        one explicitly labelled inferred group. This is read-only: we do not
+        rewrite historical evidence merely to make it easier to display.
+        """
+        snapshots = self.snapshot_history(target_id, limit=500)
+        return self._capture_group_from_snapshots(snapshots, snapshot_id)
+
+    def capture_history_page(self, target_id: int, limit: int = 24, offset: int = 0) -> dict:
+        """Historial de extracciones paginado sin N+1.
+
+        PKG-24 (B1-08): antes se hacían 500 `snapshot_history` + N
+        `snapshot_rows` completos (hasta 500 fotos de golpe). Ahora: 1 lectura
+        ligera de metadatos (500 ids) + agrupación en memoria + 2 lecturas
+        bulk (conteos y check-ins) solo para la página visible.
+        """
+        safe_limit = max(1, min(100, int(limit)))
+        safe_offset = max(0, int(offset))
         snapshots = self.snapshot_history(target_id, limit=500)
         groups: dict[str, dict] = {}
         for snapshot in snapshots:
-            resolved = self.capture_group_snapshot_ids(target_id, snapshot.id)
+            resolved = self._capture_group_from_snapshots(snapshots, snapshot.id)
             if not resolved or resolved["id"] in groups:
                 continue
-            rows = [row for member_id in resolved["snapshotIds"] for row in self.snapshot_rows(member_id)]
-            comparable = [row for row in rows if row.price is not None and row.nights and row.nights > 0 and row.currency == "EUR"]
-            groups[resolved["id"]] = {
-                **resolved,
-                "capturedRows": len(rows),
-                "comparableRows": len(comparable),
-                "checkIns": sorted({row.checkIn for row in rows if row.checkIn}),
-            }
-        return sorted(groups.values(), key=lambda item: item["observedAt"], reverse=True)[:limit]
+            groups[resolved["id"]] = resolved
+        ordered = sorted(groups.values(), key=lambda item: item["observedAt"], reverse=True)
+        total = len(ordered)
+        page = ordered[safe_offset:safe_offset + safe_limit]
+        if not page:
+            return {"items": [], "total": total, "limit": safe_limit, "offset": safe_offset}
+        all_ids: list[int] = [sid for group in page for sid in group["snapshotIds"]]
+        placeholders = ",".join("?" for _ in all_ids)
+        counts = {
+            int(row["snapshot_id"]): dict(row)
+            for row in self.conn.execute(
+                f"SELECT snapshot_id, COUNT(*) AS n, "
+                "SUM(CASE WHEN price IS NOT NULL AND nights > 0 AND currency = 'EUR' THEN 1 ELSE 0 END) AS comp "
+                f"FROM market_snapshot_hotels WHERE snapshot_id IN ({placeholders}) GROUP BY snapshot_id",
+                all_ids,
+            ).fetchall()
+        }
+        checkins_by_snapshot: dict[int, set] = defaultdict(set)
+        for row in self.conn.execute(
+            f"SELECT snapshot_id, check_in AS checkIn FROM market_snapshot_hotels "
+            f"WHERE snapshot_id IN ({placeholders}) AND check_in IS NOT NULL GROUP BY snapshot_id, check_in",
+            all_ids,
+        ).fetchall():
+            checkins_by_snapshot[int(row["snapshot_id"])].add(row["checkIn"])
+        items = []
+        for group in page:
+            captured = sum(int(counts.get(sid, {}).get("n") or 0) for sid in group["snapshotIds"])
+            comparable = sum(int(counts.get(sid, {}).get("comp") or 0) for sid in group["snapshotIds"])
+            checkins = sorted(
+                {check for sid in group["snapshotIds"] for check in checkins_by_snapshot.get(sid, set()) if check}
+            )
+            items.append({**group, "capturedRows": captured, "comparableRows": comparable, "checkIns": checkins})
+        return {"items": items, "total": total, "limit": safe_limit, "offset": safe_offset}
+
+    def capture_history(self, target_id: int, limit: int = 24, offset: int = 0) -> list[dict]:
+        """Compat: devuelve solo la página (ver `capture_history_page`)."""
+        return self.capture_history_page(target_id, limit=limit, offset=offset)["items"]
 
     def snapshot_rows(self, snapshot_id: int) -> list[MarketHotelRow]:
         rows = self.conn.execute(
@@ -4093,6 +4224,100 @@ class Database:
                 'snapshotScrapedAt': photo['snapshot']['scrapedAt'],
                 'detailCapturedAt': result[0]['capturedAt'] if result else None,
                 'note': 'Detalle capturado por separado y vinculado a esta foto.' if scope == 'linked_snapshot' else 'Detalle independiente: no vinculado a esta foto. Su fecha de captura, estancia y ocupación pueden ser distintas; no acredita el desglose de la tarifa de la foto.' if result else 'No existe detalle vinculado a esta foto.'}}
+
+    def hotel_row_history_page(
+        self, target_id: int, limit_snapshots: int = 12, limit: int = 100, offset: int = 0
+    ) -> dict:
+        """Histórico paginado por filas (PKG-24 B1-09).
+
+        Antes `/api/hotels/history` devolvía todas las filas de hasta 50
+        fotos de golpe (≈449 KB). Ahora pagina por filas con `total` para que
+        la UI pida páginas de 100. `hotel_row_history` se conserva para el
+        cálculo interno (`competitive_stability`), que necesita el conjunto
+        completo.
+        """
+        safe_snapshots = max(1, min(50, int(limit_snapshots)))
+        safe_limit = max(1, min(500, int(limit)))
+        safe_offset = max(0, int(offset))
+        where = (
+            "WHERE ms.target_id = ? AND ms.id IN ("
+            "SELECT id FROM market_snapshots WHERE target_id = ? "
+            "ORDER BY scraped_at DESC, id DESC LIMIT ?)"
+        )
+        total = int(
+            self.conn.execute(
+                "SELECT COUNT(*) AS total FROM market_snapshot_hotels msh "
+                "JOIN market_snapshots ms ON ms.id = msh.snapshot_id "
+                f"{where}",
+                (target_id, target_id, safe_snapshots),
+            ).fetchone()["total"]
+        )
+        rows = self.conn.execute(
+            """
+            SELECT
+              msh.id AS id,
+              msh.snapshot_id AS snapshotId,
+              ms.scraped_at AS scrapedAt,
+              msh.hotel_key AS hotelKey,
+              msh.hotel_name AS hotelName,
+              msh.detail_url AS detailUrl,
+              msh.room_type AS roomType,
+              msh.rating AS rating,
+              msh.price AS price,
+              msh.price_text AS priceText,
+              msh.currency AS currency,
+              msh.pax AS pax,
+              msh.check_in AS checkIn,
+              msh.check_out AS checkOut,
+              msh.nights AS nights,
+              msh.price_per_night AS pricePerNight,
+              msh.price_per_person_night AS pricePerPersonPerNight,
+              msh.position AS position,
+              msh.location_status AS locationStatus,
+              msh.board AS board,
+              msh.review_count AS reviewCount,
+              msh.free_cancellation AS freeCancellation,
+              msh.hotel_id AS hotelId,
+              msh.price_original AS priceOriginal,
+              msh.discount_pct AS discountPct,
+              msh.sold_out AS soldOut,
+              msh.observation_status AS observationStatus,
+              msh.closed AS closed,
+              msh.units_left AS unitsLeft,
+              msh.accommodation_type AS accommodationType,
+              msh.beach_distance AS beachDistance,
+              msh.top_location AS topLocation,
+              msh.popular_district AS popularDistrict,
+              msh.children_free AS childrenFree,
+              msh.third_party AS thirdParty,
+              msh.occupancy_rate AS occupancyRate,
+              hi.stars AS stars,
+              hi.city AS city,
+              hi.description AS description,
+              hi.beach_distance AS inventoryBeachDistance,
+              hi.completeness AS inventoryCompleteness
+            FROM market_snapshot_hotels msh
+            JOIN market_snapshots ms ON ms.id = msh.snapshot_id
+            LEFT JOIN hotel_inventory hi ON hi.hotel_key = msh.hotel_key
+            WHERE ms.target_id = ?
+              AND ms.id IN (
+                SELECT id FROM market_snapshots
+                WHERE target_id = ?
+                ORDER BY scraped_at DESC, id DESC
+                LIMIT ?
+              )
+            ORDER BY ms.scraped_at DESC, ms.id DESC, msh.position ASC
+            LIMIT ? OFFSET ?
+            """,
+            (target_id, target_id, safe_snapshots, safe_limit, safe_offset),
+        ).fetchall()
+        return {
+            "rows": [dict(row) for row in rows],
+            "total": total,
+            "limit": safe_limit,
+            "offset": safe_offset,
+            "snapshots": safe_snapshots,
+        }
 
     def hotel_row_history(self, target_id: int, limit_snapshots: int = 12) -> list[dict]:
         """Every hotel row across the most recent snapshots for a target, each
