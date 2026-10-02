@@ -1110,7 +1110,11 @@ button.ws-table__hotel:hover { color: var(--ac); }
 /* toast / estados vacíos y de error */
 .empty { padding: 40px 20px; text-align: center; color: var(--faint); font-size: 13px; }
 .empty strong { display: block; color: var(--ink); font-size: 15px; margin-bottom: 6px; font-weight: 600; }
+.empty .btn { margin-top: 10px; }
 .inline-error { padding: 14px 16px; border-radius: 10px; background: var(--bad-bg); color: var(--red); font-size: 12.5px; }
+.inline-error .btn { margin-left: 8px; vertical-align: baseline; }
+.inline-error .btn + .btn { margin-left: 6px; }
+.dash-signals__empty .link-button { margin-left: 6px; }
 
 .skip-link { position: absolute; left: -9999px; }
 .skip-link:focus { left: 8px; top: 8px; z-index: 80; background: var(--card); color: var(--ink); padding: 8px 12px; border-radius: 8px; }

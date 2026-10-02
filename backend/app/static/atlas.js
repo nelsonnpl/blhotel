@@ -802,13 +802,30 @@ async function renderView(view) {
 
 function skeleton(host, kind) {
   if (kind === 'dashboard') {
-    host.innerHTML = `<div class="page sk-page" aria-busy="true"><div class="sk sk--title"></div><div class="grid grid--4">
+    host.innerHTML = `<div class="page sk-page" aria-busy="true"><div class="sk" style="height:90px;margin-bottom:12px"></div><div class="grid grid--4">
       ${'<div class="sk" style="height:104px;"></div>'.repeat(4)}
     </div><div class="sk" style="height:520px;"></div></div>`;
   } else {
-    host.innerHTML = `<div class="page sk-page" aria-busy="true"><div class="sk sk--title"></div><div class="sk" style="height:120px;"></div><div class="sk" style="height:320px;"></div></div>`;
+    host.innerHTML = `<div class="page sk-page" aria-busy="true"><div class="sk" style="height:90px;margin-bottom:12px"></div><div class="sk" style="height:480px"></div></div>`;
   }
 }
+
+/* >>> pulido-u1:errores-vacios (U1-05/06/07/15): mensajes homogéneos + CTA a Capturas.
+   Reutiliza textos existentes («Puedes reintentar la acción.», «Reintentar», «Ir a» + «Capturas»).
+   Nunca muestra «Failed to fetch» en bruto: la red abortada o caída se mapea a español con acción. */
+function friendlyErrorMessage(err) {
+  try {
+    const msg = String((err && err.message) || err || '');
+    const isNet = (typeof __apiIsNetwork === 'function' && __apiIsNetwork(err)) || (typeof __apiIsAbort === 'function' && __apiIsAbort(err));
+    if (isNet || /failed to fetch|network\s?error|load failed|fetch failed|timeout|abort/i.test(msg)) return 'No se pudo conectar con el servidor. Puedes reintentar la acción.';
+    if (err && typeof err.status === 'number' && (err.status === 502 || err.status === 503 || err.status === 504)) return 'El servidor no responde. Puedes reintentar la acción.';
+    return msg || 'Se produjo un error inesperado. Puedes reintentar la acción.';
+  } catch (_) { return 'Se produjo un error inesperado. Puedes reintentar la acción.'; }
+}
+function inlineErrorHTML(prefix, err) {
+  return `<div class="inline-error">${esc(prefix)}: ${esc(friendlyErrorMessage(err))} <button type="button" class="btn btn--sm" data-nav="captures">Ir a Capturas</button></div>`;
+}
+/* <<< pulido-u1:errores-vacios */
 
 function renderNoActiveTarget(host, title, subtitle) {
   host.innerHTML = `<div class="page">${pageHead(title, subtitle, '')}<article class="card card--pad empty-state" aria-live="polite">
@@ -1079,7 +1096,7 @@ function dashboardSignalsHTML(signals) {
     </article>`).join('');
   return `<section class="dash-signals" id="dashSignals" aria-labelledby="dashSignalsTitle">
     <div class="dash-signals__head"><div class="dash-signals__title"><span class="dash-signals__icon">${DASH_SIGNAL_ICON}</span><strong id="dashSignalsTitle">Señales de hoy</strong><span class="dash-signals__count">${count}</span></div>${toggle}</div>
-    ${signals.length ? `<div class="dash-signals__grid" id="dashSignalsGrid">${cards}</div>` : '<p class="dash-signals__empty">No hay señales calculadas con la captura actual.</p>'}
+    ${signals.length ? `<div class="dash-signals__grid" id="dashSignalsGrid">${cards}</div>` : '<p class="dash-signals__empty">No hay señales calculadas con la foto actual. <button type="button" class="link-button" data-nav="captures">Ir a Capturas</button></p>'}
   </section>`;
 }
 
@@ -1117,7 +1134,7 @@ function dashboardSwarmHTML(model) {
   const hotels = model.hotels.filter((h) => h.adr != null).sort((a, b) => a.adr - b.adr);
   const head = `<div class="dash-card__head"><div><span class="card__kicker">Dispersión del set</span><h2>Dónde compite el mercado</h2></div>
     <div class="dash-legend"><span><i class="is-mid"></i>&lt;${nEs(model.p25)} €</span><span><i class="is-lo"></i>${nEs(model.p25)}–${nEs(model.p75)} €</span><span><i class="is-ac"></i>&gt;${nEs(model.p75)} €</span></div></div>`;
-  if (hotels.length < 2 || !(model.maxAdr > model.minAdr)) return `<article class="dash-card dash-card--swarm">${head}<div class="empty">Se necesitan al menos dos hoteles con tarifa.</div></article>`;
+  if (hotels.length < 2 || !(model.maxAdr > model.minAdr)) return `<article class="dash-card dash-card--swarm">${head}<div class="empty">Se necesitan al menos dos hoteles con tarifa.<br><button type="button" class="btn btn--sm" data-nav="captures">Ir a Capturas</button></div></article>`;
   const x = (v) => ((v - model.minAdr) / (model.maxAdr - model.minAdr)) * 100;
   const placed = [];
   let levels = 0;
@@ -1150,7 +1167,7 @@ function dashboardOutliersHTML(model) {
     return `<button type="button" class="dash-outlier" data-dash-hotel="${esc(h.name)}"><span class="dash-outlier__name">${esc(h.name)}</span><span class="dash-outlier__adr">${eur(h.adr)}</span><span class="dash-outlier__bar"><span class="dash-outlier__track"><i class="${h.vsMedian >= 0 ? 'is-up' : 'is-down'}" style="left:${left.toFixed(2)}%;width:${w.toFixed(2)}%"></i></span><span class="dash-outlier__vs">${pctTxt(h.vsMedian, 0)}</span></span></button>`;
   }).join('');
   return `<article class="dash-card dash-card--outliers"><span class="card__kicker">Fuera del centro</span><h2>Mayor distancia a la mediana</h2>
-    <div class="dash-outliers">${rows || '<div class="empty">Sin tarifas comparables.</div>'}</div></article>`;
+    <div class="dash-outliers">${rows || '<div class="empty">Sin tarifas comparables.<br><button type="button" class="btn btn--sm" data-nav="captures">Ir a Capturas</button></div>'}</div></article>`;
 }
 
 /* Semana (lunes) de una fecha ISO, para el resumen semanal del histórico. */
@@ -1161,8 +1178,8 @@ function dashboardWeekStart(iso) {
 }
 
 function dashboardHistoryHTML(photos) {
-  const head = (stats) => `<div class="dash-card__head"><div><span class="card__kicker">Histórico de capturas</span><h2>ADR medio por foto</h2></div>${stats}</div>`;
-  if (photos.length < 2) return `<article class="dash-card dash-card--history">${head('')}<div class="empty">Se necesitan dos fotos para representar la evolución del ADR.</div></article>`;
+  const head = (stats) => `<div class="dash-card__head"><div><span class="card__kicker">Histórico de fotos</span><h2>ADR medio por foto</h2></div>${stats}</div>`;
+  if (photos.length < 2) return `<article class="dash-card dash-card--history">${head('')}<div class="empty">Se necesitan dos fotos para representar la evolución del ADR.<br><button type="button" class="btn btn--sm" data-nav="captures">Ir a Capturas</button></div></article>`;
   const weeks = new Map();
   photos.forEach((p) => {
     const start = dashboardWeekStart(p.scrapedAt);
@@ -1191,7 +1208,7 @@ function dashboardHistoryHTML(photos) {
   </article>`;
 }
 
-/* Curva de entrada: ADR medio de las observaciones agrupadas por días hasta la estancia. */
+/* Curva de extracción: ADR medio de las observaciones agrupadas por días hasta la estancia. */
 function dashboardCurveHTML(points) {
   const rows = (points || []).filter((p) => Number.isFinite(Number(p.daysUntilCheckIn)) && Number(p.avgAdr) > 0);
   const windows = [
@@ -1200,8 +1217,8 @@ function dashboardCurveHTML(points) {
     const values = rows.filter((p) => test(Number(p.daysUntilCheckIn))).map((p) => Number(p.avgAdr));
     return values.length ? { label, value: values.reduce((s, v) => s + v, 0) / values.length, points: values.length } : null;
   }).filter(Boolean);
-  const head = '<div><span class="card__kicker">Curva de entrada</span><h2>ADR según días hasta la estancia</h2></div>';
-  if (!windows.length) return `<article class="dash-card dash-card--curve">${head}<div class="empty">No hay observaciones suficientes por horizonte de entrada.</div><span class="dash-curve__note">Observaciones agregadas por horizonte; no es una previsión.</span></article>`;
+  const head = '<div><span class="card__kicker">Curva de extracción</span><h2>ADR según días hasta la estancia</h2></div>';
+  if (!windows.length) return `<article class="dash-card dash-card--curve">${head}<div class="empty">No hay observaciones suficientes por horizonte de extracción.<br><button type="button" class="btn btn--sm" data-nav="captures">Ir a Capturas</button></div><span class="dash-curve__note">Observaciones agregadas por horizonte; no es una previsión.</span></article>`;
   const values = windows.map((w) => w.value);
   const min = Math.min(...values), max = Math.max(...values);
   const lo = min * 0.9, hi = max * 1.02;
@@ -1223,7 +1240,7 @@ async function renderDashboard() {
   if (!Number.isInteger(State.targetId)) { renderNoActiveTarget(host, 'Lectura de mercado', 'Panel principal'); return; }
   let d, s, history, demand;
   try { [d, s, history, demand] = await Promise.all([getMetrics(targetId), getSnapshot(targetId), getPhotoHistory(targetId), getDemandCurve(targetId).catch(() => ({ demandCurve: [] }))]); }
-  catch (e) { if (host._dashboardRequest === request && State.targetId === targetId) host.innerHTML = `<div class="page">${pageHead('Lectura de mercado', 'Panel principal', '')}<div class="inline-error">No se pudieron cargar las métricas: ${esc(e.message)}</div></div>`; return; }
+  catch (e) { if (host._dashboardRequest === request && State.targetId === targetId) host.innerHTML = `<div class="page">${pageHead('Lectura de mercado', 'Panel principal', '')}${inlineErrorHTML('No se pudieron cargar las métricas', e)}</div>`; return; }
   if (host._dashboardRequest !== request || State.targetId !== targetId || State.view !== 'dashboard') return;
   if (d.currencyPolicy?.status === 'blocked') { host.innerHTML = `<div class="page"><div class="inline-error">${esc(d.currencyPolicy.reason)}</div></div>`; return; }
 
@@ -1244,7 +1261,7 @@ async function renderDashboard() {
 
   host.innerHTML = `<div class="page dash">
     <div class="page-head"><div><h1>Lectura de mercado</h1><p>${esc(t ? t.name : 'Mercado')} · ${nEs(rows.length)} hoteles observados${snapshot.id ? ` · foto #${snapshot.id}` : ''}</p></div>
-      <div class="page-head__meta"><span>Extracción ${esc(fmtStamp(at))}</span>${fresh ? '' : '<button type="button" class="btn page-head__btn" data-dash-refresh>Actualizar datos</button>'}</div></div>
+      <div class="page-head__meta"><span>Foto ${esc(fmtStamp(at))}</span>${fresh ? '' : '<button type="button" class="btn page-head__btn" data-dash-refresh>Actualizar datos</button>'}</div></div>
     ${dashboardSignalsHTML(State.dashboard.signals)}
     <div class="dash-grid">
       ${dashboardAdrCardHTML(model.median, photos)}
@@ -1307,7 +1324,7 @@ async function renderDashboardHotelMap(model) {
 /* ---- ventana del mapa (inspector de tarifa) */
 function dashboardHotel(key) { return State.dashboard.model?.hotels.find((h) => h.key === key) || null; }
 
-/* Serie «por extracción»: mediana del hotel en cada foto del mercado, alineada con las fotos. */
+/* Serie «por foto»: mediana del hotel en cada foto del mercado, alineada con las fotos. */
 function dashboardHistSeries(history, photos) {
   const bySnapshot = new Map();
   (history || []).forEach((entry) => {
@@ -1322,8 +1339,8 @@ function dashboardHistSeries(history, photos) {
   }));
 }
 
-/* Serie «por fecha de entrada»: última extracción frente a la anterior. Una extracción reúne
-   las fotos tomadas con menos de 20 minutos de separación (un barrido de varias fechas). */
+/* Serie «por extracción»: última foto frente a la anterior, comparando la misma fecha de entrada (extracción).
+   Una captura puede reunir varias fotos tomadas con menos de 20 minutos de separación. */
 function dashboardDateSeries(history) {
   const valid = (history || []).filter((e) => e.snapshotId != null && e.checkIn && Number(e.pricePerNight) > 0 && Number.isFinite(Date.parse(e.scrapedAt)))
     .slice().sort((a, b) => Date.parse(a.scrapedAt) - Date.parse(b.scrapedAt));
@@ -1355,25 +1372,25 @@ function dashboardDateSeries(history) {
 function dashboardPopoverChartHTML(h) {
   const st = State.dashboard;
   const history = State.hotelPriceHistories[State.targetId]?.[h.key];
-  if (!history) return '<div class="dash-pop__loading"><i></i>Cargando evolución por extracción…</div>';
+  if (!history) return '<div class="dash-pop__loading"><i></i>Cargando evolución por foto…</div>';
   let s1, s2 = null, labels, leg1, leg2 = '', dashed = st.chart === 'hist', readout;
   if (st.chart === 'hist') {
     const series = dashboardHistSeries(history, st.photos);
     s1 = series.map((p) => p.value);
     if (st.cmp) s2 = series.map((p) => p.set);
     labels = series.map((p) => p.label);
-    leg1 = 'ADR del hotel por extracción'; leg2 = 'Media del set';
+    leg1 = 'ADR del hotel por foto'; leg2 = 'Media del set';
     const i = st.ptHover;
     readout = i != null && s1[i] != null ? `Foto ${labels[i]} · ${series[i].date} · ${eur(s1[i])}${st.cmp ? ` · set ${eur(series[i].set)}` : ''}` : null;
   } else {
     const series = dashboardDateSeries(history);
-    if (!series) return '<div class="dash-pop__empty">Sin fechas de entrada observadas para este hotel.</div>';
+    if (!series) return '<div class="dash-pop__empty">Sin extracciones observadas para este hotel.</div>';
     s1 = series.points.map((p) => p.value);
     s2 = series.previousLabel ? series.points.map((p) => p.prev) : null;
     labels = series.points.map((p) => p.label);
     leg1 = `Última captura · ${series.currentLabel}`; leg2 = series.previousLabel ? `Captura anterior · ${series.previousLabel}` : '';
     const i = st.ptHover;
-    readout = i != null && s1[i] != null ? `Entrada ${labels[i]} · ${eur(s1[i])}${s2 && s2[i] != null ? ` · antes ${eur(s2[i])}` : ''}` : null;
+    readout = i != null && s1[i] != null ? `Extracción ${labels[i]} · ${eur(s1[i])}${s2 && s2[i] != null ? ` · antes ${eur(s2[i])}` : ''}` : null;
   }
   const vals = [...s1, ...(s2 || [])].filter((v) => v != null);
   if (!vals.length) return '<div class="dash-pop__empty">Este hotel no tiene tarifas en las fotos disponibles.</div>';
@@ -1390,7 +1407,7 @@ function dashboardPopoverChartHTML(h) {
     .map(({ t, i }) => `<text x="${X(i).toFixed(1)}" y="160" text-anchor="middle">${esc(t)}</text>`).join('');
   const pts = s1.map((v, i) => (v == null ? '' : `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${st.ptHover === i ? 5.5 : 3.5}" class="dash-pop__pt${st.ptHover === i ? ' is-on' : ''}" data-dash-pt="${i}"></circle>`)).join('');
   const c2 = dashed ? 'var(--faint)' : 'var(--warn-ink)';
-  const fallback = h.isNew ? 'Nuevo en el set: solo aparece en la última extracción' : 'Pasa el cursor por los puntos';
+  const fallback = h.isNew ? 'Nuevo en el set: solo aparece en la última foto' : 'Pasa el cursor por los puntos';
   return `<div class="dash-pop__readout" aria-live="polite">${esc(readout || fallback)}</div>
     <svg viewBox="0 0 400 170" role="img" aria-label="${esc(leg1)}"><line x1="34" x2="396" y1="12" y2="12" stroke="var(--line)"></line><line x1="34" x2="396" y1="76" y2="76" stroke="var(--line)"></line><line x1="34" x2="396" y1="140" y2="140" stroke="var(--line)"></line>
       <g class="dash-svg-text dash-svg-text--sm"><text x="28" y="15" text-anchor="end">${eur(hi)}</text><text x="28" y="143" text-anchor="end">${eur(lo)}</text>${xl}</g>
@@ -1425,14 +1442,14 @@ function dashboardPopoverHTML(h) {
     : h.delta == null ? ['Sin comparativa con la foto anterior', 'dim']
     : h.delta === 0 ? [`Sin cambio vs foto #${prevId}`, 'dim']
     : [`${h.delta > 0 ? '▲' : '▼'} ${nEs(Math.abs(h.delta), 1)} % vs foto #${prevId} (${eur(h.prevAdr)})`, h.delta > 0 ? 'pos' : 'neg'];
-  const modes = [['hist', 'Por extracción'], ['dates', 'Por fecha de entrada']].map(([id, label]) => `<button type="button" class="${st.chart === id ? 'is-active' : ''}" data-dash-chart="${id}" aria-pressed="${st.chart === id}">${label}</button>`).join('');
+  const modes = [['hist', 'Por foto'], ['dates', 'Por extracción']].map(([id, label]) => `<button type="button" class="${st.chart === id ? 'is-active' : ''}" data-dash-chart="${id}" aria-pressed="${st.chart === id}">${label}</button>`).join('');
   return `<div class="dash-pop__head"><div class="dash-pop__title"><span class="dash-pop__kicker">Inspector de tarifa · puesto ${h.rank} de ${priced}</span><h3 id="dashPopTitle">${esc(h.name)}</h3>${sub ? `<span class="dash-pop__sub">${esc(sub)}</span>` : ''}</div><button type="button" class="icon-x" data-dash-close aria-label="Cerrar inspector">×</button></div>
     <div class="dash-pop__body">
       <div class="dash-pop__chart"><div class="dash-pop__modes"><div class="seg seg--sm" role="group" aria-label="Modo de la gráfica">${modes}</div>${st.chart === 'hist' ? `<button type="button" class="dash-pop__cmp" data-dash-cmp aria-pressed="${st.cmp}"><i aria-hidden="true"></i>Media del set</button>` : ''}</div><div id="dashPopChart">${dashboardPopoverChartHTML(h)}</div></div>
       <div class="dash-pop__side"><div class="dash-pop__adr"><span class="dash-pop__kicker">ADR hab/noche</span><div class="dash-pop__adrrow"><strong>${eur(h.adr)}</strong>${h.vsMedian == null ? '' : `<span class="dash-pop__vs${h.vsMedian >= 0 ? ' is-up' : ''}">${pctTxt(h.vsMedian, 0)} vs mediana</span>`}</div><span class="dash-pop__delta ${delta[1]}">${esc(delta[0])}</span></div>
         <dl class="dash-pop__facts" id="dashPopFacts">${dashboardPopoverFacts(h).map(([k, v, tone]) => `<div><dt>${esc(k)}</dt><dd class="${tone}" title="${esc(v)}">${esc(v)}</dd></div>`).join('')}</dl></div>
     </div>
-    <div class="dash-pop__foot"><button type="button" class="btn btn--primary" data-dash-hotel="${esc(h.name)}">Ver en la hoja de mercado</button><button type="button" class="btn" data-dash-ask="${esc(`¿Cómo ha evolucionado el precio de ${h.name}?`)}">Preguntar al Copilot</button></div>`;
+    <div class="dash-pop__foot"><button type="button" class="btn btn--primary" data-dash-hotel="${esc(h.name)}">Ver en la hoja de mercado</button><button type="button" class="btn" data-dash-ask="${esc(`¿Cómo ha evolucionado el precio de ${h.name}?`)}">Preguntar al Copilot →</button></div>`;
 }
 
 function paintDashboardPopover(part) {
@@ -1759,7 +1776,7 @@ function hotelRoomsPanelHTML(h, cached) {
         <span><b>Estancia</b> ${esc(stay)}</span>
         <span><b>Cancelación gratuita</b> ${freeCount} de ${rows.length} ${rows.length === 1 ? 'tarifa' : 'tarifas'}</span>
         ${genius ? '<span class="chip hdetail__genius">Participa en Genius</span>' : ''}
-        <button type="button" class="btn btn--xs" data-sheet-ask="${esc(h.key)}">Preguntar al Copilot</button>
+        <button type="button" class="btn btn--xs" data-sheet-ask="${esc(h.key)}">Preguntar al Copilot →</button>
       </div>
     </div>
     <div class="hrooms__wrap"><table class="hrooms"><caption class="sr-only">Tarifas de ${esc(h.name)} por habitación, régimen y condiciones</caption><colgroup><col class="hrooms__c1"><col class="hrooms__c2"><col class="hrooms__c3"><col class="hrooms__c4"><col class="hrooms__c5"><col class="hrooms__c6"><col class="hrooms__c7"></colgroup><thead><tr><th scope="col">Régimen</th><th scope="col" title="Capacidad máxima informada de la habitación, no la ocupación de la búsqueda">Ocupación máx.</th><th scope="col">Cancelación · pago</th><th scope="col">Cupo</th><th scope="col">Programa / descuento</th><th scope="col" class="r">Total estancia</th><th scope="col" class="r">Por noche</th></tr></thead>${body}</table></div>
@@ -1832,7 +1849,7 @@ function hotelAsideHTML(h) {
     <div class="haside__strip"><span class="kpi__label">Lugar en el set</span><div class="haside__track"><i class="haside__line"></i>${strip}${span ? `<i class="haside__med" style="left:${pos(model.median)}%"></i>` : ''}</div><div class="haside__scale"><span>${eur(model.minAdr)}</span><span>mediana ${eur(model.median)}</span><span>${eur(model.maxAdr)}</span></div></div>
     <dl class="haside__facts">${facts.map(([k, v, tone]) => `<div><dt>${esc(k)}</dt><dd class="${tone}">${esc(v)}</dd></div>`).join('')}</dl>
     <div class="haside__rooms"><div class="haside__roomshead"><span class="kpi__label">Tipos de habitación</span><button type="button" class="link-button haside__link" data-sheet-rooms="${esc(h.key)}">Ver tarifas</button></div>${roomsBody}</div>
-    <div class="haside__actions"><button type="button" class="btn btn--primary haside__ask" data-sheet-ask="${esc(h.key)}">Preguntar al Copilot</button><button type="button" class="btn haside__pin" data-sheet-pin="${esc(h.key)}" aria-pressed="${State.hotelPinnedKey === h.key}">Fijar para comparar</button></div>`;
+    <div class="haside__actions"><button type="button" class="btn btn--primary haside__ask" data-sheet-ask="${esc(h.key)}">Preguntar al Copilot →</button><button type="button" class="btn haside__pin" data-sheet-pin="${esc(h.key)}" aria-pressed="${State.hotelPinnedKey === h.key}">Fijar para comparar</button></div>`;
 }
 
 function paintHotelAside() {
@@ -1943,7 +1960,7 @@ async function renderHotels() {
   skeleton(host, 'list');
   let s, m, stabilityPayload;
   try { [s, m, stabilityPayload] = await Promise.all([getSnapshot(targetId), getMetrics(targetId), getHotelStability(targetId)]); }
-  catch (e) { host.innerHTML = `<div class="page">${pageHead('Hoteles', 'Mercado activo', '')}<div class="inline-error">No se pudieron cargar los hoteles: ${esc(e.message)}</div></div>`; return; }
+  catch (e) { host.innerHTML = `<div class="page">${pageHead('Hoteles', 'Mercado activo', '')}${inlineErrorHTML('No se pudieron cargar los hoteles', e)}</div>`; return; }
   if (targetId !== State.targetId || State.view !== 'hotels') return;
   if (m.currencyPolicy?.status === 'blocked') { host.innerHTML = `<div class="page"><div class="inline-error">${esc(m.currencyPolicy.reason)}</div></div>`; return; }
 
@@ -2217,7 +2234,7 @@ function biFiltersHTML(m) {
   const boards = (data.facets?.boards || []).map((b) => `<option value="${esc(b)}"${st.board === b ? ' selected' : ''}>${esc(b)}</option>`).join('');
   const fams = (data.facets?.roomFamilies || []).map((f) => `<option value="${esc(f)}"${st.fam === f ? ' selected' : ''}>${esc(f)}</option>`).join('');
   return `<label class="bi-field bi-field--own"><span>Hotel propio</span><select id="biOwn" class="bi-select${st.own ? ' is-set' : ''}" aria-label="Hotel propio"><option value=""${st.own ? '' : ' selected'}>Ninguno · vista de mercado</option>${options}</select></label>
-    <div class="bi-field"><span>Fechas de entrada</span><div class="seg seg--sm bi-horizons" role="group" aria-label="Horizonte de fechas de entrada">${horizons}</div></div>
+    <div class="bi-field"><span>Fechas de extracción</span><div class="seg seg--sm bi-horizons" role="group" aria-label="Horizonte de fechas de extracción">${horizons}</div></div>
     <label class="bi-field"><span>Régimen</span><select id="biBoard" class="bi-select" aria-label="Régimen"><option value="all"${st.board === 'all' ? ' selected' : ''}>Todos los regímenes</option>${boards}</select></label>
     <label class="bi-field"><span>Tipo de habitación</span><select id="biFam" class="bi-select" aria-label="Tipo de habitación"><option value="all"${st.fam === 'all' ? ' selected' : ''}>Todas las habitaciones</option>${fams}</select></label>
     <span class="bi-filters__spacer"></span>
@@ -2230,7 +2247,7 @@ function biChipsHTML(m) {
   if (st.zone) chips.push(['zone', `Zona: ${st.zone}`]);
   if (st.seg) chips.push(['seg', st.seg]);
   if (st.chain) chips.push(['chain', `Cadena: ${st.chain}`]);
-  if (m.fi !== m.defaultFi) chips.push(['focus', `Entrada ${biDayLabel(m.dates[m.fi])}`]);
+  if (m.fi !== m.defaultFi) chips.push(['focus', `Extracción ${biDayLabel(m.dates[m.fi])}`]);
   return `${chips.map(([kind, label]) => `<button type="button" class="bi-chip" data-bi-clear="${kind}" aria-label="Quitar filtro ${esc(label)}">${esc(label)}<span aria-hidden="true">×</span></button>`).join('')}${chips.length ? '<button type="button" class="bi-clear" data-bi-clear="all">Limpiar</button>' : ''}<span class="bi-scope">${m.hs.length} de ${m.all.length} hoteles</span>`;
 }
 
@@ -2247,21 +2264,21 @@ function biKpisHTML(m) {
     const status = m.own.status[m.fi];
     const vs = m.vscore(m.own, m.ownP);
     cells = [
-      { label: `Tu tarifa · ${day}`, value: m.ownP != null ? nEs(m.ownP) : status === 'closed' ? 'Cerrado' : '—', unit: m.ownP != null ? '€' : '', foot: rank ? `puesto ${rank.rank} de ${rank.of}` : noCapture ? 'sin captura ese día' : 'sin disponibilidad', tone: 'ac' },
+      { label: `Tu tarifa · ${day}`, value: m.ownP != null ? nEs(m.ownP) : status === 'closed' ? 'Cerrado' : '—', unit: m.ownP != null ? '€' : '', foot: rank ? `puesto ${rank.rank} de ${rank.of}` : noCapture ? 'sin foto ese día' : 'sin disponibilidad', tone: 'ac' },
       { label: 'Índice de precio', value: m.ownP != null && m.fMed ? nEs((m.ownP / m.fMed) * 100) : '—', foot: 'mediana del set = 100' },
-      { label: 'Mediana del set', value: m.fMed ? nEs(m.fMed) : '—', unit: m.fMed ? '€' : '', foot: noCapture ? 'sin captura ese día' : `${m.open.length} hoteles con tarifa` },
+      { label: 'Mediana del set', value: m.fMed ? nEs(m.fMed) : '—', unit: m.fMed ? '€' : '', foot: noCapture ? 'sin foto ese día' : `${m.open.length} hoteles con tarifa` },
       { label: 'Value score', value: vs ?? '—', unit: vs == null ? '' : '/100', foot: m.own.nota != null && m.mNota != null ? `nota ${nEs(m.own.nota, 1)} vs mediana ${nEs(m.mNota, 1)}` : 'sin nota publicada' },
-      { label: 'Competidores cerrados', value: noCapture ? '—' : nEs(m.closedToday), foot: noCapture ? 'sin captura ese día' : `${m.lowToday} con cupo bajo ese día` },
+      { label: 'Competidores cerrados', value: noCapture ? '—' : nEs(m.closedToday), foot: noCapture ? 'sin foto ese día' : `${m.lowToday} con cupo bajo ese día` },
       movement,
     ];
   } else {
     const meds = m.dayMeds.filter((v) => v != null);
     cells = [
-      { label: `Mediana · ${day}`, value: m.fMed ? nEs(m.fMed) : '—', unit: m.fMed ? '€' : '', foot: m.fMed ? `P25 ${eur(m.dayQ1[m.fi])} · P75 ${eur(m.dayQ3[m.fi])}` : 'sin captura ese día' },
+      { label: `Mediana · ${day}`, value: m.fMed ? nEs(m.fMed) : '—', unit: m.fMed ? '€' : '', foot: m.fMed ? `P25 ${eur(m.dayQ1[m.fi])} · P75 ${eur(m.dayQ3[m.fi])}` : 'sin foto ese día' },
       { label: 'Dispersión', value: m.dayQ1[m.fi] > 0 ? nEs((m.dayQ3[m.fi] / m.dayQ1[m.fi] - 1) * 100) : '—', unit: m.dayQ1[m.fi] > 0 ? '%' : '', foot: 'P75 sobre P25' },
-      { label: 'Hoteles en el alcance', value: nEs(m.hs.length), foot: noCapture ? 'sin captura ese día' : `${m.open.length} con tarifa ese día` },
-      { label: 'Cerrados ese día', value: noCapture ? '—' : nEs(m.closedToday), foot: noCapture ? 'sin captura ese día' : `${m.lowToday} con cupo bajo` },
-      { label: `Mediana ${m.H} días`, value: meds.length ? nEs(biQuantile(meds, 0.5)) : '—', unit: meds.length ? '€' : '', foot: meds.length ? `rango ${eur(Math.min(...meds))}–${eur(Math.max(...meds))}` : 'sin capturas en el horizonte' },
+      { label: 'Hoteles en el alcance', value: nEs(m.hs.length), foot: noCapture ? 'sin foto ese día' : `${m.open.length} con tarifa ese día` },
+      { label: 'Cerrados ese día', value: noCapture ? '—' : nEs(m.closedToday), foot: noCapture ? 'sin foto ese día' : `${m.lowToday} con cupo bajo` },
+      { label: `Mediana ${m.H} días`, value: meds.length ? nEs(biQuantile(meds, 0.5)) : '—', unit: meds.length ? '€' : '', foot: meds.length ? `rango ${eur(Math.min(...meds))}–${eur(Math.max(...meds))}` : 'sin fotos en el horizonte' },
       movement,
     ];
   }
@@ -2290,8 +2307,8 @@ function biRecoHTML(m) {
     openPrices: m.open.map((x) => x.p), dayMedian: m.fMed, targetPct: st.target, valueScore: m.vscore(own, m.ownP),
     closed: m.closedToday, low: m.lowToday, scopeSize: m.hs.length, deltas: m.hs.map((h) => h.delta), leadDays: biDaysBetween(localIsoDate(), m.dates[m.fi]),
   });
-  const head = `<div class="bi-reco__kicker"><span class="card__kicker">Tarifa sugerida · entrada ${esc(biFocusLabel(m))}</span>${reco ? `<span class="chip chip--warn" title="${esc(`${m.open.length} hoteles con tarifa · datos de hace ${age ?? '—'} días`)}">Confianza ${m.open.length < 6 ? 'baja' : (age > 14 || m.open.length < 15) ? 'media-baja' : 'media'}</span>` : ''}</div><div class="bi-reco__name">${esc(own.name)}</div>`;
-  if (!reco) return `<div class="bi-card bi-reco"><div class="bi-reco__top">${head}</div><div class="bi-reco__empty">${capture ? 'Ningún hotel del alcance tiene tarifa en esta fecha.' : 'Sin captura para esta fecha de entrada. Elige una fecha capturada en el calendario.'}</div></div>`;
+  const head = `<div class="bi-reco__kicker"><span class="card__kicker">Tarifa sugerida · extracción ${esc(biFocusLabel(m))}</span>${reco ? `<span class="chip chip--warn" title="${esc(`${m.open.length} hoteles con tarifa · datos de hace ${age ?? '—'} días`)}">Confianza ${m.open.length < 6 ? 'baja' : (age > 14 || m.open.length < 15) ? 'media-baja' : 'media'}</span>` : ''}</div><div class="bi-reco__name">${esc(own.name)}</div>`;
+  if (!reco) return `<div class="bi-card bi-reco"><div class="bi-reco__top">${head}</div><div class="bi-reco__empty">${capture ? 'Ningún hotel del alcance tiene tarifa en esta fecha.' : 'Sin foto para esta extracción. Elige una fecha capturada en el calendario.'}</div></div>`;
   const cur = m.ownP;
   const diff = cur ? (reco.suggested / cur - 1) * 100 : null;
   const label = {
@@ -2300,7 +2317,7 @@ function biRecoHTML(m) {
     value: (p) => [`Value score ${p.score}`, p.score >= 50 ? 'tu nota permite cobrar más' : 'nota por debajo del set'],
     scarcity: (p) => ['Escasez de la competencia', `${p.closed} cerrados · ${p.low} con cupo bajo`],
     movement: (p) => ['Movimiento reciente del set', `media ${biSigned(p.movement)} % entre fotos`],
-    lead: (p) => [`Antelación ${p.lead} días`, p.lead < 21 ? 'entrada cercana: margen al alza' : p.lead > 60 ? 'entrada lejana: prudencia' : 'ventana central'],
+    lead: (p) => [`Antelación ${p.lead} días`, p.lead < 21 ? 'extracción cercana: margen al alza' : p.lead > 60 ? 'extracción lejana: prudencia' : 'ventana central'],
   };
   const maxAbs = Math.max(...reco.parts.filter((p) => !p.base).map((p) => Math.abs(p.value)), 1);
   const rows = reco.parts.map((p) => {
@@ -2315,7 +2332,7 @@ function biRecoHTML(m) {
   return `<div class="bi-card bi-reco">
     <div class="bi-reco__top">${head}
       <div class="bi-reco__values"><div><span class="bi-reco__lab">Sugerida</span><strong class="bi-reco__sug">${nEs(reco.suggested)}<span> €</span></strong></div>
-      <div class="bi-reco__cur"><span class="bi-reco__lab">Actual ${cur != null ? eur(cur) : `— (${m.own.status[m.fi] === 'closed' ? 'cerrado' : 'sin captura'})`}</span>${diff == null ? '' : `<span class="bi-reco__diff ${diff >= 0 ? 'pos' : 'neg'}">${biSigned(diff)} %</span>`}</div></div>
+      <div class="bi-reco__cur"><span class="bi-reco__lab">Actual ${cur != null ? eur(cur) : `— (${m.own.status[m.fi] === 'closed' ? 'cerrado' : 'sin foto'})`}</span>${diff == null ? '' : `<span class="bi-reco__diff ${diff >= 0 ? 'pos' : 'neg'}">${biSigned(diff)} %</span>`}</div></div>
     </div>
     <div class="bi-reco__parts">${rows}</div>
     <div class="bi-reco__foot">
@@ -2333,7 +2350,7 @@ function biDayHTML(m) {
   const options = [...st.data.hotels].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es')).map((h) => `<option value="${esc(h.key)}">${esc(h.name)}</option>`).join('');
   const invite = `<div class="bi-card bi-invite"><strong>Tarifa sugerida</strong><span>Elige tu hotel arriba y verás la tarifa recomendada para cada fecha, desglosada en mediana, posición objetivo, valor, escasez, movimiento y antelación.</span><select id="biOwnInvite" class="bi-select is-invite" aria-label="Elegir hotel propio"><option value="">Elegir hotel propio…</option>${options}</select></div>`;
   if (!sorted.length) {
-    return `<div class="bi-card bi-day"><span class="card__kicker">Mercado · entrada ${esc(biFocusLabel(m))}</span><div class="bi-day__big"><strong>—</strong><span>€ mediana</span></div><p class="bi-day__empty">${m.coverage[m.fi] ? 'Ningún hotel del alcance tiene tarifa en esta fecha.' : 'Sin captura para esta fecha de entrada.'}</p></div>${invite}`;
+    return `<div class="bi-card bi-day"><span class="card__kicker">Mercado · extracción ${esc(biFocusLabel(m))}</span><div class="bi-day__big"><strong>—</strong><span>€ mediana</span></div><p class="bi-day__empty">${m.coverage[m.fi] ? 'Ningún hotel del alcance tiene tarifa en esta fecha.' : 'Sin foto para esta extracción.'}</p></div>${invite}`;
   }
   const min = sorted[0].p, max = sorted.at(-1).p;
   const X = (v) => (max > min ? ((v - min) / (max - min)) * 100 : 50);
@@ -2344,7 +2361,7 @@ function biDayHTML(m) {
     ['Más caro', `${short(sorted.at(-1).h.name)} · ${eur(sorted.at(-1).p)}`, sorted.at(-1).h.key],
     ['Mejor value score', best ? `${short(best.h.name)} · ${best.vs}` : '—', best ? best.h.key : null],
   ].map(([k, v, key]) => key ? `<button type="button" class="bi-fact" data-bi-open="${esc(key)}"><span>${esc(k)}</span><b>${esc(v)}</b></button>` : `<div class="bi-fact"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
-  return `<div class="bi-card bi-day"><span class="card__kicker">Mercado · entrada ${esc(biFocusLabel(m))}</span>
+  return `<div class="bi-card bi-day"><span class="card__kicker">Mercado · extracción ${esc(biFocusLabel(m))}</span>
     <div class="bi-day__big"><strong>${nEs(m.fMed)}</strong><span>€ mediana</span></div>
     <div class="bi-box" aria-hidden="true"><i class="bi-box__line"></i><i class="bi-box__iqr" style="left:${X(m.dayQ1[m.fi]).toFixed(1)}%;width:${(X(m.dayQ3[m.fi]) - X(m.dayQ1[m.fi])).toFixed(1)}%"></i><i class="bi-box__med" style="left:${X(m.fMed).toFixed(1)}%"></i></div>
     <div class="bi-box__scale"><span>${eur(min)}</span><span>P25 ${eur(m.dayQ1[m.fi])} · P75 ${eur(m.dayQ3[m.fi])}</span><span>${eur(max)}</span></div>
@@ -2361,7 +2378,7 @@ function biCalendarHTML(m) {
   const meds = m.dayMeds.filter((v) => v != null);
   const mMax = meds.length ? Math.max(...meds) : 1, mMin = meds.length ? Math.min(...meds) : 0;
   const medRow = m.dayMeds.map((v, i) => (v == null ? `<span class="bi-cal__med" data-d="${i}"></span>`
-    : `<span class="bi-cal__med" data-d="${i}" role="button" tabindex="0" aria-label="${esc(`Entrada ${biDayLong(m.dates[i])} · mediana ${eur(v)}`)}" aria-pressed="${i === m.fi}"><i style="height:${(30 + ((v - mMin) / Math.max(1, mMax - mMin)) * 70).toFixed(0)}%"></i></span>`)).join('');
+    : `<span class="bi-cal__med" data-d="${i}" role="button" tabindex="0" aria-label="${esc(`Extracción ${biDayLong(m.dates[i])} · mediana ${eur(v)}`)}" aria-pressed="${i === m.fi}"><i style="height:${(30 + ((v - mMin) / Math.max(1, mMax - mMin)) * 70).toFixed(0)}%"></i></span>`)).join('');
   let rankRow = '';
   if (m.own) {
     rankRow = `<div class="bi-cal__row bi-cal__rank" style="grid-template-columns:${cols}"><span class="bi-cal__label is-own">Rank del hotel propio</span>${m.dates.map((_, i) => {
@@ -2386,9 +2403,9 @@ function biCalendarHTML(m) {
     return `<div class="bi-cal__row${isOwn ? ' is-own' : ''}" style="grid-template-columns:${cols}"><button type="button" class="bi-cal__name" data-bi-open="${esc(h.key)}"><span class="bi-cal__pos">${ri + 1}</span><span>${esc(h.name)}</span></button>${cells}</div>`;
   }).join('');
   const captured = m.captured.length;
-  return `<div class="bi-card__head bi-cal__head"><div class="bi-card__title"><span class="card__kicker">Rate calendar · entradas ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><h2>Tarifa por hotel y fecha de entrada</h2></div>
+  return `<div class="bi-card__head bi-cal__head"><div class="bi-card__title"><span class="card__kicker">Rate calendar · extracciones ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><h2>Tarifa por hotel y extracción</h2></div>
       <div class="bi-cal__aside"><span class="bi-cal__readout" id="biCalReadout" aria-live="polite">Pasa el cursor por el calendario</span>
-      <div class="bi-legend"><span class="bi-legend__scale" aria-hidden="true"><i style="background:rgba(31,122,82,.55)"></i><i style="background:rgba(31,122,82,.22)"></i><i style="background:var(--line-soft)"></i><i style="background:rgba(185,79,80,.22)"></i><i style="background:rgba(185,79,80,.55)"></i></span><span>vs mediana del día</span><i class="bi-legend__closed" aria-hidden="true"></i><span>cerrado</span><i class="bi-legend__low" aria-hidden="true"></i><span>cupo bajo</span><i class="bi-legend__empty" aria-hidden="true"></i><span>sin captura</span></div></div></div>
+      <div class="bi-legend"><span class="bi-legend__scale" aria-hidden="true"><i style="background:rgba(31,122,82,.55)"></i><i style="background:rgba(31,122,82,.22)"></i><i style="background:var(--line-soft)"></i><i style="background:rgba(185,79,80,.22)"></i><i style="background:rgba(185,79,80,.55)"></i></span><span>vs mediana del día</span><i class="bi-legend__closed" aria-hidden="true"></i><span>cerrado</span><i class="bi-legend__low" aria-hidden="true"></i><span>cupo bajo</span><i class="bi-legend__empty" aria-hidden="true"></i><span>sin foto</span></div></div></div>
     <div class="bi-cal__body">
       <div class="bi-cal__grid" id="biCalGrid">
         <div class="bi-cal__row bi-cal__days" style="grid-template-columns:${cols}"><span></span>${head}</div>
@@ -2397,7 +2414,7 @@ function biCalendarHTML(m) {
         <div class="bi-cal__rows">${body || '<div class="bi-cal__nohotels">Ningún hotel tiene tarifas con estos filtros. Prueba otro régimen o tipo de habitación.</div>'}</div>
         <div class="bi-cal__focus" style="left:calc(270px + 1px + (100% - 271px) * ${(m.fi / H).toFixed(5)});width:calc((100% - 271px) / ${H})" aria-hidden="true"></div>
       </div>
-      <div class="bi-cal__foot"><span>Pulsa una fecha para recalcular mapa, KPIs, distribución y tarifa sugerida. Pulsa un hotel para abrir su ficha.</span><span class="mono">entrada ${biDayLabel(m.dates[m.fi])} seleccionada · ${m.open.length} con tarifa · ${m.closedToday} cerrados · ${captured} ${captured === 1 ? 'fecha capturada' : 'fechas capturadas'} de ${H}</span></div>
+      <div class="bi-cal__foot"><span>Pulsa una fecha para recalcular mapa, KPIs, distribución y tarifa sugerida. Pulsa un hotel para abrir su ficha.</span><span class="mono">extracción ${biDayLabel(m.dates[m.fi])} seleccionada · ${m.open.length} con tarifa · ${m.closedToday} cerrados · ${captured} ${captured === 1 ? 'fecha capturada' : 'fechas capturadas'} de ${H}</span></div>
     </div>`;
 }
 
@@ -2405,7 +2422,7 @@ function biCalendarReadout(m, key, d) {
   if (d == null || Number.isNaN(d)) return 'Pasa el cursor por el calendario';
   const iso = m.dates[d];
   if (!key) {
-    if (!m.coverage[d]) return `${biDayLong(iso)} · sin captura`;
+    if (!m.coverage[d]) return `${biDayLong(iso)} · sin foto`;
     return `${biDayLong(iso)} · mediana ${eur(m.dayMeds[d])} · P25–P75 ${eur(m.dayQ1[d])}–${eur(m.dayQ3[d])}`;
   }
   const h = m.all.find((x) => x.key === key);
@@ -2413,7 +2430,7 @@ function biCalendarReadout(m, key, d) {
   const p = h.prices[d], s = h.status[d];
   const short = String(h.name).split(' - ')[0];
   if (p != null) return `${short} · ${biDayLong(iso)} · ${eur(p)} · ${biSigned((p / m.dayMeds[d] - 1) * 100, 0)} % vs mediana (${eur(m.dayMeds[d])})${s === 'low' ? ' · cupo bajo' : ''}`;
-  const why = { closed: 'cerrado', unknown: 'no aparece en una captura parcial', nomatch: 'sin tarifa con estos filtros' }[s] || 'sin captura';
+  const why = { closed: 'cerrado', unknown: 'no aparece en una foto parcial', nomatch: 'sin tarifa con estos filtros' }[s] || 'sin foto';
   return `${short} · ${biDayLong(iso)} · ${why}`;
 }
 
@@ -2449,7 +2466,7 @@ function biIndexHTML(m) {
     const Y = (v) => 180 - ((v - lo) / (hi - lo)) * 170;
     const meds = m.dayMeds.filter((v) => v != null);
     kicker = `Índice de precio del mercado · ${H} días`; title = 'Mediana y banda central por fecha';
-    summary = meds.length ? `mín ${eur(Math.min(...meds))} · máx ${eur(Math.max(...meds))}` : 'sin capturas en el horizonte';
+    summary = meds.length ? `mín ${eur(Math.min(...meds))} · máx ${eur(Math.max(...meds))}` : 'sin fotos en el horizonte';
     const pts = m.dayMeds.map((v, i) => (v == null ? null : [X(i), Y(v)]));
     line = biPolyline(pts); dots = pts; band = biBand(m.dayQ3.map((v, i) => (v == null ? null : [X(i), Y(v)])), m.dayQ1.map((v, i) => (v == null ? null : [X(i), Y(v)])));
     yl = [eur(hi), eur((hi + lo) / 2), eur(lo)]; leg1 = 'Mediana del set'; leg2 = 'P25–P75';
@@ -2486,7 +2503,7 @@ function biEvolutionHTML(m) {
   const band = biBand(stats.map((s, k) => (s.q3 == null ? null : [X(k), Y(s.q3)])), stats.map((s, k) => (s.q1 == null ? null : [X(k), Y(s.q1)])));
   const first = valid[0].med, last = valid.at(-1).med;
   const points = [
-    ...stats.map((s, k) => (s.med == null ? '' : `<circle cx="${X(k).toFixed(1)}" cy="${Y(s.med).toFixed(1)}" r="3.5" fill="var(--card)" stroke="var(--mid)" stroke-width="2"><title>Foto #${s.e.snapshotId} · entrada ${biDayLabel(s.e.checkIn)} · mediana ${eur(s.med)}</title></circle>`)),
+    ...stats.map((s, k) => (s.med == null ? '' : `<circle cx="${X(k).toFixed(1)}" cy="${Y(s.med).toFixed(1)}" r="3.5" fill="var(--card)" stroke="var(--mid)" stroke-width="2"><title>Foto #${s.e.snapshotId} · extracción ${biDayLabel(s.e.checkIn)} · mediana ${eur(s.med)}</title></circle>`)),
     ...stats.map((s, k) => (s.own == null ? '' : `<circle cx="${X(k).toFixed(1)}" cy="${Y(s.own).toFixed(1)}" r="3.5" fill="var(--card)" stroke="var(--ac)" stroke-width="2"><title>Foto #${s.e.snapshotId} · ${eur(s.own)}</title></circle>`)),
   ].join('');
   const xl = caps.map((e, k) => `<text x="${X(k).toFixed(1)}" y="202" text-anchor="middle">#${e.snapshotId}</text>`).join('');
@@ -2515,7 +2532,7 @@ function biBoxesHTML(m) {
     const ownHere = m.own && m.ownP != null && biGroupKey(st.boxMode, m.own) === g;
     return { g, n: a.length, md, html: `<button type="button" class="bi-group${active === g ? ' is-active' : ''}" data-bi-group="${esc(g)}" aria-pressed="${active === g}"><span class="bi-group__name">${esc(g)} <small>${a.length}</small></span><span class="bi-group__plot"><i class="bi-group__whisker" style="left:${BX(mn).toFixed(1)}%;width:${(BX(mx) - BX(mn)).toFixed(1)}%"></i><i class="bi-group__iqr" style="left:${BX(q1).toFixed(1)}%;width:${Math.max(0.8, BX(q3) - BX(q1)).toFixed(1)}%"></i><i class="bi-group__med" style="left:${BX(md).toFixed(1)}%"></i>${ownHere ? `<i class="bi-group__own" style="left:${BX(m.ownP).toFixed(1)}%" title="Tu hotel · ${eur(m.ownP)}"></i>` : ''}</span><span class="bi-group__value">${eur(md)}</span></button>` };
   }).sort((a, b) => b.md - a.md).map((r) => r.html).join('');
-  return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Distribución · entrada ${esc(biFocusLabel(m))}</span><h2>Rango de precios por grupo</h2></div><div class="seg seg--sm" role="group" aria-label="Agrupar por">${modes}</div></div>
+  return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Distribución · extracción ${esc(biFocusLabel(m))}</span><h2>Rango de precios por grupo</h2></div><div class="seg seg--sm" role="group" aria-label="Agrupar por">${modes}</div></div>
     <div class="bi-groups">${rows || `<div class="empty">${m.open.length ? 'No hay grupos con dos o más hoteles.' : 'Sin tarifas en esta fecha.'}</div>`}</div>`;
 }
 
@@ -2556,7 +2573,7 @@ function biAlertsHTML(m) {
 function biAvailabilityHTML(m) {
   const weeks = biWeeks(m.dates, m.hs);
   const bars = weeks.map((w) => {
-    if (!w.total) return `<div class="bi-week is-empty" title="Semana del ${biDayLabel(w.start)} · sin captura"><span>—</span><div></div><div></div></div>`;
+    if (!w.total) return `<div class="bi-week is-empty" title="Semana del ${biDayLabel(w.start)} · sin foto"><span>—</span><div></div><div></div></div>`;
     const pc = w.closed / w.total, pl = w.low / w.total;
     return `<div class="bi-week" title="Semana del ${biDayLabel(w.start)} · ${nEs(pc * 100)} % cerrado · ${nEs(pl * 100)} % cupo bajo"><span>${nEs((pc + pl) * 100)} %</span><div class="bi-week__low" style="height:${Math.min(100, pl * 300).toFixed(1)}%"></div><div class="bi-week__closed" style="height:${Math.min(100, pc * 300).toFixed(1)}%"></div></div>`;
   }).join('');
@@ -2564,7 +2581,7 @@ function biAvailabilityHTML(m) {
   const closers = m.hs.map((h) => ({ h, c: h.status.filter((s) => s === 'closed').length, l: h.status.filter((s) => s === 'low').length }))
     .filter((x) => x.c + x.l > 0).sort((a, b) => (b.c * 2 + b.l) - (a.c * 2 + a.l)).slice(0, 6)
     .map((x) => { const s = x.h.status[m.fi]; const now = s === 'closed' ? 'cerrado' : s === 'low' ? 'cupo bajo' : s === 'ok' ? 'abierto' : 'sin dato'; return `<button type="button" class="bi-closer" data-bi-open="${esc(x.h.key)}"><span>${esc(x.h.name)}</span><span class="neg">${x.c} d</span><span class="warn">${x.l} d</span><span>${now}</span></button>`; }).join('');
-  return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Disponibilidad y cierres · entradas ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><h2>Presión de ocupación en el set</h2></div><div class="bi-legend"><span><i class="bi-sw is-closed"></i>cerrado</span><span><i class="bi-sw is-low"></i>cupo bajo</span></div></div>
+  return `<div class="bi-card__head"><div class="bi-card__title"><span class="card__kicker">Disponibilidad y cierres · extracciones ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><h2>Presión de ocupación en el set</h2></div><div class="bi-legend"><span><i class="bi-sw is-closed"></i>cerrado</span><span><i class="bi-sw is-low"></i>cupo bajo</span></div></div>
     <div class="bi-weeks">${bars}</div><div class="bi-weeks__labels">${labels}</div>
     <div class="bi-closers"><div class="bi-closer bi-closer--head"><span>Hotel</span><span>Cerrado</span><span>Cupo bajo</span><span>Hoy</span></div>${closers || '<div class="empty">Sin cierres ni cupo bajo en las fechas capturadas.</div>'}</div>`;
 }
@@ -2578,7 +2595,7 @@ function paintBi() {
   st.model = m;
   $('#biChips').innerHTML = biChipsHTML(m);
   $('#biKpis').innerHTML = biKpisHTML(m);
-  $('#biMapKicker').textContent = `Mapa de precios · entrada ${biFocusLabel(m)}`;
+  $('#biMapKicker').textContent = `Mapa de precios · extracción ${biFocusLabel(m)}`;
   $('#biZones').innerHTML = biZonesHTML(m);
   $('#biSide').innerHTML = m.own ? biRecoHTML(m) : biDayHTML(m);
   $('#biCal').innerHTML = biCalendarHTML(m);
@@ -2601,7 +2618,7 @@ async function renderHotelsBI(panel, sheetModel, metrics) {
   destroyBiMap();
   panel.innerHTML = '<div class="bi" aria-busy="true"><div class="sk" style="height:62px"></div><div class="sk" style="height:84px"></div><div class="sk" style="height:560px"></div></div>';
   try { await loadBiData(); }
-  catch (e) { if (panel.isConnected) panel.innerHTML = `<div class="inline-error">No se pudo cargar el panel de análisis: ${esc(e.message)}</div>`; return; }
+  catch (e) { if (panel.isConnected) panel.innerHTML = inlineErrorHTML('No se pudo cargar el panel de análisis', e); return; }
   if (!panel.isConnected || State.bi !== st || State.hotelTab !== 'bi' || State.targetId !== targetId) return;
   const m = biModel();
   panel.innerHTML = `<div class="bi" id="biRoot">
@@ -2729,7 +2746,7 @@ function biDrawerHTML(m, key) {
     const p = h.prices[i], s = h.status[i];
     const heat = p != null ? biHeat(p, m.dayMeds[i]) : null;
     const cls = p != null ? '' : s === 'closed' ? ' is-closed' : ' is-empty';
-    return `<span class="bi-mini${cls}${s === 'low' ? ' is-low' : ''}${i === m.fi ? ' is-focus' : ''}" style="${heat ? `background:${heat.bg}` : ''}" title="${esc(`${biDayLong(iso)} · ${p != null ? eur(p) : s === 'closed' ? 'cerrado' : 'sin captura'}`)}"></span>`;
+    return `<span class="bi-mini${cls}${s === 'low' ? ' is-low' : ''}${i === m.fi ? ' is-focus' : ''}" style="${heat ? `background:${heat.bg}` : ''}" title="${esc(`${biDayLong(iso)} · ${p != null ? eur(p) : s === 'closed' ? 'cerrado' : 'sin foto'}`)}"></span>`;
   }).join('');
   const rooms = !cached || cached.status === 'loading' ? '<p class="bi-drawer__empty">Comprobando tarifas capturadas…</p>'
     : cached.status === 'error' ? `<p class="bi-drawer__empty neg">${esc(cached.message || 'No se pudo cargar el desglose.')}</p>`
@@ -2746,7 +2763,7 @@ function biDrawerHTML(m, key) {
     <div class="bi-drawer__body">
       <div class="bi-drawer__kpis">${kpis}</div>
       <section class="bi-drawer__section"><span class="card__kicker">Tarifa por extracción</span>${chart}</section>
-      <section class="bi-drawer__section"><span class="card__kicker">Calendario · entradas ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><div class="bi-minical">${cal}</div></section>
+      <section class="bi-drawer__section"><span class="card__kicker">Calendario · extracciones ${biDayLabel(m.dates[0])} – ${biDayLabel(m.dates.at(-1))}</span><div class="bi-minical">${cal}</div></section>
       <section class="bi-drawer__section bi-drawer__rooms"><span class="card__kicker">Habitaciones y tarifas</span>${rooms}</section>
     </div>
     <div class="bi-drawer__foot"><button type="button" class="btn btn--primary" data-bi-set-own="${esc(key)}"${isOwn ? ' disabled' : ''}>${isOwn ? 'Es tu hotel propio' : 'Fijar como hotel propio'}</button><button type="button" class="btn" data-bi-sheet="${esc(h.name)}">Ver en hoja de mercado</button></div>`;
@@ -3089,7 +3106,7 @@ function flightRouteCardHTML(model, r) {
     <div class="fl-route__facts">${facts}</div>
     <div class="fl-route__bars"><div class="fl-route__barshead"><span class="card__kicker">Mínimo por fecha de salida</span><span id="flBarReadout">${dates.length > 1 ? 'más barato en verde' : `${dates.length} fecha capturada`}</span></div><div class="fl-bars">${bars}</div><div class="fl-bars__axis">${axis}</div></div>
     <div class="fl-route__airlines"><span class="card__kicker">Aerolíneas</span>${airlines || '<span class="dim">Sin aerolíneas</span>'}</div>
-    <div class="fl-route__foot"><button type="button" class="btn" data-fl-ops="${esc(r.code)}">Ver ${nEs(r.options)} vuelos</button><button type="button" class="btn fl-ask" data-fl-ask="${esc(`¿Cómo evoluciona el precio de ${r.code} → LPA?`)}">Preguntar al Copilot</button></div>`;
+    <div class="fl-route__foot"><button type="button" class="btn" data-fl-ops="${esc(r.code)}">Ver ${nEs(r.options)} vuelos</button><button type="button" class="btn fl-ask" data-fl-ask="${esc(`¿Cómo evoluciona el precio de ${r.code} → LPA?`)}">Preguntar al Copilot →</button></div>`;
 }
 
 function flightHeatHTML(model, focus) {
@@ -3337,7 +3354,7 @@ async function paintAirOperations({ focusSearch = false } = {}) {
     panel.innerHTML = `${State.airOperations.fullscreen ? '<div class="fops__backdrop" data-air-operations-fullscreen></div>' : ''}${html}`;
     persistAirOperationsQuery();
     if (focusSearch) { const input = $('#airOperationsSearch'); input?.focus(); input?.setSelectionRange(input.value.length, input.value.length); }
-  } catch (e) { if (panel.isConnected) panel.innerHTML = `<div class="inline-error">No se pudieron cargar las opciones aéreas: ${esc(e.message)}</div>`; }
+  } catch (e) { if (panel.isConnected) panel.innerHTML = `<div class="inline-error">No se pudieron cargar las opciones aéreas: ${esc(friendlyErrorMessage(e))}</div>`; }
 }
 
 function updateAirOperationsQuery(key, value, focusSearch = false) {
@@ -3404,7 +3421,7 @@ async function startAirCapture() {
     $('[data-fl-plan]')?.setAttribute('aria-expanded', 'false');
     toast(`Captura aérea en cola · ${nEs(estimate.queries)} consultas${response.job?.id ? ` · trabajo ${response.job.id}` : ''}`, 'ok');
   } catch (error) {
-    toast(`No se pudo iniciar la captura: ${error.message}`, 'warn');
+    toast(`No se pudo iniciar la captura: ${friendlyErrorMessage(error)}`, 'warn');
     if (button) button.disabled = false;
   }
 }
@@ -3502,7 +3519,7 @@ async function renderFlights() {
       State.airComparison || api('/api/air-data/comparison?direction=arrival').catch(() => ({ points: [] })),
     ]);
     State.air = data; State.airComparison = comparison;
-  } catch (e) { host.innerHTML = `<div class="page">${pageHead('Vuelos', 'Conectividad aérea hacia Gran Canaria', '')}<div class="inline-error">No se pudo cargar la conectividad aérea: ${esc(e.message)}</div></div>`; return; }
+  } catch (e) { host.innerHTML = `<div class="page">${pageHead('Vuelos', 'Conectividad aérea hacia Gran Canaria', '')}<div class="inline-error">No se pudo cargar la conectividad aérea: ${esc(friendlyErrorMessage(e))}</div></div>`; return; }
   if (State.view !== 'flights') return;
   const model = flightModel(data, comparison);
   State.flightModel = model;
@@ -3670,7 +3687,7 @@ async function renderHotelReputation() {
         State.reputation.pendingEvidenceId = null;
       }
     } catch (error) {
-      host.innerHTML = `<div class="page">${pageHead('Ficha hotelera', 'Inventario y reseñas', '')}<div class="inline-error">No se pudo abrir la ficha: ${esc(error.message)} <button type="button" class="btn btn--sm" data-review-back>Volver al inventario</button></div></div>`;
+      host.innerHTML = `<div class="page">${pageHead('Ficha hotelera', 'Inventario y reseñas', '')}<div class="inline-error">No se pudo abrir la ficha: ${esc(friendlyErrorMessage(error))} <button type="button" class="btn btn--sm" data-review-back>Volver al inventario</button> <button type="button" class="btn btn--sm" data-nav="captures">Ir a Capturas</button></div></div>`;
     }
     return;
   }
@@ -3682,7 +3699,7 @@ async function renderHotelReputation() {
     for (const key of State.reputation.selectedKeys) if (!availableKeys.has(key)) State.reputation.selectedKeys.delete(key);
     renderHotelReputationCatalog(host, result.total || 0);
   } catch (error) {
-    host.innerHTML = `<div class="page">${pageHead('Inventario y reputación', 'Fuentes públicas, reseñas y calidad hotelera', '')}<div class="inline-error">No se pudo cargar el inventario: ${esc(error.message)}</div></div>`;
+    host.innerHTML = `<div class="page">${pageHead('Inventario y reputación', 'Fuentes públicas, reseñas y calidad hotelera', '')}${inlineErrorHTML('No se pudo cargar el inventario', error)}</div>`;
   }
 }
 
@@ -3743,7 +3760,9 @@ function reputationEmptyNoticeHTML(rows) {
 function reputationRunCell(run, fallback) {
   if (!run) return `<span class="dim">${esc(fallback)}</span>`;
   const tone = ['ok', 'exhausted'].includes(run.status) ? '' : ['error', 'blocked', 'parse_error', 'budget_exhausted'].includes(run.status) ? ' neg' : ' dim';
-  return `<span class="rep-run${tone}" title="${esc(fmtStamp(run.startedAt))}">${esc(reviewRunStatus(run.status))}<small>${esc(fmtStamp(run.startedAt))}</small></span>`;
+  const needsAction = run.status === 'parse_error' || run.status === 'error';
+  const action = needsAction ? ' <button type="button" class="link-button" data-rep-config>Reintentar</button>' : '';
+  return `<span class="rep-run${tone}" title="${esc(fmtStamp(run.startedAt))}">${esc(reviewRunStatus(run.status))}<small>${esc(fmtStamp(run.startedAt))}</small></span>${action}`;
 }
 
 function reputationRowHTML(row) {
@@ -4059,7 +4078,7 @@ async function loadHotelReviewsPage(reviewId = null) {
     if (prev) prev.disabled = State.reputation.reviewPage <= 0;
     if (next) next.disabled = (State.reputation.reviewPage + 1) * 50 >= page.total;
       host.innerHTML = page.items?.length ? `<div class="table-scroll"><table class="t review-rows-table"><caption class="sr-only">Reseñas hoteleras con fuente, nota, idioma y textos original y español</caption><thead><tr><th>Fuente</th><th>Nota</th><th>Fecha</th><th>Idioma</th><th>Reseña y traducción</th><th></th></tr></thead><tbody>${page.items.map((item) => {const sourceUrl=hotelReviewSourceHref(item.sourceUrl);return `<tr data-review-row-id="${item.id}"><th scope="row">${sourceUrl ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(hotelSourceLabel(item.source))} ↗</a>` : esc(hotelSourceLabel(item.source))}<small>${esc(item.author || 'Anónimo')}</small></th><td class="num">${item.rating == null ? '—' : `${nEs(item.rating, 1)}/${nEs(item.ratingScale, 0)}`}</td><td>${esc(item.publishedAt || item.relativePublishedAt || '—')}<small>${esc(item.datePrecision)}</small></td><td>${esc(item.languageOriginal || 'UND')}<small>${esc(item.translationMethod || '')}</small></td><td class="review-text-cell">${item.title ? `<strong>${esc(item.title)}</strong>` : ''}${item.positiveText ? `<p><b>Positivo</b> ${esc(item.positiveText)}</p>` : ''}${item.negativeText ? `<p><b>Negativo</b> ${esc(item.negativeText)}</p>` : ''}${item.reviewEs ? `<p><b>Español</b> ${esc(item.reviewEs)}</p>` : ''}${item.reviewOriginal ? `<details><summary>Ver original</summary><p>${esc(item.reviewOriginal)}</p></details>` : ''}<small>${esc(item.topics || '')}${item.qualityFlags?.length ? ` · Calidad: ${esc(item.qualityFlags.join(', '))}` : ''}</small></td><td><div class="review-row-actions"><button type="button" class="link-button" data-review-note-for="${item.id}">Anotar</button>${item.versionCount > 1 ? `<button type="button" class="link-button" data-review-history="${item.id}">Historial · ${nEs(item.versionCount)}</button>` : ''}</div><div class="review-history-outlet" data-review-history-outlet hidden></div></td></tr>`;}).join('')}</tbody></table></div>` : '<div class="empty">No hay reseñas que coincidan con los filtros. <button type="button" class="link-button" data-review-filters-reset>Quitar filtros</button></div>';
-  } catch (error) { if (requestId === State.reputation.reviewRequestId && host.isConnected) host.innerHTML = `<div class="inline-error">No se pudieron cargar las reseñas: ${esc(error.message)}</div>`; }
+  } catch (error) { if (requestId === State.reputation.reviewRequestId && host.isConnected) host.innerHTML = inlineErrorHTML('No se pudieron cargar las reseñas', error); }
 }
 
 function showHotelReputationTab(tab) {
@@ -4107,7 +4126,7 @@ async function launchHotelReviewCapture(hotelKeys, scope) {
     toast(`Captura en cola: ${result.queued} hotel/fuente${result.skipped?.length ? ` · ${result.skipped.length} omitidos por falta de vínculo` : ''}. Máximo estimado US$ ${nEs(result.estimatedMaximumUsd, 4)}.`, 'ok');
     await renderHotelReputation();
     void pollHotelReviewJob(result.job.id);
-  } catch (error) { toast(error.message, 'warn'); }
+  } catch (error) { toast(friendlyErrorMessage(error), 'warn'); }
 }
 
 async function pollHotelReviewJob(jobId) {
@@ -4152,7 +4171,7 @@ async function runHotelReviewComparison() {
       <thead><tr><th scope="col" rowspan="2">Hotel</th>${sources.map((source) => `<th scope="colgroup" colspan="2">${hotelSourceLabel(source)}</th>`).join('')}</tr><tr>${sources.map(() => '<th scope="col" class="r">Publicada</th><th scope="col" class="r">Muestra</th>').join('')}</tr></thead>
       <tbody>${rows.map(({profile, bySource}) => `<tr><th scope="row">${esc(profile.hotel.hotel_name)}</th>${sources.map((source) => cell(bySource.get(source), source)).join('')}</tr>`).join('')}</tbody></table></div>
       <p class="rep-cfg__note">Incluye todas las reseñas capturadas de cada hotel y fuente; la cobertura puede diferir. Google puntúa sobre 5 y Booking sobre 10: no se combinan escalas.</p>`;
-  } catch (error) { const body = $('#sidePanelBody .rep-cfg__body'); if (body) body.innerHTML = `<div class="inline-error">No se pudo comparar: ${esc(error.message)}</div>`; }
+  } catch (error) { const body = $('#sidePanelBody .rep-cfg__body'); if (body) body.innerHTML = `<div class="inline-error">No se pudo comparar: ${esc(friendlyErrorMessage(error))}</div>`; }
 }
 
 async function saveHotelReviewLink(form) {
@@ -4164,7 +4183,7 @@ async function saveHotelReviewLink(form) {
     })});
     toast(`Vínculo de ${hotelSourceLabel(source)} guardado.`, 'ok');
     void renderHotelReputation();
-  } catch (error) { toast(error.message, 'warn'); }
+  } catch (error) { toast(friendlyErrorMessage(error), 'warn'); }
 }
 
 function wireHotelReputationEvents() {
@@ -4240,7 +4259,7 @@ function wireHotelReputationEvents() {
       const body = {body: data.get('body'), reviewId: data.get('reviewId') ? Number(data.get('reviewId')) : null};
       void api(reputationKeyPath(State.reputation.hotelKey, 'notes'), {method:'POST',body:JSON.stringify(body)})
         .then(() => {State.reputation.tab='notes'; toast('Nota guardada.', 'ok'); return renderHotelReputation();})
-        .catch((error) => toast(error.message,'warn'));
+        .catch((error) => toast(friendlyErrorMessage(error),'warn'));
       return;
     }
     const linkForm = event.target.closest('[data-review-link-form]');
@@ -4279,7 +4298,7 @@ function wireHotelReputationEvents() {
         attribute: selectAttribute.dataset.reviewSelectAttribute,
         observationId: Number(selectAttribute.dataset.reviewObservationId),
       })}).then(() => {toast('Valor principal actualizado.', 'ok'); return renderHotelReputation();})
-        .catch((error) => {selectAttribute.disabled = false; toast(error.message, 'warn');});
+        .catch((error) => {selectAttribute.disabled = false; toast(friendlyErrorMessage(error), 'warn');});
       return;
     }
     const history = target.closest('[data-review-history]');
@@ -4300,13 +4319,13 @@ function wireHotelReputationEvents() {
         .catch((error)=>{outlet.innerHTML=`<small class="hotel-review-error">${esc(error.message)}</small>`;});
       return;
     }
-    const deleteNote = target.closest('[data-review-delete-note]'); if (deleteNote) {void api(`/api/hotel-reviews/notes/${deleteNote.dataset.reviewDeleteNote}`,{method:'DELETE'}).then(()=>renderHotelReputation()).catch((error)=>toast(error.message,'warn'));return;}
+    const deleteNote = target.closest('[data-review-delete-note]'); if (deleteNote) {void api(`/api/hotel-reviews/notes/${deleteNote.dataset.reviewDeleteNote}`,{method:'DELETE'}).then(()=>renderHotelReputation()).catch((error)=>toast(friendlyErrorMessage(error),'warn'));return;}
     if (target.closest('[data-review-analyze]')) {
       const budget=Number($('#reviewAnalysisBudget')?.value||0);
       if (!Number.isFinite(budget) || budget < 0.001 || budget > 10) {toast('Introduce un tope de gasto USD entre 0,001 y 10 para este análisis.','warn');return;}
       void api(reputationKeyPath(State.reputation.hotelKey,'analyses'),{method:'POST',body:JSON.stringify({budgetUsd:budget,sources:['google','booking']})})
         .then((result)=>{State.reputation.activeJobId=result.job.id;State.reputation.activeJobKind='analysis';State.reputation.job=result.job;void renderHotelReputation();void pollHotelReviewJob(result.job.id);})
-        .catch((error)=>toast(error.message,'warn'));
+        .catch((error)=>toast(friendlyErrorMessage(error),'warn'));
     }
   });
 }
@@ -4321,7 +4340,7 @@ async function renderCaptures() {
   skeleton(host, 'list');
   let photos = [];
   try { const r = await getPhotoHistory(State.targetId); photos = r.photos || []; }
-  catch (e) { host.innerHTML = `<div class="page">${pageHead('Capturas', 'Trazabilidad', '')}<div class="inline-error">${esc(e.message)}</div></div>`; return; }
+  catch (e) { host.innerHTML = `<div class="page">${pageHead('Capturas', 'Trazabilidad', '')}${inlineErrorHTML('No se pudieron cargar las fotos', e)}</div>`; return; }
 
   const t = activeTarget();
   const selectedPhoto = photos.find((photo) => photo.id === State.selectedPhotoId) || photos[0] || null;
@@ -4330,7 +4349,7 @@ async function renderCaptures() {
   if (selectedPhoto) State.selectedPhotoId = selectedPhoto.id;
   let detail = null;
   try { if (selectedPhoto) detail = await getPhotoDetail(selectedPhoto.id); }
-  catch (e) { host.innerHTML = `<div class="page">${pageHead('Capturas', 'Trazabilidad', '')}<div class="inline-error">No se pudo cargar la foto seleccionada: ${esc(e.message)}</div></div>`; return; }
+  catch (e) { host.innerHTML = `<div class="page">${pageHead('Capturas', 'Trazabilidad', '')}${inlineErrorHTML('No se pudo cargar la foto seleccionada', e)}</div>`; return; }
   let previousDetail = null, comparisonError = null;
   if (previousPhoto) {
     try { previousDetail = await getPhotoDetail(previousPhoto.id); }
@@ -4380,14 +4399,14 @@ async function renderCaptures() {
           <label class="field"><span>Mercado</span><input class="input" id="capMarket" value="${esc(t ? t.name : '')}" disabled /></label>
         </div>
         <div class="grid grid--2" style="gap:11px; margin-bottom:15px;">
-          <label class="field"><span>Primera entrada</span><input type="date" required class="input" id="capCheckIn" /></label>
+          <label class="field"><span>Primera extracción</span><input type="date" required class="input" id="capCheckIn" /></label>
           <label class="field"><span>Noches</span><input type="number" min="1" max="30" value="7" required class="input" id="capNights" /></label>
           <label class="field"><span>Adultos</span><input type="number" min="1" max="10" value="2" required class="input" id="capAdults" /></label>
           <label class="field"><span>Habitaciones</span><input type="number" min="1" max="1" value="1" readonly class="input" id="capRooms" /></label>
-          <label class="field"><span>Entradas semanales</span><select class="input" id="capWeeks"><option value="1">Una fecha · 1 foto</option><option value="4">4 semanas · 4 fotos</option><option value="13">13 semanas · 13 fotos</option><option value="26">Hasta 180 días · 26 fotos</option></select></label>
+          <label class="field"><span>Extracciones semanales</span><select class="input" id="capWeeks"><option value="1">Una fecha · 1 foto</option><option value="4">4 semanas · 4 fotos</option><option value="13">13 semanas · 13 fotos</option><option value="26">Hasta 180 días · 26 fotos</option></select></label>
           <label class="field"><span>Régimen solicitado</span><select class="input" id="capBoard"><option value="all_inclusive">Todo incluido</option><option value="saved_filters">Filtros del mercado guardado</option></select></label>
         </div>
-        <p class="capture-profile-note">Moneda solicitada: EUR · una habitación · sin niños. Las ofertas observadas conservan sus condiciones reales. El barrido se ejecuta ahora; no programa repeticiones.</p>
+        <p class="capture-profile-note">Moneda solicitada: EUR · una habitación · sin niños. Las ofertas observadas conservan sus condiciones reales. La captura se ejecuta ahora; no programa repeticiones.</p>
         <div class="choices" id="capMarkets" style="margin-bottom:16px;">
           ${State.targets.map((x) => `<button type="button" class="choice ${x.id === State.targetId ? 'is-active' : ''}" aria-pressed="${x.id === State.targetId}" data-cap-market="${x.id}">${esc(x.name)}</button>`).join('')}
         </div>
@@ -4401,20 +4420,20 @@ async function renderCaptures() {
         </div>
         <div class="console__log" id="captureLog">
           <div>[sistema] Listo para lanzar una captura del mercado activo.</div>
-          <div class="dim">Cada entrada solicita una foto independiente. Si una serie falla, las fotos ya guardadas permanecen disponibles.</div>
+          <div class="dim">Cada extracción solicita una foto independiente. Si una serie falla, las fotos ya guardadas permanecen disponibles.</div>
         </div>
       </article>
     </div>
 
     <div class="grid mb12 capture-analysis-grid">
       <article class="card card--pad">
-        <div class="card__head" style="margin-bottom:8px;"><div><div class="card__kicker" style="margin-bottom:5px;">Histórico de ADR</div><h2>Capturas disponibles</h2><p>Un punto por foto guardada del mercado activo.</p></div><span class="pill-tag">${photos.length} fotos</span></div>
+        <div class="card__head" style="margin-bottom:8px;"><div><div class="card__kicker" style="margin-bottom:5px;">Histórico de ADR</div><h2>Fotos disponibles</h2><p>Un punto por foto guardada del mercado activo.</p></div><span class="pill-tag">${photos.length} fotos</span></div>
         ${adrHistorySVG(photos)}
       </article>
       <article class="card card--pad">
         <div class="card__kicker" style="margin-bottom:5px;">Foto seleccionada</div>
         <h2>Foto #${selectedPhoto ? selectedPhoto.id : '—'}</h2>
-        <p class="capture-selected-stamp">${selectedPhoto ? fmtStamp(selectedPhoto.scrapedAt) : 'Sin capturas disponibles'}</p>
+        <p class="capture-selected-stamp">${selectedPhoto ? fmtStamp(selectedPhoto.scrapedAt) : 'Sin fotos disponibles'}</p>
         <div class="capture-summary">
           <div><span>ADR hab/noche</span><strong>${eur(summary.avgPricePerNight)}</strong></div>
           <div><span>ADR pers/noche</span><strong>${eur(summary.avgPricePerPersonNight)}</strong></div>
@@ -4427,14 +4446,14 @@ async function renderCaptures() {
       </article>
     </div>
 
-    ${State.captureComparisonOpen && previousPhoto ? (previousDetail ? captureComparisonHTML(detail, previousDetail, selectedPhoto, previousPhoto) : `<div class="inline-error mb12">No se pudo cargar la foto de comparación: ${esc(comparisonError?.message || 'sin detalle')}</div>`) : ''}
+    ${State.captureComparisonOpen && previousPhoto ? (previousDetail ? captureComparisonHTML(detail, previousDetail, selectedPhoto, previousPhoto) : `<div class="inline-error mb12">No se pudo cargar la foto de comparación: ${esc(comparisonError ? friendlyErrorMessage(comparisonError) : 'sin detalle')} <button type="button" class="btn btn--sm" data-nav="captures">Ir a Capturas</button></div>`) : ''}
 
     <article class="card table-card mb12">
-      <div class="table-card__head"><div><div class="card__kicker" style="margin-bottom:5px;">Booking · trazabilidad</div><strong style="font-size:15px;">Histórico de capturas</strong></div><span class="table-filter-status">Selecciona una foto para inspeccionarla</span></div>
+      <div class="table-card__head"><div><div class="card__kicker" style="margin-bottom:5px;">Booking · trazabilidad</div><strong style="font-size:15px;">Histórico de fotos</strong></div><span class="table-filter-status">Selecciona una foto para inspeccionarla</span></div>
       <div class="table-scroll">
         <table class="t" style="min-width:760px;">
           <thead><tr><th>Foto</th><th>Fecha</th><th class="r">ADR hab/noche</th><th class="r">ADR pers/noche</th><th>Rango</th><th class="r">Filas</th><th class="r"></th></tr></thead>
-          <tbody>${hist || `<tr><td colspan="7" class="empty">Sin capturas registradas.</td></tr>`}</tbody>
+          <tbody>${hist || `<tr><td colspan="7" class="empty">Sin fotos registradas.</td></tr>`}</tbody>
         </table>
       </div>
     </article>
@@ -4460,7 +4479,7 @@ async function renderCaptures() {
 async function renderCopilot() {
   const host = mount('copilot');
   const workspaceScope = State.copilotWorkspaceContext?.targetId === State.targetId ? State.copilotWorkspaceContext : null;
-  const workspaceScopeLabel = workspaceScope ? ` · contexto BI: foto #${workspaceScope.snapshotId}${workspaceScope.checkIn ? ` · entrada ${workspaceScope.checkIn}` : ' · todas las entradas'}` : '';
+  const workspaceScopeLabel = workspaceScope ? ` · contexto BI: foto #${workspaceScope.snapshotId}${workspaceScope.checkIn ? ` · extracción ${workspaceScope.checkIn}` : ' · todas las extracciones'}` : '';
   host.innerHTML = `<div class="copilot ${State.copilotHistoryOpen ? '' : 'is-history-collapsed'}" id="copilotLayout">
     <aside class="copilot__aside" aria-label="Historial de conversaciones">
       <div class="top"><div><h2>Conversaciones</h2><span id="sessCount">…</span></div><div class="copilot-aside-actions"><button type="button" class="icon-btn" id="toggleCopilotHistory" aria-label="Plegar historial" aria-expanded="true" title="Plegar historial">‹</button><button type="button" class="add-btn" id="newSession" aria-label="Nueva conversación">+</button></div></div>
@@ -4615,7 +4634,7 @@ async function loadSession(id) {
     thread.innerHTML = msgs.map(renderMsg).join('');
     thread.scrollTop = thread.scrollHeight;
     restoreCopilotDraftIntoInput();
-  } catch (e) { if (State.activeSession !== id || !thread.isConnected) return; thread.innerHTML = `<div class="inline-error">${esc(e.message)}</div>`; }
+  } catch (e) { if (State.activeSession !== id || !thread.isConnected) return; thread.innerHTML = `<div class="inline-error">${esc(friendlyErrorMessage(e))}</div>`; }
 }
 
 function restoreCopilotDraftIntoInput() { const input = $('#chatInput'); if (input) { input.value = restoreCopilotDraft(); input.dispatchEvent(new Event('input', { bubbles: true })); } }
@@ -4925,7 +4944,7 @@ async function uploadCopilotAttachment(file) {
     try {
       const created = await api('/api/assistant/sessions', { method: 'POST', body: JSON.stringify({ title: `Análisis · ${file.name}`, targetId: State.targetId, mode: State.copilotMode }) });
       State.activeSession = created.session.id; State.sessions.unshift(created.session); renderSessionList();
-    } catch (error) { alert(error.message || 'No se pudo crear la conversación'); return; }
+    } catch (error) { alert(friendlyErrorMessage(error)); return; }
   }
   const uploadSessionId = State.activeSession;
   const body = new FormData(); body.append('sessionId', uploadSessionId); body.append('file', file);
@@ -4933,7 +4952,7 @@ async function uploadCopilotAttachment(file) {
     const result = await api('/api/assistant/attachments', { method: 'POST', body });
     if (State.activeSession !== uploadSessionId) return;
     State.copilotAttachments.push(result.attachment); renderCopilotAttachments();
-  } catch (error) { alert(error.message || 'No se pudo adjuntar el archivo'); }
+  } catch (error) { alert(friendlyErrorMessage(error)); }
 }
 
 /* =============================================================== WORKSPACE */
@@ -5086,7 +5105,7 @@ function workspaceContextHTML(context, semantic, selections = {}) {
   const links = Object.entries(selections).filter(([, sel]) => sel).map(([group, sel]) => `<span class="ws-link">Enlace ${esc(group)} · ${esc(sel.hotelName)}<button type="button" data-workspace-unlink="${esc(group)}" aria-label="Quitar enlace ${esc(group)}">×</button></span>`).join('');
   return `<section class="ws-context" aria-label="Contexto común del tablero"><span class="card__kicker">Contexto</span>
     <label><span class="sr-only">Extracción</span><select data-workspace-context="captureAnchorSnapshotId" title="Observada ${esc(fmtStamp(context.capture.observedAt))}${esc(inferred)}">${(State.captureHistories[State.targetId]?.captures || []).map((capture) => `<option value="${nEs(capture.anchorSnapshotId)}"${capture.anchorSnapshotId === context.anchorSnapshotId ? ' selected' : ''}>Extracción ${esc(fmtStamp(capture.observedAt))} · #${nEs(capture.snapshotIds?.[0])}–#${nEs(capture.snapshotIds?.at(-1))}</option>`).join('')}</select></label>
-    <label><span class="sr-only">Entrada</span><select data-workspace-context="checkIn"><option value="">Todas las entradas</option>${context.availableCheckIns.map((checkIn) => `<option value="${esc(checkIn)}"${checkIn === context.checkIn ? ' selected' : ''}>Entrada ${esc(biDayLabel(checkIn))}</option>`).join('')}</select></label>
+    <label><span class="sr-only">Extracción</span><select data-workspace-context="checkIn"><option value="">Todas las extracciones</option>${context.availableCheckIns.map((checkIn) => `<option value="${esc(checkIn)}"${checkIn === context.checkIn ? ' selected' : ''}>Extracción ${esc(biDayLabel(checkIn))}</option>`).join('')}</select></label>
     <span class="ws-context__obs">${population ? `${nEs(population.comparableRows)} observaciones comparables` : 'consulta pendiente'}</span>${links}</section>`;
 }
 
@@ -5189,7 +5208,7 @@ async function renderWorkspace() {
     if (State.targetId !== renderTargetId) return;
     revisions = ws.id ? await getWorkspaceRevisions(ws.id) : [];
     if (State.targetId !== renderTargetId) return;
-  } catch (e) { if (State.targetId !== renderTargetId) return; host.innerHTML = `<div class="page">${pageHead('Espacio de trabajo', 'Pizarra', '')}<div class="inline-error">${esc(e.message)}</div></div>`; return; }
+  } catch (e) { if (State.targetId !== renderTargetId) return; host.innerHTML = `<div class="page">${pageHead('Espacio de trabajo', 'Pizarra', '')}<div class="inline-error">${esc(friendlyErrorMessage(e))}</div></div>`; return; }
 
   const layers = ws.layers || [];
   const selectionGroups = [...new Set(layers.map((layer) => layer.linkGroup).filter((group) => group && group !== 'none'))];
@@ -5216,7 +5235,7 @@ async function renderWorkspace() {
     <section class="workspace__main">
       <div class="ws-head">
         <div><span class="card__kicker">Pizarra personal</span><label class="ws-title"><span class="sr-only">Nombre del análisis</span><input id="workspaceName" value="${esc(ws.name)}" maxlength="120" aria-label="Nombre del análisis"></label></div>
-        <div class="ws-head__actions"><span class="saved-chip${State.workspaceDirty ? ' is-dirty' : ''}"><i></i>${saveLabel}</span><button type="button" class="btn page-head__btn" data-workspace-ask data-workspace-anchor="${nEs(context?.anchorSnapshotId)}" data-workspace-checkin="${esc(context?.checkIn || '')}">Preguntar al Copilot</button><button type="button" class="btn btn--primary page-head__btn" id="workspaceSave"${State.workspaceDirty ? '' : ' disabled'}>Guardar</button></div>
+        <div class="ws-head__actions"><span class="saved-chip${State.workspaceDirty ? ' is-dirty' : ''}"><i></i>${saveLabel}</span><button type="button" class="btn page-head__btn" data-workspace-ask data-workspace-anchor="${nEs(context?.anchorSnapshotId)}" data-workspace-checkin="${esc(context?.checkIn || '')}">Preguntar al Copilot →</button><button type="button" class="btn btn--primary page-head__btn" id="workspaceSave"${State.workspaceDirty ? '' : ' disabled'}>Guardar</button></div>
       </div>
       ${State.workspaceSaveError ? `<div class="inline-error workspace-save-error" role="alert">${esc(State.workspaceSaveError)}</div>` : ''}
       ${workspaceContextHTML(context, semantic, selections)}
@@ -5250,7 +5269,7 @@ async function loadWorkspaceWeatherExample(host) {
       <div class="mini-kpis" style="grid-template-columns:repeat(4,1fr);">${miniKpi('Asignaciones', nEs((payload.assignments || []).length))}${miniKpi('Grupos guardados', nEs(summaries.length))}${miniKpi('Conocidas en foto', nEs(known))}${miniKpi('Asociación', associationLabel)}</div>
       <small class="dim">Foto de mercado #${esc(payload.marketSnapshotId)} · Las consultas posteriores se marcan como enriquecimiento posterior. La asociación no demuestra demanda ni causalidad.</small>`;
    } catch (error) {
-    card.innerHTML = `<div class="wblock__head"><div class="lhs"><span class="badge">MET</span><strong>Cobertura meteorológica por mercado</strong></div></div><div class="inline-error">${esc(error.message)}</div>`;
+    card.innerHTML = `<div class="wblock__head"><div class="lhs"><span class="badge">MET</span><strong>Cobertura meteorológica por mercado</strong></div></div><div class="inline-error">${esc(friendlyErrorMessage(error))}</div>`;
    }
   };
   button?.addEventListener('click', renderMarketWeather, { once: true });
@@ -5294,7 +5313,7 @@ function renderLayer(l, m, selections = {}, selectionHistories = {}, index = 0, 
     const selectedHistory = selectedHotel ? selectionHistories[selectedHotel.hotelKey] : null;
     const scopedHistory = context?.checkIn ? (selectedHistory || []).filter((entry) => entry.checkIn === context.checkIn) : selectedHistory;
     inner = selectedHotel
-      ? `<div class="workspace-selection-note">Hotel seleccionado · <strong>${esc(selectedHotel.hotelName)}</strong>${context?.checkIn ? ` · entrada ${esc(context.checkIn)}` : ''}</div>${scopedHistory?.length ? workspaceHotelTrendHTML(scopedHistory) : '<div class="dashboard-trend-empty">No hay histórico del hotel para la fecha de entrada seleccionada.</div>'}`
+      ? `<div class="workspace-selection-note">Hotel seleccionado · <strong>${esc(selectedHotel.hotelName)}</strong>${context?.checkIn ? ` · extracción ${esc(context.checkIn)}` : ''}</div>${scopedHistory?.length ? workspaceHotelTrendHTML(scopedHistory) : '<div class="dashboard-trend-empty">No hay histórico del hotel para la extracción seleccionada.</div>'}`
       : (() => {
         const pts = (m.trend || []).filter((t) => t.avgPricePerNight != null && t.currency === 'EUR').map((t) => ({ v: t.avgPricePerNight }));
         return pts.length >= 2 ? `${lineSVG(pts)}<small class="ws-hint">Selecciona un hotel en la tabla enlazada para compararlo entre fotos.</small>` : '<div class="empty">Se necesitan dos fotos con tarifa por noche en EUR.</div>';
@@ -5348,7 +5367,7 @@ function captureProfileHTML(profile) {
     const block = quality.blockDetected ? ' · bloqueo detectado' : '';
     return ` · ${label} (${captured}/${expected}${pct}${pages}${block})`;
   })() : '';
-  return `${esc(profile.checkIn || 'Entrada desconocida')} → ${esc(profile.checkOut || 'Salida desconocida')} · ${profile.adults ?? '—'} adultos · ${profile.children ?? '—'} niños · ${profile.rooms ?? '—'} habitaciones · ${esc(profile.currency || 'Moneda solicitada desconocida')} · ${profile.origin === 'legacy_url' ? 'Reconstruido de URL histórica' : 'Parámetros efectivos guardados'}${qualityText}`;
+  return `${esc(profile.checkIn || 'Extracción desconocida')} → ${esc(profile.checkOut || 'Salida desconocida')} · ${profile.adults ?? '—'} adultos · ${profile.children ?? '—'} niños · ${profile.rooms ?? '—'} habitaciones · ${esc(profile.currency || 'Moneda solicitada desconocida')} · ${profile.origin === 'legacy_url' ? 'Reconstruido de URL histórica' : 'Parámetros efectivos guardados'}${qualityText}`;
 }
 
 async function launchCapture() {
@@ -5368,7 +5387,7 @@ async function launchCapture() {
   worker.innerHTML = '<i></i>worker activo';
   const stamp = () => new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const push = (html) => { log.insertAdjacentHTML('beforeend', `<div>[${stamp()}] ${html}</div>`); log.scrollTop = log.scrollHeight; };
-  log.innerHTML = ''; push(`Lanzando captura de <span class="ok">${esc(t.name)}</span> · ${arrivalWeeks} foto(s) · entrada ${esc(profile.checkIn)} · ${profile.nights} noches · límite ${limit}`);
+  log.innerHTML = ''; push(`Lanzando captura de <span class="ok">${esc(t.name)}</span> · ${arrivalWeeks} foto(s) · extracción ${esc(profile.checkIn)} · ${profile.nights} noches · límite ${limit}`);
   try {
     const r = await api('/api/jobs/hotel-capture', { method: 'POST', body: JSON.stringify({ targetId: t.id, url: t.url, limit, profile, arrivalWeeks }) });
     const jobId = r.job && r.job.id;
@@ -5576,12 +5595,12 @@ function renderDataAge(metrics) {
   const copilotAge = $('#copilotAge'); if (copilotAge) copilotAge.outerHTML = copilotAgeChipHTML();
   const days = dataAgeDays(at);
   const fresh = days === 0 && State.freshCaptureTargetId === State.targetId;
-  const label = fresh ? 'Actualizado · ahora' : days == null ? 'Sin capturas' : days === 0 ? 'Datos de hoy' : `Datos de hace ${days} ${days === 1 ? 'día' : 'días'}`;
+  const label = fresh ? 'Actualizado · ahora' : days == null ? 'Sin fotos' : days === 0 ? 'Datos de hoy' : `Datos de hace ${days} ${days === 1 ? 'día' : 'días'}`;
   pill.hidden = false;
   pill.className = `data-age${fresh ? ' data-age--fresh' : ''}`;
   pill.dataset.fresh = fresh ? 'true' : 'false';
   pill.innerHTML = `<i aria-hidden="true"></i>${esc(label)}`;
-  pill.title = fresh ? `Foto #${snapshot.id} · ${new Date(at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : at ? `Última extracción ${fmtStamp(at)} · pulsa para capturar` : 'Sin capturas · pulsa para capturar';
+  pill.title = fresh ? `Foto #${snapshot.id} · ${new Date(at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : at ? `Última foto ${fmtStamp(at)} · pulsa para capturar` : 'Sin fotos · pulsa para capturar';
   pill.setAttribute('aria-label', `${label}. ${pill.title}`);
 }
 
@@ -5639,7 +5658,7 @@ function reusableCaptureProfile(latest) {
   const profile = snapshot && snapshot.captureProfile;
   if (!profile || !profile.checkIn) return { reason: 'La última foto no guarda los parámetros de captura.' };
   const checkIn = String(profile.checkIn).slice(0, 10);
-  if (checkIn < localIsoDate()) return { reason: `La entrada de la última captura (${shortIsoDate(checkIn)}) ya ha pasado.` };
+  if (checkIn < localIsoDate()) return { reason: `La extracción de la última captura (${shortIsoDate(checkIn)}) ya ha pasado.` };
   const nights = Number(profile.nights), adults = Number(profile.adults);
   if (!(nights >= 1 && nights <= 30) || !(adults >= 1 && adults <= 10) || Number(profile.rooms || 1) !== 1 || Number(profile.children || 0) !== 0) {
     return { reason: 'Los parámetros de la última captura no admiten una captura rápida.' };
@@ -5677,7 +5696,7 @@ async function openCaptureDialog() {
   const end = new Date(`${p.checkIn}T00:00:00`); end.setDate(end.getDate() + p.nights);
   const rows = [
     ['Mercado', esc(target.name)],
-    ['Entrada', `${shortIsoDate(p.checkIn)} → ${shortIsoDate(localIsoDate(end))}`],
+    ['Extracción', `${shortIsoDate(p.checkIn)} → ${shortIsoDate(localIsoDate(end))}`],
     ['Noches', String(p.nights)],
     ['Adultos', String(p.adults)],
     ['Régimen', p.board === 'all_inclusive' ? 'Todo incluido' : 'Filtros guardados'],
@@ -5711,7 +5730,7 @@ async function confirmCapture() {
     toast(`Captura en cola · ${activeTarget() ? activeTarget().name : 'mercado activo'} · Booking.com`, 'info');
     void trackCaptureJob(jobId, params.targetId);
   } catch (error) {
-    toast(error.message || 'No se pudo iniciar la captura.', 'warn', 6000);
+    toast(friendlyErrorMessage(error), 'warn', 6000);
   } finally {
     button.disabled = false;
   }
@@ -5779,7 +5798,7 @@ function paletteGroups(rawQuery) {
     .map((view) => ({ tag: 'IR', label: LABELS[view], hint: PALETTE_VIEW_GROUPS[view], run: () => setView(view) }));
   const actions = [
     { tag: 'CAP', label: 'Capturar mercado activo', hint: 'Booking', run: () => { void openCaptureDialog(); } },
-    { tag: 'AI', label: query ? `Preguntar al Copilot: «${query}»` : 'Preguntar al Copilot', hint: '⌘O', ask: true, run: () => askCopilot(query) },
+    { tag: 'AI', label: query ? `Preguntar al Copilot →: «${query}»` : 'Preguntar al Copilot →', hint: '⌘O', ask: true, run: () => askCopilot(query) },
     { tag: 'UI', label: State.theme === 'oscuro' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro', hint: 'Tema', run: toggleTheme },
     { tag: 'UI', label: 'Densidad compacta', hint: 'Tablas', run: () => applyDensity('compacta') },
     { tag: 'UI', label: 'Densidad equilibrada', hint: 'Tablas', run: () => applyDensity('equilibrada') },
@@ -5950,14 +5969,14 @@ function wireEvents() {
       cancelAssistantJob.disabled = true;
       cancelAssistantJob.textContent = 'Cancelando…';
       try { await api(`/api/assistant/jobs/${encodeURIComponent(cancelAssistantJob.dataset.cancelAssistantJob)}/cancel`, { method: 'POST', body: JSON.stringify({}) }); }
-      catch (error) { cancelAssistantJob.disabled = false; cancelAssistantJob.textContent = 'Dejar de seguir'; alert(error.message || 'No se pudo cancelar el trabajo'); }
+      catch (error) { cancelAssistantJob.disabled = false; cancelAssistantJob.textContent = 'Dejar de seguir'; alert(friendlyErrorMessage(error)); }
       return;
     }
     const removeAttachment = e.target.closest('[data-remove-attachment]');
     if (removeAttachment) {
       const attachmentId = Number(removeAttachment.dataset.removeAttachment);
       try { await api(`/api/assistant/attachments/${attachmentId}`, { method: 'DELETE' }); State.copilotAttachments = State.copilotAttachments.filter((item) => item.id !== attachmentId); renderCopilotAttachments(); }
-      catch (error) { alert(error.message || 'No se pudo eliminar el archivo; sigue asociado a esta consulta.'); }
+      catch (error) { alert(friendlyErrorMessage(error)); }
       return;
     }
     const sessionAction = e.target.closest('[data-session-action]');
@@ -5977,7 +5996,7 @@ function wireEvents() {
           await api(`/api/assistant/sessions/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'archived', expectedVersion: current.version }) }); State.sessions = State.sessions.filter((item) => item.id !== id); if (State.activeSession === id) { State.activeSession = null; greetThread(); }
         }
         renderSessionList();
-      } catch (error) { alert(error.message || 'No se pudo actualizar la conversación'); }
+      } catch (error) { alert(friendlyErrorMessage(error)); }
       return;
     }
     if (e.target.closest('#newSession')) { State.activeSession = null; State.copilotAttachments = []; renderCopilotAttachments(); renderSessionList(); greetThread(); return; }
