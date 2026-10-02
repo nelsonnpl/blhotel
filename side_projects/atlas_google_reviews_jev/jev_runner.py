@@ -477,12 +477,18 @@ def collect_with_jev(
     estimated_decision_cost_usd: float | None = None,
     max_decisions: int | None = None,
     checkpoint: Callable[[GoogleReviewsResult], None] | None = None,
+    typesafe_api_key: str | None = None,
+    openrouter_api_key: str | None = None,
 ) -> GoogleReviewsResult:
     """Navigate with Jev, then parse the final visible DOM deterministically.
 
     Jev owns bounded navigation decisions. It never supplies selectors or
     review values to the parser. This keeps the output testable and makes a
     future Atlas ingestion adapter independent from the model provider.
+
+    I1-13: `typesafe_api_key`/`openrouter_api_key` llegan por argumento o por
+    env del hijo (`TYPESAFE_API_KEY`/`OPENROUTER_API_KEY`); nunca se muta
+    `os.environ` global aquí (el padre solo inyecta el env del hijo).
     """
 
     if max_reviews is not None and not 1 <= max_reviews <= 10000:
@@ -495,7 +501,9 @@ def collect_with_jev(
             "Instala el sidecar Jev Ultrafast según side_projects/atlas_google_reviews_jev/README.md"
         ) from exc
 
-    provider = os.environ.get("ATLAS_JEV_PROVIDER", "typesafe").casefold()
+    provider = (os.environ.get("ATLAS_JEV_PROVIDER", "typesafe") or "typesafe").casefold()
+    resolved_typesafe_key = (typesafe_api_key or os.environ.get("TYPESAFE_API_KEY") or "").strip()
+    resolved_openrouter_key = (openrouter_api_key or os.environ.get("OPENROUTER_API_KEY") or "").strip()
     jev_usage: dict[str, Any] = {"decisions": 0, "reportedCostUsd": 0.0, "estimatedCostUsd": 0.0,
                                  "costBasis": "unavailable"}
     if provider == "openrouter":
@@ -508,12 +516,13 @@ def collect_with_jev(
                 estimated_decision_cost_usd=estimated_decision_cost_usd,
                 max_decisions=max_decisions,
                 usage=jev_usage,
+                openrouter_api_key=resolved_openrouter_key or None,
             )
         except (ImportError, RuntimeError) as exc:
             raise JevUnavailable(str(exc)) from exc
     elif provider == "typesafe":
         provider_context = nullcontext()
-        if not os.environ.get("TYPESAFE_API_KEY"):
+        if not resolved_typesafe_key:
             raise JevUnavailable("Configura TYPESAFE_API_KEY o usa ATLAS_JEV_PROVIDER=openrouter.")
     else:
         raise JevUnavailable("ATLAS_JEV_PROVIDER debe ser 'typesafe' u 'openrouter'.")

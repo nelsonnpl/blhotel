@@ -22,6 +22,7 @@ def route_jev_through_openrouter(
     estimated_decision_cost_usd: float | None = None,
     max_decisions: int | None = None,
     usage: dict[str, Any] | None = None,
+    openrouter_api_key: str | None = None,
 ) -> Iterator[None]:
     """Temporarily route Jev Ultrafast's TypeSafe decision calls via OpenRouter.
 
@@ -30,14 +31,18 @@ def route_jev_through_openrouter(
     compatible with OpenRouter's Jev Decisions endpoint, so this small adapter
     rewrites only that request. Other calls (such as the optional text helper)
     keep their own configured endpoint.
+
+    I1-13: la clave viaja por argumento/env del hijo (`openrouter_api_key` o
+    `OPENROUTER_API_KEY` del hijo) y nunca se muta `os.environ` global: el
+    padre la inyecta solo en el env del hijo (ver `flask_app._jev_child_env`)
+    y aquí solo se usa en el cierre `routed_post_json`.
     """
 
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    api_key = (openrouter_api_key or os.environ.get("OPENROUTER_API_KEY") or "").strip()
     if not api_key:
         raise RuntimeError("ATLAS_JEV_PROVIDER=openrouter requiere OPENROUTER_API_KEY.")
 
     original_post_json = model_module.post_json
-    original_typesafe_key = os.environ.get("TYPESAFE_API_KEY")
     model_name = os.environ.get("ATLAS_JEV_OPENROUTER_MODEL", DEFAULT_OPENROUTER_JEV_MODEL)
     usage = usage if usage is not None else {}
     usage.setdefault("decisions", 0)
@@ -88,12 +93,7 @@ def route_jev_through_openrouter(
         return result
 
     model_module.post_json = routed_post_json
-    os.environ["TYPESAFE_API_KEY"] = api_key
     try:
         yield
     finally:
         model_module.post_json = original_post_json
-        if original_typesafe_key is None:
-            os.environ.pop("TYPESAFE_API_KEY", None)
-        else:
-            os.environ["TYPESAFE_API_KEY"] = original_typesafe_key

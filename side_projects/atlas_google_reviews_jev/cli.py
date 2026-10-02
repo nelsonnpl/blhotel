@@ -22,7 +22,35 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-decisions", type=int, default=24, help="Máximo de decisiones Jev para el hotel (1-120)")
     parser.add_argument("--checkpoint", type=Path, help="Checkpoint JSON reemplazado de forma atómica durante la captura")
     parser.add_argument("--output", type=Path, help="Archivo JSON de salida; si falta, imprime en stdout")
+    # I1-13: claves por argumento (alternativa al env del hijo); el padre BE
+    # prefiere env mínimo explícito para no exponerlas en `ps`.
+    parser.add_argument("--typesafe-api-key", default=None, help="Clave TypeSafe (si falta, usa TYPESAFE_API_KEY del env del hijo)")
+    parser.add_argument("--openrouter-api-key", default=None, help="Clave OpenRouter para decisiones Jev (si falta, usa OPENROUTER_API_KEY del env del hijo)")
     return parser
+
+
+def write_checkpoint_file(path: Path, payload_text: str) -> None:
+    """Escribe un checkpoint Jev con dir 0700 y fichero 0600 (I1-12).
+
+    Reemplazo atómico: el temporal se crea con 0600 antes de `os.replace`
+    para que la ventana con perms por defecto sea mínima.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(path.parent, 0o700)
+    except OSError:
+        pass
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(payload_text, encoding="utf-8")
+    try:
+        os.chmod(temporary, 0o600)
+    except OSError:
+        pass
+    os.replace(temporary, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,10 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     def save_checkpoint(result) -> None:
         if not args.checkpoint:
             return
-        args.checkpoint.parent.mkdir(parents=True, exist_ok=True)
-        temporary = args.checkpoint.with_suffix(args.checkpoint.suffix + ".tmp")
-        temporary.write_text(result.model_dump_json(indent=2) + "\n", encoding="utf-8")
-        os.replace(temporary, args.checkpoint)
+        write_checkpoint_file(args.checkpoint, result.model_dump_json(indent=2) + "\n")
     try:
         if args.fixture:
             result = parse_reviews_html(
@@ -51,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
                 estimated_decision_cost_usd=args.estimated_decision_cost_usd,
                 max_decisions=args.max_decisions,
                 checkpoint=save_checkpoint if args.checkpoint else None,
+                typesafe_api_key=args.typesafe_api_key,
+                openrouter_api_key=args.openrouter_api_key,
             )
     except (JevUnavailable, JevNavigationError, OSError, ValueError) as exc:
         result = {

@@ -2493,8 +2493,103 @@ def _google_review_rows(result: dict) -> list[dict]:
     return rows
 
 
+def _jev_checkpoint_dir() -> Path:
+    """Directorio propio 0700 para checkpoints Jev, fuera de /tmp compartido.
+
+    I1-12: nunca usa `tempfile.gettempdir()`; vive bajo `<sqlite_dir>/
+    jev-checkpoints` con 0700 para que un 0644 residual no exponga reseñas.
+    """
+    base = settings.sqlite_path.parent / "jev-checkpoints"
+    base.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(base, 0o700)
+    except OSError:
+        logger.warning("No se pudo restringir a 0700 el dir de checkpoints Jev")
+    return base
+
+
 def _jev_checkpoint_path(run_id: str) -> Path:
-    return Path(tempfile.gettempdir()) / f"atlas-review-checkpoint-{run_id}.json"
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", str(run_id or ""))[:64] or "run"
+    return _jev_checkpoint_dir() / f"atlas-review-checkpoint-{safe}.json"
+
+
+def _jev_chmod_0600(path: Path) -> None:
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def _jev_child_env(*, project_root: Path) -> dict[str, str]:
+    """Env mínimo explícito para el hijo Jev, sin secretos innecesarios.
+
+    I1-12/I1-13: no se hereda `os.environ` completo (evita DECODO_*,
+    SERPAPI_*, FLASK_SECRET, APP_AUTH_*, DATABASE_URL...). Solo viajan la
+    clave del proveedor Jev y el mínimo operativo. TYPESAFE_API_KEY se lee
+    del padre sin mutar `os.environ` global y se inyecta solo en el hijo;
+    con provider openrouter y sin TYPESAFE propio, se reutiliza la de
+    OpenRouter como placeholder para el chequeo interno del sidecar.
+    """
+    env: dict[str, str] = {}
+    for key in ("PATH", "PYTHONUTF8", "LANG", "LC_ALL", "TZ"):
+        value = os.environ.get(key)
+        if value:
+            env[key] = value
+    env["ATLAS_JEV_PROVIDER"] = "openrouter"
+    for key in (
+        "BU_CDP_URL",
+        "ATLAS_JEV_PATH",
+        "ATLAS_JEV_PYTHON",
+        "ATLAS_JEV_OPENROUTER_MODEL",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_BASE_URL",
+        "TYPESAFE_API_KEY",
+    ):
+        value = os.environ.get(key)
+        if value:
+            env[key] = value
+    env.setdefault("BU_CDP_URL", "http://127.0.0.1:9222")
+    openrouter_key = env.get("OPENROUTER_API_KEY", "")
+    if openrouter_key and not env.get("TYPESAFE_API_KEY"):
+        # Solo en el hijo: el sidecar exige TYPESAFE_API_KEY al arrancar
+        # aunque las decisiones vayan por OpenRouter (ver openrouter_jev).
+        env["TYPESAFE_API_KEY"] = openrouter_key
+    env["PYTHONPATH"] = str(project_root)
+    return env
+
+
+def _coerce_usd(value: Any) -> float | None:
+    try:
+        parsed = float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+    if parsed is None or parsed != parsed or not math.isfinite(parsed) or parsed < 0:
+        return None
+    return parsed
+
+
+def _jev_result_costs(result: dict) -> tuple[float | None, float | None, str | None, int]:
+    """Separa gasto Jev estimado vs reportado por el proveedor (I1-10).
+
+    Devuelve `(estimatedCostUsd, reportedCostUsd, costBasis, modelDecisions)`.
+    `reportedCostUsd` es lo que el proveedor dice haber cobrado; cuando el
+    sidecar solo informa la suma en `estimatedCostUsd` con basis
+    provider_reported/mixed, esa suma se imputa como gasto real para que
+    budgetUsd vs gastado quede visible por run.
+    """
+    coverage = result.get("coverage") if isinstance(result.get("coverage"), dict) else {}
+    estimated = _coerce_usd(result.get("estimatedCostUsd", coverage.get("estimatedCostUsd")))
+    reported = _coerce_usd(result.get("reportedCostUsd", coverage.get("reportedCostUsd")))
+    basis = result.get("costBasis", coverage.get("costBasis"))
+    basis = str(basis) if basis in {"provider_reported", "configured_estimate", "mixed", "unavailable"} else None
+    try:
+        decisions = int(result.get("modelDecisions", coverage.get("modelDecisions") or 0) or 0)
+    except (TypeError, ValueError):
+        decisions = 0
+    decisions = max(0, decisions)
+    if reported is None and estimated is not None and basis in {"provider_reported", "mixed"}:
+        reported = estimated
+    return estimated, reported, basis, decisions
 
 
 def _run_jev_capture(task: dict, payload: dict, progress, task_progress: int) -> dict:
@@ -2507,6 +2602,12 @@ def _run_jev_capture(task: dict, payload: dict, progress, task_progress: int) ->
     checkpoint_path.unlink(missing_ok=True)
     seen_rows: dict[str, str] = {}
     totals = {"inserted": 0, "updated": 0, "seen": 0}
+
+    def _restrict_checkpoint() -> None:
+        # El hijo crea el checkpoint con su umask; el padre lo deja en 0600
+        # en cada observación para que la ventana 0644 sea mínima (dir 0700).
+        if checkpoint_path.exists():
+            _jev_chmod_0600(checkpoint_path)
 
     def persist_checkpoint(data: dict) -> None:
         rows = _google_review_rows(data)
@@ -2534,11 +2635,9 @@ def _run_jev_capture(task: dict, payload: dict, progress, task_progress: int) ->
                "--budget-usd", str(task["budgetUsd"]),
                "--estimated-decision-cost-usd", str(payload["estimatedDecisionCostUsd"]),
                "--checkpoint", str(checkpoint_path)]
-    environment = os.environ.copy()
-    environment["ATLAS_JEV_PROVIDER"] = "openrouter"
-    environment.setdefault("BU_CDP_URL", "http://127.0.0.1:9222")
-    previous_pythonpath = environment.get("PYTHONPATH", "")
-    environment["PYTHONPATH"] = str(project_root) + (os.pathsep + previous_pythonpath if previous_pythonpath else "")
+    # I1-12/I1-13: env mínimo explícito; TYPESAFE_API_KEY solo viaja en el
+    # hijo y `os.environ` global del padre no se muta.
+    environment = _jev_child_env(project_root=project_root)
     with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
         process = subprocess.Popen(command, cwd=project_root, env=environment, stdout=stdout_file, stderr=stderr_file)
         last_checkpoint_mtime = 0
@@ -2554,6 +2653,7 @@ def _run_jev_capture(task: dict, payload: dict, progress, task_progress: int) ->
                     mtime = checkpoint_path.stat().st_mtime_ns
                     if mtime != last_checkpoint_mtime:
                         last_checkpoint_mtime = mtime
+                        _restrict_checkpoint()
                         data = json.loads(checkpoint_path.read_text(encoding="utf-8"))
                         persist_checkpoint(data)
                 except FileNotFoundError:
@@ -2624,17 +2724,24 @@ def _run_hotel_review_capture_job(raw_payload: dict, progress) -> dict:
                 counts = result.pop("_atlasCounts", None) or db.upsert_hotel_reviews(task["hotelKey"], "google", run_id, rows)
                 status = result.get("status", "parse_error")
                 source_name = "google"
-                cost = result.get("estimatedCostUsd")
-                basis = result.get("costBasis")
+                # I1-10: gasto Jev visible por run (budgetUsd vs gastado). Se
+                # imputa `reportedCostUsd` en `actual_spend_usd` y se expone
+                # budget/gasto/decisiones en coverage y en el resumen.
+                cost, reported, basis, decisions = _jev_result_costs(result)
                 coverage = dict(result.get("coverage") or {})
                 coverage.update({"publishedReviewCount": result.get("reviewCount"),
                                  "aggregateRating": result.get("aggregateRating"),
-                                 "modelDecisions": result.get("modelDecisions"),
-                                 "estimatedCostUsd": cost, "costBasis": basis})
+                                 "modelDecisions": decisions,
+                                 "estimatedCostUsd": cost, "reportedCostUsd": reported,
+                                 "costBasis": basis,
+                                 "budgetUsd": task.get("budgetUsd"),
+                                 "spentUsd": reported if reported is not None else cost})
                 if result.get("message"):
                     coverage["message"] = result["message"]
                 _store_review_source_aggregate(task["hotelKey"], source_name, task, result)
                 error = result.get("message") if status in {"blocked", "parse_error", "budget_exhausted"} else None
+                _jev_estimated, _jev_reported = cost, reported
+                _jev_basis, _jev_decisions = basis, decisions
             else:
                 from .public_booking_reviews import collect_booking_reviews
                 def checkpoint(data: dict) -> None:
@@ -2664,17 +2771,22 @@ def _run_hotel_review_capture_job(raw_payload: dict, progress) -> dict:
                 status = result.get("status", "parse_error")
                 source_name = "booking"
                 cost = 0.0
+                _jev_estimated, _jev_reported, _jev_basis, _jev_decisions = 0.0, 0.0, "unavailable", 0
                 coverage = dict(result.get("coverage") or {})
                 coverage.update({"publishedReviewCount": result.get("publishedReviewCount"),
-                                 "aggregateRating": result.get("aggregateRating"), "pagesVisited": result.get("pagesVisited")})
+                                 "aggregateRating": result.get("aggregateRating"), "pagesVisited": result.get("pagesVisited"),
+                                 "budgetUsd": task.get("budgetUsd", 0), "spentUsd": 0.0})
                 _store_review_source_aggregate(task["hotelKey"], source_name, task, result)
                 error = result.get("message") if status in {"blocked", "parse_error", "error"} else None
             db.update_hotel_review_run(run_id, status=status, rows_seen=counts["seen"],
                                        rows_inserted=counts["inserted"], rows_updated=counts["updated"],
-                                       estimated_spend_usd=cost, coverage=coverage, error=error, complete=True)
+                                       estimated_spend_usd=_jev_estimated, actual_spend_usd=_jev_reported,
+                                       coverage=coverage, error=error, complete=True)
             summaries.append({"hotelKey": task["hotelKey"], "source": task["source"], "status": status,
                               "captured": counts["seen"], "inserted": counts["inserted"], "updated": counts["updated"],
-                              "estimatedCostUsd": cost})
+                              "budgetUsd": task.get("budgetUsd"),
+                              "estimatedCostUsd": _jev_estimated, "reportedCostUsd": _jev_reported,
+                              "costBasis": _jev_basis, "modelDecisions": _jev_decisions})
         except JobCancelled:
             db.update_hotel_review_run(run_id, status="cancelled", error="Trabajo cancelado por el usuario", complete=True)
             for remaining in tasks[index:]:
@@ -3143,6 +3255,41 @@ def workspace_assistant_context(target_id: int, selection: AssistantWorkspaceCon
     }
 
 
+def _sanitize_client_history(
+    client_turns: list[dict[str, Any]] | list[Any],
+    *,
+    has_persisted: bool,
+) -> tuple[list[dict[str, str]], int]:
+    """Filtra el `history` del cliente sin confiar en turnos assistant forjados.
+
+    I1-11: en sesión nueva (`has_persisted=False`) los turnos `assistant`
+    del cliente se ignoran (posible forgery para inyectar instrucciones o
+    contexto falso) y solo los turnos `user` llegan al prompt. Con historial
+    persistido, el cliente se ignora por completo (la DB es autoritativa).
+    Devuelve `(history_sanitizado, turnos_no_verificados)`; el conteo queda
+    fuera del prompt, solo en telemetría/`dataMeta`.
+    """
+    normalized: list[dict[str, str]] = []
+    for turn in client_turns or []:
+        if isinstance(turn, dict):
+            role, content = turn.get("role"), turn.get("content")
+        else:
+            role = getattr(turn, "role", None)
+            content = getattr(turn, "content", None)
+        if role not in {"user", "assistant"}:
+            continue
+        text = str(content or "").strip()
+        if not text:
+            continue
+        normalized.append({"role": role, "content": text})
+    if has_persisted:
+        unverified = sum(1 for turn in normalized if turn["role"] == "assistant")
+        return [], unverified
+    user_only = [turn for turn in normalized if turn["role"] == "user"]
+    unverified = len(normalized) - len(user_only)
+    return user_only, unverified
+
+
 @app.post("/api/assistant/chat")
 def assistant_chat():
     request_started = time.monotonic()
@@ -3185,11 +3332,26 @@ def assistant_chat():
     session_id = session_data["id"]
     telemetry["sessionId"] = session_id
     persisted_history = db.list_assistant_messages(session_id, limit=8, owner_key=owner_key)
+    # I1-11: el historial persistido es autoritativo; el `history` del
+    # cliente solo se usa en sesión nueva y sin turnos assistant forjados.
+    _client_turns = [turn.model_dump() for turn in payload.history]
+    _sanitized_client_history, _unverified_client_turns = _sanitize_client_history(
+        _client_turns, has_persisted=bool(persisted_history)
+    )
+    telemetry["historyUnverifiedTurns"] = int(_unverified_client_turns)
+    if _unverified_client_turns:
+        logger.warning(
+            "assistant outcome=history_unverified_filtered request_id=%s unverified_turns=%s has_persisted=%s",
+            telemetry["requestId"],
+            _unverified_client_turns,
+            bool(persisted_history),
+        )
     routing_history = [
         {"role": item["role"], "content": item["content"]}
         for item in persisted_history
         if item["role"] in {"user", "assistant"} and item["content"]
-    ] or [turn.model_dump() for turn in payload.history]
+    ] or _sanitized_client_history
+    telemetry["historyTurns"] = len(routing_history)
     month_prefix = datetime.now(timezone.utc).strftime("%Y-%m")
     monthly_spend = db.assistant_month_spend(owner_key, month_prefix)
     telemetry["monthlySpendUsd"] = round(monthly_spend, 6)
@@ -3278,7 +3440,7 @@ def assistant_chat():
         {"role": item["role"], "content": item["content"]}
         for item in persisted_history
         if item["role"] in {"user", "assistant"} and item["content"]
-    ] or [turn.model_dump() for turn in payload.history]
+    ] or list(_sanitized_client_history)
     db.add_assistant_message(
         session_id,
         "user",
@@ -3306,6 +3468,7 @@ def assistant_chat():
                 "usage": None,
                 "contextChars": 0,
                 "historyTurns": telemetry.get("historyTurns", 0),
+                "historyUnverifiedTurns": telemetry.get("historyUnverifiedTurns", 0),
                 "toolCalls": 0,
                 "toolErrors": 0,
                 "endpointLatencyMs": telemetry["endpointLatencyMs"],
@@ -3569,6 +3732,8 @@ def assistant_chat():
     data_meta["usage"] = telemetry.get("usage")
     data_meta["contextChars"] = telemetry.get("contextChars")
     data_meta["historyTurns"] = telemetry.get("historyTurns", 0)
+    # I1-11: conteo forjado filtrado, fuera del prompt y solo para auditoría.
+    data_meta["historyUnverifiedTurns"] = telemetry.get("historyUnverifiedTurns", 0)
     data_meta["toolCalls"] = telemetry.get("toolCalls", 0)
     data_meta["toolErrors"] = telemetry.get("toolErrors", 0)
     data_meta["endpointLatencyMs"] = telemetry.get("endpointLatencyMs")
