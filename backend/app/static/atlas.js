@@ -626,12 +626,89 @@ const State = {
 
 const VIEWS = ['dashboard', 'hotels', 'reputation', 'flights', 'copilot', 'workspace', 'captures'];
 const LABELS = { dashboard: 'Dashboard', hotels: 'Hoteles', reputation: 'Reputación', flights: 'Vuelos', copilot: 'Copilot', workspace: 'Espacio de trabajo', captures: 'Capturas' };
+const ATLAS_TITLE_SUFFIX = 'Atlas · Rate Intelligence';
+const scrollByView = Object.create(null);
+function atlasViewTitle(view) { return `${LABELS[view] || view} · ${ATLAS_TITLE_SUFFIX}`; }
+function atlasViewURL(view) {
+  const v = VIEWS.includes(view) ? view : 'dashboard';
+  const params = new URLSearchParams();
+  if (v === 'hotels') {
+    params.set('tab', State.hotelTab === 'sheet' ? 'sheet' : 'bi');
+  } else if (v === 'flights') {
+    let tab = 'overview';
+    try {
+      const cur = State.flight && State.flight.tab;
+      if (cur === 'overview' || cur === 'routes' || cur === 'operations') tab = cur;
+      else { const saved = readPref('atlas.flightTab', ['overview', 'routes', 'operations'], 'overview'); if (saved) tab = saved; }
+    } catch (_) { /* usa el valor por defecto */ }
+    params.set('tab', tab);
+  } else if (v === 'reputation' && State.reputation.hotelKey) {
+    params.set('hotelKey', State.reputation.hotelKey);
+    const tab = State.reputation.tab;
+    if (tab && tab !== 'profile' && ['profile', 'reviews', 'analysis', 'notes', 'captures'].includes(tab)) params.set('tab', tab);
+  }
+  const q = params.toString();
+  return q ? `#${v}?${q}` : `#${v}`;
+}
+function atlasParseHash() {
+  const raw = (location.hash || '').replace(/^#/, '');
+  const idx = raw.indexOf('?');
+  const route = idx < 0 ? raw : raw.slice(0, idx);
+  const query = idx < 0 ? '' : raw.slice(idx + 1);
+  let params = null;
+  try { params = new URLSearchParams(query); } catch (_) { params = new URLSearchParams(); }
+  return { route, params };
+}
+function atlasApplyRoute(route, params) {
+  const view = VIEWS.includes(route) ? route : readPref(PREFS.view, VIEWS, 'dashboard');
+  try {
+    const get = (k) => { try { return params.get(k); } catch (_) { return null; } };
+    if (view === 'hotels') {
+      const tab = get('tab');
+      if (tab === 'sheet' || tab === 'bi') { State.hotelTab = tab; writePref('atlas.hotelTab', tab); }
+    } else if (view === 'flights') {
+      const tab = get('tab');
+      try { if (typeof restoreFlightState === 'function') restoreFlightState(); } catch (_) { /* noop */ }
+      if (tab === 'overview' || tab === 'routes' || tab === 'operations') {
+        if (State.flight) State.flight.tab = tab;
+        writePref('atlas.flightTab', tab);
+      }
+    } else if (view === 'reputation') {
+      const hk = get('hotelKey');
+      State.reputation.hotelKey = hk || null;
+      const tab = get('tab');
+      if (tab && ['profile', 'reviews', 'analysis', 'notes', 'captures'].includes(tab)) State.reputation.tab = tab;
+      else if (State.reputation.hotelKey) State.reputation.tab = 'profile';
+      if (!State.reputation.hotelKey) { State.reputation.profile = null; State.reputation.reviews = null; }
+    }
+  } catch (_) { /* la ruta nunca rompe la navegación */ }
+  return view;
+}
+function syncAtlasURL() {
+  try {
+    const url = atlasViewURL(State.view);
+    if ((location.hash || '') !== url) history.replaceState({ view: State.view }, '', url);
+  } catch (_) { /* noop */ }
+}
 function mount(view) { return $(`#view-${view}`); }
 function activeTarget() { return State.targets.find((t) => t.id === State.targetId) || null; }
 
 /* --------------------------------------------------------------- router */
-function setView(view) {
+function setView(view, opts) {
   if (!VIEWS.includes(view)) view = 'dashboard';
+  opts = opts && typeof opts === 'object' ? opts : {};
+  const fromPop = Boolean(opts.fromPop);
+  const prevView = State.view;
+  if (!history.state && !fromPop) {
+    try {
+      const parsed = atlasParseHash();
+      if (parsed.route && VIEWS.includes(parsed.route)) atlasApplyRoute(parsed.route, parsed.params);
+    } catch (_) { /* la entrada directa nunca rompe el arranque */ }
+    if (!VIEWS.includes(view)) view = 'dashboard';
+  }
+  if (prevView !== view) {
+    try { scrollByView[prevView] = window.scrollY; } catch (_) { /* el scroll recordado es opcional */ }
+  }
   if (view !== 'flights' && State.airOperations.fullscreen) {
     State.airOperations.fullscreen = false;
     document.body.classList.remove('air-operations-fullscreen');
@@ -646,12 +723,73 @@ function setView(view) {
     if (active) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
   writePref(PREFS.view, view);
-  window.scrollTo(0, 0);
-  const reputationQuery = view === 'reputation' && State.reputation.hotelKey
-    ? `?hotelKey=${encodeURIComponent(State.reputation.hotelKey)}` : '';
-  try { history.replaceState({ view }, '', `#${view}${reputationQuery}`); } catch (_) { /* noop */ }
+  try { document.title = atlasViewTitle(view); } catch (_) { /* el título nunca rompe el render */ }
+  let targetY = 0;
+  try { if (Object.prototype.hasOwnProperty.call(scrollByView, view)) targetY = Number(scrollByView[view]) || 0; } catch (_) { targetY = 0; }
+  try { window.scrollTo(0, targetY); } catch (_) { /* noop */ }
+  const url = atlasViewURL(view);
+  try {
+    if (fromPop) {
+      const cur = location.hash || '';
+      if (cur !== url && cur.split('?')[0] === `#${view}`) history.replaceState({ view }, '', url);
+    } else if (opts.replace) {
+      history.replaceState({ view }, '', url);
+    } else if (!history.state || (location.hash || '') === url) {
+      history.replaceState({ view }, '', url);
+    } else {
+      history.pushState({ view }, '', url);
+    }
+  } catch (_) { /* noop */ }
+  try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (_) { /* noop */ }
   renderView(view);
 }
+try {
+  window.addEventListener('popstate', (event) => {
+    try {
+      const parsed = atlasParseHash();
+      const stateView = event && event.state && event.state.view;
+      const route = parsed.route || stateView || State.view;
+      const view = atlasApplyRoute(route, parsed.params);
+      setView(view, { fromPop: true });
+    } catch (_) { /* el atrás nunca rompe la vista */ }
+  });
+} catch (_) { /* sin popstate no hay historial */ }
+try {
+  const __origSetHotelTab = typeof setHotelTab === 'function' ? setHotelTab : null;
+  if (__origSetHotelTab && !__origSetHotelTab.__atlasURL) {
+    const __wrappedHotelTab = function (tab) {
+      const r = __origSetHotelTab.apply(this, arguments);
+      syncAtlasURL();
+      return r;
+    };
+    __wrappedHotelTab.__atlasURL = true;
+    setHotelTab = __wrappedHotelTab;
+  }
+} catch (_) { /* las pestañas siguen funcionando sin URL */ }
+try {
+  const __origSetFlightTab = typeof setFlightTab === 'function' ? setFlightTab : null;
+  if (__origSetFlightTab && !__origSetFlightTab.__atlasURL) {
+    const __wrappedFlightTab = function (tab) {
+      const r = __origSetFlightTab.apply(this, arguments);
+      syncAtlasURL();
+      return r;
+    };
+    __wrappedFlightTab.__atlasURL = true;
+    setFlightTab = __wrappedFlightTab;
+  }
+} catch (_) { /* las pestañas siguen funcionando sin URL */ }
+try {
+  const __origShowRepTab = typeof showHotelReputationTab === 'function' ? showHotelReputationTab : null;
+  if (__origShowRepTab && !__origShowRepTab.__atlasURL) {
+    const __wrappedRepTab = function (tab) {
+      const r = __origShowRepTab.apply(this, arguments);
+      syncAtlasURL();
+      return r;
+    };
+    __wrappedRepTab.__atlasURL = true;
+    showHotelReputationTab = __wrappedRepTab;
+  }
+} catch (_) { /* las pestañas siguen funcionando sin URL */ }
 
 async function renderView(view) {
   const fn = {
