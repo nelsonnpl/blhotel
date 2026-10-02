@@ -20,5 +20,6 @@ Log de una línea por evento: fecha-hora · fase-paso · quién · qué · resul
 | 2026-10-02 11:40 | O1-cierre | director | 8/8 PKG + regresión (pytest 263, node 33, smoke FE) + SerpAPI MAD_LPA×3 (0 €, sin leak) + backup `113738` + copias. *OR 0,6992 con retardo de contador, no gasto nuevo | OK |
 | 2026-10-02 12:30 | O2-cierre | director | 6/6 PKG (09 pushState, 10 glosario+errores con 1 remate, 11 Capturas, 12 ejes, 13 768→0, 14 es-ES) + pytest 263 + node 33 + humo 20/20 | OK |
 | 2026-10-02 13:30 | O3-cierre | director | 6/6 PKG (15+15B tokens, 16 movimiento con 1 fix, 17 tabs, 18 mapas, 19 contraste) + 1 NO APTO→APTO + 1 APTO-PARCIAL→15B + cota gzip 42 KB + pytest 263 + humo 16/16. Desvío doc: MM-02/03 animan width (cubierto por reduce) | OK |
+| 2026-10-02 14:10 | O4-cierre | director | 4/4 PKG (20 cifras, 21 search+modelos+adjuntos, 22 MoA+comparable 4.5×, 23 history+Jev) + pytest 292 + node 33 | OK |
 
 Marcas: `PARADA-1: APROBADO` · `PARADA-2: APROBADO` (las anota el director al aprobar el usuario).
