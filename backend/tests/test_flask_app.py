@@ -425,17 +425,27 @@ def test_analytics_query_applies_observation_filters_and_pagination(monkeypatch)
     assert body["coverage"]["status"] == "not_applicable"
 
 
-def test_hotel_history_keeps_hotel_key_for_product_matching() -> None:
-    client = app.test_client()
-    response = client.get(
-        "/api/hotels/price-history?targetId=1&limit=2&hotelKey=/hotel/es/aparthotel-green-field.html"
+def test_hotel_history_keeps_hotel_key_for_product_matching(monkeypatch) -> None:
+    hotel_key = "/hotel/es/aparthotel-green-field.html"
+
+    class FakeDatabase:
+        def get_target(self, target_id):
+            return {"id": target_id}
+
+        def can_access_target(self, owner_key, target_id):
+            return target_id == 1
+
+        def hotel_price_history(self, key, *, target_id, limit):
+            assert (key, target_id, limit) == (hotel_key, 1, 2)
+            return [{"hotelKey": key, "snapshotId": 18}]
+
+    monkeypatch.setattr(flask_app, "db", FakeDatabase())
+    response = app.test_client().get(
+        f"/api/hotels/price-history?targetId=1&limit=2&hotelKey={hotel_key}"
     )
 
     assert response.status_code == 200
-    history = response.get_json()["history"]
-    if history:
-        assert history[0]["hotelKey"] == "/hotel/es/aparthotel-green-field.html"
-        assert history[0]["snapshotId"]
+    assert response.get_json()["history"] == [{"hotelKey": hotel_key, "snapshotId": 18}]
 
 
 def test_capture_history_exposes_extraction_groups() -> None:

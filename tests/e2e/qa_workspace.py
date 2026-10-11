@@ -44,8 +44,8 @@ with sync_playwright() as p:
     page.goto(f'{BASE}/#workspace')
     page.wait_for_selector('.board .wblock')
 
-    check('paleta de 300 px', abs(page.locator('.workspace__aside').bounding_box()['width'] - 300) < 2)
-    check('5 bloques en la paleta con etiqueta 30×24', page.locator('.block-add').count() == 5 and page.locator('.block-add .badge').first.bounding_box()['width'] == 30)
+    check('catálogo compacto de bloques', 220 <= page.locator('.workspace__aside').bounding_box()['width'] <= 240)
+    check('5 bloques disponibles con etiquetas legibles', page.locator('.block-add').count() == 5 and page.locator('.block-add .badge').first.bounding_box()['height'] >= 24)
     check('KPIs a todo el ancho', 'wide' in (page.locator('.wblock', has=page.locator('.badge', has_text='KPI')).first.get_attribute('class') or ''))
     check('sin desbordes en la cabecera', page.evaluate("() => { const m = document.querySelector('.workspace__main'); return m.scrollWidth <= m.clientWidth + 1; }"))
     check('estado «Guardado»', 'Guardado' in page.locator('.saved-chip').inner_text())

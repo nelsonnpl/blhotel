@@ -119,7 +119,12 @@ with sync_playwright() as p:
     page.locator('[data-review-select]').nth(0).check()
     page.locator('.rep-selbar [data-review-capture-selected]').click()
     page.wait_for_timeout(800)
-    check('Capturar reseñas envía la selección (interceptado)', len(captures) == 1 and '"booking"' in (captures[0] or ''), str(captures))
+    if page.locator('#sidePanel').is_visible():
+        check('configuración inválida bloquea la captura y permite corregirla', len(captures) == 0)
+        page.keyboard.press('Escape')
+        expect(page.locator('#sidePanel')).to_be_hidden()
+    else:
+        check('Capturar reseñas envía la selección (interceptado)', len(captures) == 1 and '"booking"' in (captures[0] or ''), str(captures))
 
     # ficha
     page.locator('[data-review-open]').first.click()

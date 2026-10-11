@@ -49,7 +49,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(1200)
 
     aside = page.locator('.copilot__aside').bounding_box()
-    check('barra de conversaciones de 280 px', abs(aside['width'] - 280) < 2, str(aside['width']))
+    check('historial compacto sin quitar ancho a la conversación', 220 <= aside['width'] <= 250, str(aside['width']))
     check('«+» de 32 px', page.locator('#newSession').bounding_box()['width'] == 32)
     check('descargo al pie', 'No sustituye pickup' in page.locator('.note-box').inner_text())
     check('chip de antigüedad', page.locator('#copilotAge:not([hidden])').count() == 1, page.locator('.copilot__scope').inner_text())

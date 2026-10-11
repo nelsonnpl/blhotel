@@ -34,8 +34,10 @@ def is_allowed(url: str, method: str) -> bool:
     return any(m == method.upper() and rx.search(path) for m, rx in _ALLOW)
 
 
-def canned(url: str):
+def canned(url: str, method: str = "POST"):
     path = url.split("?", 1)[0]
+    if method.upper() == "GET" and "/api/jobs/qa-" not in path:
+        return None
     if path.endswith("/api/jobs/hotel-capture"):
         return {"job": {"id": "qa-mock", "status": "queued", "progress": 0}}
     if path.endswith("/api/jobs/air-capture"):
@@ -57,7 +59,7 @@ def install_mocks(page):
     """Instala mocks deny-by-default en una página Playwright."""
     def handler(route):
         req = route.request
-        body = canned(req.url)
+        body = canned(req.url, req.method)
         if body is not None:
             # Ruta mock conocida: se responde siempre (cubre el sondeo GET
             # de jobs, p. ej. /api/jobs/qa-rev, que si llega al backend da 404).

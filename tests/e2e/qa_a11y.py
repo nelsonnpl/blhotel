@@ -20,8 +20,13 @@ SCAN = r"""() => {
     const label = (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || el.getAttribute('placeholder') || '').trim()
       || (el.id && document.querySelector(`label[for="${el.id}"]`)?.textContent.trim()) || (el.closest('label')?.textContent.trim());
     if (!label) out.unnamed.push(el.outerHTML.slice(0, 110));
-    const inline = el.tagName === 'A' || el.classList.contains('link-button');
-    if (!inline && (r.width < 24 || r.height < 24) && !['checkbox', 'radio'].includes(el.type)) out.small.push(`${Math.round(r.width)}×${Math.round(r.height)} ${el.outerHTML.slice(0, 90)}`);
+    // Plot markers expose a larger transparent ::after hit area without changing data geometry.
+    const hit = getComputedStyle(el, '::after');
+    const expanded = hit.content === '""' && hit.position === 'absolute' && hit.pointerEvents !== 'none';
+    const width = r.width + (expanded ? Math.max(0, -parseFloat(hit.left) || 0) + Math.max(0, -parseFloat(hit.right) || 0) : 0);
+    const height = r.height + (expanded ? Math.max(0, -parseFloat(hit.top) || 0) + Math.max(0, -parseFloat(hit.bottom) || 0) : 0);
+    const inline = el.tagName === 'A'  || el.classList.contains('link-button');
+    if (!inline && (width < 24 || height < 24) && !['checkbox', 'radio'].includes(el.type)) out.small.push(`${Math.round(r.width)}×${Math.round(r.height)} ${el.outerHTML.slice(0, 90)}`);
   });
   out.tabs = root.querySelectorAll('[role=tab]').length;
   return out;

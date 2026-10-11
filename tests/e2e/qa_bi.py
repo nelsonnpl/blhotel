@@ -54,7 +54,7 @@ with sync_playwright() as p:
     check('fechas capturadas accesibles por teclado', meds.count() >= 1, str(meds.count()))
     if meds.count() >= 2:
         before = page.locator('#biKpis .kpi-strip__label').first.inner_text()
-        meds.first.dispatch_event('click')
+        meds.locator(':scope[aria-pressed="false"]').first.dispatch_event('click')
         after = page.locator('#biKpis .kpi-strip__label').first.inner_text()
         check('pulsar una fecha recalcula los KPIs', before != after, f'{before} → {after}')
         check('chip «Entrada dd/mm»', page.locator('[data-bi-clear="focus"]').count() == 1)

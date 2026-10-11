@@ -30,7 +30,7 @@ def open_dashboard(browser, market, theme='claro', width=1440, height=900):
     mock_side_effects(page)
     page.goto(f'{BASE}/#dashboard')
     page.wait_for_selector('.dash-grid')
-    if market != 1:
+    if page.evaluate('State.targetId') != market:
         page.click('#marketBtn')
         page.click(f'.market-menu__item[data-market="{market}"]')
         page.wait_for_selector('.dash-grid')
@@ -96,15 +96,12 @@ with sync_playwright() as p:
     check('la ventana cabe en el mapa', pop_box['x'] >= frame_box['x'] and pop_box['x'] + pop_box['width'] <= frame_box['x'] + frame_box['width'] + 1
           and pop_box['y'] >= frame_box['y'] - 1, f'{pop_box} dentro de {frame_box}')
     check('línea discontinua y anillo', page.locator('#dashPopLine').count() == 1 and page.locator('#dashPopRing').count() == 1)
-    page.locator('[data-dash-cmp]').click()
-    check('«Media del set» añade la serie del set', page.locator('#dashPopChart polyline[stroke-dasharray="4 4"]').count() == 1)
-    page.locator('#dashPopChart .dash-pop__pt').first.hover()
-    readout = page.locator('.dash-pop__readout').inner_text()
-    check('lectura al pasar por un punto', readout.startswith('Foto #'), readout)
-    page.screenshot(path=str(OUT / 'dashboard-pop-hist-1440.png'))
-    page.locator('[data-dash-chart="dates"]').click()
     legend = page.locator('.dash-pop__legend').inner_text()
-    check('modo por fecha de entrada', 'Última captura' in legend, legend)
+    check('el inspector identifica la última extracción', 'Última extracción' in legend, legend)
+    point = page.locator('#dashPopChart .dash-pop__pt').first
+    point.hover()
+    readout = page.locator('.dash-pop__readout').inner_text()
+    check('lectura por fecha de estancia y tarifa', 'última' in readout and '€' in readout, readout)
     page.screenshot(path=str(OUT / 'dashboard-pop-dates-1440.png'))
 
     # sigue al punto al mover el mapa

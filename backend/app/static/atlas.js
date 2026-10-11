@@ -2478,7 +2478,7 @@ function biDayHTML(m) {
 function biCalendarHTML(m) {
   const st = State.bi;
   const H = m.H;
-  const cols = `270px repeat(${H}, minmax(0, 1fr))`;
+  const cols = `270px repeat(${H}, minmax(24px, 1fr))`;
   const showText = H <= 30;
   const isoYear = (iso) => String(iso || '').slice(0, 4);
   const head = biCalendarHead(m.dates).map((c, i) => {
@@ -2529,14 +2529,14 @@ function biCalendarHTML(m) {
       <div class="bi-legend" title="Verde = por debajo de la mediana (favorable) · rojo = por encima (riesgo) · ±5 % neutro"><span class="bi-legend__scale" aria-hidden="true"><i class="heat-lo-strong"></i><i class="heat-lo-soft22"></i><i class="bg-linesoft"></i><i class="heat-hi-soft22"></i><i class="heat-hi-strong"></i></span><span class="sr-only">Escala de verde (barato) a rojo (caro) pasando por neutro · </span><span>vs mediana del día</span><i class="bi-legend__closed" aria-hidden="true"></i><span>cerrado</span><i class="bi-legend__low" aria-hidden="true"></i><span>cupo bajo (─ ámbar)</span><i class="bi-legend__empty" aria-hidden="true"></i><span title="Fecha sin captura: no hay foto para esa extracción">sin foto (sin captura)</span></div></div></div>
     ${sparse ? `<div class="bi-cal__sparse" role="note">Solo ${captured} de ${H} fechas capturadas — cambia a 14/30 días para una vista densa. El punteado claro es «sin foto», no un error; el rayado diagonal es «cerrado».</div>` : ''}
     <div class="bi-cal__body">
-      <div class="bi-cal__grid" id="biCalGrid">
+      <div class="bi-cal__scroll" tabindex="0" role="region" aria-label="Calendario de tarifas por hotel y extracción"><div class="bi-cal__grid" id="biCalGrid" style="min-width:${271 + H * 25}px">
         <div class="bi-cal__row bi-cal__days" style="grid-template-columns:${cols}"><span></span>${head}</div>
         <div class="bi-cal__row bi-cal__medrow" style="grid-template-columns:${cols}"><span class="bi-cal__label">Mediana del set</span>${medRow}</div>
         ${rankRow}
         <div class="bi-cal__rows">${body || '<div class="bi-cal__nohotels">Ningún hotel tiene tarifas con estos filtros. Prueba otro régimen o tipo de habitación.</div>'}</div>
         <div class="bi-cal__focus" style="left:calc(270px + 1px + (100% - 271px) * ${(m.fi / H).toFixed(5)});width:calc((100% - 271px) / ${H})" aria-hidden="true"></div>
       </div>
-      <div class="bi-cal__foot"><span>Pulsa una fecha para recalcular mapa, KPIs, distribución y tarifa sugerida. Pulsa un hotel para abrir su ficha.</span><span class="mono">extracción ${biDayLabel(m.dates[m.fi])} seleccionada · ${m.open.length} con tarifa · ${m.closedToday} cerrados · ${captured} ${captured === 1 ? 'fecha capturada' : 'fechas capturadas'} de ${H}</span></div>
+      </div><div class="bi-cal__foot"><span>Pulsa una fecha para recalcular mapa, KPIs, distribución y tarifa sugerida. Pulsa un hotel para abrir su ficha.</span><span class="mono">extracción ${biDayLabel(m.dates[m.fi])} seleccionada · ${m.open.length} con tarifa · ${m.closedToday} cerrados · ${captured} ${captured === 1 ? 'fecha capturada' : 'fechas capturadas'} de ${H}</span></div>
     </div>`;
 }
 
