@@ -4634,10 +4634,8 @@ async function renderCaptures() {
       <article class="card card--pad">
         <div class="card__kicker u-mb5">Captura manual</div>
         <h2 class="u-mb15">Nueva captura</h2>
-        <div class="u-mb15">
+        <div class="capture-fields">
           <label class="field"><span>Límite hoteles</span><input class="input input--mono" id="capLimit" value="200" /></label>
-        </div>
-        <div class="grid grid--2 u-gap11-mb15">
           <label class="field"><span>Primera extracción</span><input type="date" required class="input" id="capCheckIn" /></label>
           <label class="field"><span>Noches</span><input type="number" min="1" max="30" value="7" required class="input" id="capNights" /></label>
           <label class="field"><span>Adultos</span><input type="number" min="1" max="10" value="2" required class="input" id="capAdults" /></label>
