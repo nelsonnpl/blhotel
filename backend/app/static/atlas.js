@@ -2020,7 +2020,6 @@ function paintHotelSheet({ focusKey = null } = {}) {
   if (focusKey) $(`[data-sheet-toggle="${CSS.escape(focusKey)}"]`)?.focus();
   else if (keepFocus) $(keepFocus)?.focus({ preventScroll: true });
   const table = $('#hotelTable');
-  if (table && !sheet.painted) { sheet.painted = true; table.classList.add('is-entering'); setTimeout(() => table.classList.remove('is-entering'), 900); }
 }
 
 function hotelSheetKpisHTML(model, metrics, snapshot) {
@@ -5853,7 +5852,7 @@ function toast(message, kind = 'info', ms = TOAST_MS) {
 function atlasReduceMotion() {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; }
 }
-function atlasExitMs() { return atlasReduceMotion() ? 0 : 120; }
+function atlasExitMs() { return atlasReduceMotion() ? 0 : 160; }
 function atlasAnimateExit(el, done) {
   if (!el || !el.isConnected) { if (typeof done === 'function') done(); return; }
   if (atlasReduceMotion()) { if (typeof done === 'function') done(); return; }
