@@ -139,7 +139,9 @@ api = async function apiWithTimeout(path, opts) {
   let lastErr = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return await __apiAttempt(path, opts, timeoutMs, externalSignal);
+      const result = await __apiAttempt(path, opts, timeoutMs, externalSignal);
+      if (!isGet && !/^\/api\/(assistant|workspaces|auth)\b/.test(String(path))) State.dataRev += 1;
+      return result;
     } catch (err) {
       lastErr = err;
       if (!isGet) throw err;
@@ -520,6 +522,9 @@ function writePref(key, value) {
 /* --------------------------------------------------------------- estado */
 const State = {
   view: 'dashboard',
+  dataRev: 0,           // sube con cada escritura correcta: invalida las vistas reutilizadas
+  viewDirty: {},        // vistas que deben volver a pintarse aunque la clave coincida
+  viewRenderedAt: {},
   theme: 'claro',
   density: 'equilibrada',
   sidebarCollapsed: false,
@@ -562,7 +567,7 @@ const State = {
   dashboardMapMarkers: [],
   dashboardMapResizeObserver: null,
   dashboard: {                  // Dashboard: señales, ventana del mapa y su gráfica
-    allSignals: false, sel: null, chart: 'hist', cmp: false, ptHover: null,
+    allSignals: false, sel: null, ptHover: null,
     model: null, photos: [], signals: [], previousSnapshotId: null, returnFocus: null,
   },
   biMap: null,
@@ -745,7 +750,7 @@ function setView(view, opts) {
     }
   } catch (_) { /* noop */ }
   try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (_) { /* noop */ }
-  renderView(view);
+  renderView(view, { reuse: Boolean(opts.reuse) && prevView !== view });
 }
 try {
   window.addEventListener('popstate', (event) => {
@@ -754,7 +759,7 @@ try {
       const stateView = event && event.state && event.state.view;
       const route = parsed.route || stateView || State.view;
       const view = atlasApplyRoute(route, parsed.params);
-      setView(view, { fromPop: true });
+      setView(view, { fromPop: true, reuse: true });
     } catch (_) { /* el atrás nunca rompe la vista */ }
   });
 } catch (_) { /* sin popstate no hay historial */ }
@@ -795,13 +800,50 @@ try {
   }
 } catch (_) { /* las pestañas siguen funcionando sin URL */ }
 
-async function renderView(view) {
+/* Vistas vivas: al navegar entre secciones ya pintadas no se vuelve a renderizar (ni a crear su mapa).
+   Una vista se reutiliza si su clave de render no cambió, nadie la marcó como sucia y es reciente. */
+const REUSABLE_VIEWS = ['dashboard', 'hotels', 'flights', 'reputation'];
+const VIEW_REUSE_MAX_AGE_MS = 5 * 60 * 1000;
+function viewRenderKey(view) {
+  const own = view === 'hotels' ? `${State.hotelTab}|${State.hotelVariant}`
+    : view === 'flights' ? String((State.flight && State.flight.tab) || '')
+    : view === 'reputation' ? `${State.reputation.hotelKey || ''}|${State.reputation.tab || ''}`
+    : '';
+  return [State.targetId, State.dataRev, State.theme, Math.round(window.innerWidth / 50), own].join('|');
+}
+function onViewShown(view) {
+  requestAnimationFrame(() => {
+    try {
+      [State.dashboardMap, State.biMap, State.flightMap].filter(Boolean).forEach((map) => map.resize());
+      if (typeof atlasScheduleSync === 'function') atlasScheduleSync();
+    } catch (_) { /* el redimensionado del mapa nunca rompe la navegación */ }
+  });
+}
+async function renderView(view, opts) {
   const fn = {
     dashboard: renderDashboard, hotels: renderHotels, flights: renderFlights,
     reputation: renderHotelReputation,
     copilot: renderCopilot, workspace: renderWorkspace, captures: renderCaptures,
   }[view];
-  if (fn) await fn();
+  if (!fn) return;
+  const host = mount(view);
+  const reusable = host && REUSABLE_VIEWS.includes(view);
+  if (reusable && opts && opts.reuse && host.dataset.renderKey && host.dataset.renderKey === viewRenderKey(view)
+      && !State.viewDirty[view] && Date.now() - (State.viewRenderedAt[view] || 0) < VIEW_REUSE_MAX_AGE_MS) {
+    host.classList.add('is-reentry');
+    onViewShown(view);
+    return;
+  }
+  if (host) { host.classList.remove('is-reentry'); delete host.dataset.renderKey; }
+  State.viewDirty[view] = false;
+  const targetId = State.targetId, rev = State.dataRev;
+  await fn();
+  const key = viewRenderKey(view);
+  if (reusable && targetId === State.targetId && rev === State.dataRev && State.view === view && !State.viewDirty[view]
+      && host.querySelector('.page') && !host.querySelector('.sk-page, .inline-error, .empty-state')) {
+    host.dataset.renderKey = key;
+    State.viewRenderedAt[view] = Date.now();
+  }
 }
 
 function skeleton(host, kind) {
@@ -1346,7 +1388,7 @@ async function renderDashboardHotelMap(model) {
   const points = model.hotels.filter((h) => h.adr != null && validLngLat(h.row));
   if (!points.length) { mapFrameStatus(frame, 'No hay hoteles con tarifa y coordenadas válidas en esta foto.'); done(); return; }
   try { await loadMapLibre(); } catch (_) { if (frame.isConnected && frame._mapRequest === request) mapFrameStatus(frame, MAP_FAILED_TEXT); done(); return; }
-  if (!frame.isConnected || frame._mapRequest !== request || State.view !== 'dashboard') { done(); return; }
+  if (!frame.isConnected || frame._mapRequest !== request || State.view !== 'dashboard') { if (State.view !== 'dashboard') State.viewDirty.dashboard = true; done(); return; }
   destroyDashboardMap();
   const ml = window.maplibregl;
   let map;
@@ -1373,97 +1415,93 @@ async function renderDashboardHotelMap(model) {
 /* ---- ventana del mapa (inspector de tarifa) */
 function dashboardHotel(key) { return State.dashboard.model?.hotels.find((h) => h.key === key) || null; }
 
-/* Serie «por foto»: mediana del hotel en cada foto del mercado, alineada con las fotos. */
-function dashboardHistSeries(history, photos) {
+/* Dos últimas extracciones con tarifas del hotel, agrupadas por los IDs guardados.
+   Cada extracción puede incluir varias fotos para distintas fechas de estancia. */
+function dashboardDateSeries(history, captures) {
+  const valid = (history || []).filter((entry) => entry.snapshotId != null && entry.checkIn && Number.isFinite(Number(entry.pricePerNight)) && Number(entry.pricePerNight) > 0);
   const bySnapshot = new Map();
-  (history || []).forEach((entry) => {
-    const value = Number(entry.pricePerNight);
-    if (entry.snapshotId == null || !(value > 0)) return;
-    if (!bySnapshot.has(Number(entry.snapshotId))) bySnapshot.set(Number(entry.snapshotId), []);
-    bySnapshot.get(Number(entry.snapshotId)).push(value);
-  });
-  return photos.map((p) => ({
-    label: `#${p.id}`, date: new Date(p.scrapedAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }),
-    value: bySnapshot.has(Number(p.id)) ? median(bySnapshot.get(Number(p.id))) : null, set: Number(p.avgPricePerNight),
-  }));
-}
-
-/* Serie «por extracción»: última foto frente a la anterior, comparando la misma fecha de entrada (extracción).
-   Una captura puede reunir varias fotos tomadas con menos de 20 minutos de separación. */
-function dashboardDateSeries(history) {
-  const valid = (history || []).filter((e) => e.snapshotId != null && e.checkIn && Number(e.pricePerNight) > 0 && Number.isFinite(Date.parse(e.scrapedAt)))
-    .slice().sort((a, b) => Date.parse(a.scrapedAt) - Date.parse(b.scrapedAt));
-  const batches = [];
   valid.forEach((entry) => {
-    const at = Date.parse(entry.scrapedAt);
-    let batch = batches.at(-1);
-    if (!batch || at - batch.lastAt > 20 * 60 * 1000) { batch = { entries: [], lastAt: at, ids: [] }; batches.push(batch); }
-    batch.entries.push(entry);
-    batch.lastAt = at;
-    if (!batch.ids.includes(Number(entry.snapshotId))) batch.ids.push(Number(entry.snapshotId));
+    const id = Number(entry.snapshotId);
+    if (!bySnapshot.has(id)) bySnapshot.set(id, []);
+    bySnapshot.get(id).push(entry);
   });
+  const batches = (captures || []).slice().sort((a, b) => Date.parse(b.observedAt) - Date.parse(a.observedAt))
+    .map((capture) => ({ ...capture, entries: (capture.snapshotIds || []).flatMap((id) => bySnapshot.get(Number(id)) || []) }))
+    .filter((capture) => capture.entries.length).slice(0, 2);
   if (!batches.length) return null;
-  const byDate = (batch) => {
-    const map = new Map();
-    (batch?.entries || []).forEach((e) => { if (!map.has(e.checkIn)) map.set(e.checkIn, []); map.get(e.checkIn).push(Number(e.pricePerNight)); });
-    return new Map([...map.entries()].map(([k, v]) => [k, median(v)]));
+  const byDate = (capture) => {
+    const values = new Map();
+    (capture?.entries || []).forEach((entry) => {
+      if (!values.has(entry.checkIn)) values.set(entry.checkIn, []);
+      values.get(entry.checkIn).push(Number(entry.pricePerNight));
+    });
+    return new Map([...values].map(([date, prices]) => [date, median(prices)]));
   };
-  const current = byDate(batches.at(-1));
-  const previous = batches.length > 1 ? byDate(batches.at(-2)) : new Map();
-  const dates = [...new Set([...current.keys(), ...previous.keys()])].sort();
-  const label = (batch) => { const ids = batch.ids; return ids.length === 1 ? `#${ids[0]}` : `#${ids[0]}–#${ids.at(-1)}`; };
+  const current = byDate(batches[0]), previous = byDate(batches[1]);
+  const currentDates = new Set([...(batches[0].checkIns || []), ...current.keys()]);
+  const previousDates = new Set([...(batches[1]?.checkIns || []), ...previous.keys()]);
+  const dates = [...new Set([...currentDates, ...previousDates])].sort();
   return {
-    points: dates.map((date) => ({ label: `${date.slice(8, 10)}/${date.slice(5, 7)}`, value: current.get(date) ?? null, prev: previous.get(date) ?? null })),
-    currentLabel: label(batches.at(-1)), previousLabel: batches.length > 1 ? label(batches.at(-2)) : null,
+    points: dates.map((date) => ({
+      date, label: `${date.slice(8, 10)}/${date.slice(5, 7)}`,
+      value: current.get(date) ?? null, prev: previous.get(date) ?? null,
+      currentExpected: currentDates.has(date), previousExpected: previousDates.has(date),
+    })),
+    currentLabel: fmtStamp(batches[0].observedAt),
+    previousLabel: batches[1] ? fmtStamp(batches[1].observedAt) : null,
   };
 }
 
 function dashboardPopoverChartHTML(h) {
   const st = State.dashboard;
   const history = State.hotelPriceHistories[State.targetId]?.[h.key];
-  if (!history) return '<div class="dash-pop__loading"><i></i>Cargando evolución por foto…</div>';
-  let s1, s2 = null, labels, leg1, leg2 = '', dashed = st.chart === 'hist', readout;
-  if (st.chart === 'hist') {
-    const series = dashboardHistSeries(history, st.photos);
-    s1 = series.map((p) => p.value);
-    if (st.cmp) s2 = series.map((p) => p.set);
-    labels = series.map((p) => p.label);
-    leg1 = 'ADR del hotel por foto'; leg2 = 'Media del set';
-    const i = st.ptHover;
-    readout = i != null && s1[i] != null ? `Foto ${labels[i]} · ${series[i].date} · ${eur(s1[i])}${st.cmp ? ` · set ${eur(series[i].set)}` : ''}` : null;
-  } else {
-    const series = dashboardDateSeries(history);
-    if (!series) return '<div class="dash-pop__empty">Sin extracciones observadas para este hotel.</div>';
-    s1 = series.points.map((p) => p.value);
-    s2 = series.previousLabel ? series.points.map((p) => p.prev) : null;
-    labels = series.points.map((p) => p.label);
-    leg1 = `Última captura · ${series.currentLabel}`; leg2 = series.previousLabel ? `Captura anterior · ${series.previousLabel}` : '';
-    const i = st.ptHover;
-    readout = i != null && s1[i] != null ? `Extracción ${labels[i]} · ${eur(s1[i])}${s2 && s2[i] != null ? ` · antes ${eur(s2[i])}` : ''}` : null;
-  }
-  const vals = [...s1, ...(s2 || [])].filter((v) => v != null);
-  if (!vals.length) return '<div class="dash-pop__empty">Este hotel no tiene tarifas en las fotos disponibles.</div>';
+  const captures = State.captureHistories[State.targetId]?.captures;
+  if (!history || !captures) return '<div class="dash-pop__loading"><i></i>Cargando extracciones…</div>';
+  const series = dashboardDateSeries(history, captures);
+  if (!series) return '<div class="dash-pop__empty">Sin extracciones con tarifas para este hotel.</div>';
+  const points = series.points;
+  const vals = points.flatMap((p) => [p.value, p.prev]).filter((v) => v != null);
   let lo = Math.min(...vals), hi = Math.max(...vals);
   const pad = Math.max(6, (hi - lo) * 0.12); lo -= pad; hi += pad;
-  const n = s1.length;
-  const X = (i) => (n === 1 ? 215 : 34 + i * (362 / (n - 1)));
+  const firstDate = Date.parse(points[0].date), lastDate = Date.parse(points.at(-1).date);
+  const X = (i) => firstDate === lastDate ? 215 : 34 + (Date.parse(points[i].date) - firstDate) * 362 / (lastDate - firstDate);
   const Y = (v) => 140 - ((v - lo) / (hi - lo)) * 128;
-  const line = (arr) => arr.map((v, i) => (v == null ? null : `${X(i).toFixed(1)},${Y(v).toFixed(1)}`)).filter(Boolean).join(' ');
-  const idx = s1.map((v, i) => (v == null ? null : i)).filter((i) => i != null);
-  const l1 = line(s1);
-  const area = idx.length > 1 ? `${X(idx[0]).toFixed(1)},140 ${l1} ${X(idx.at(-1)).toFixed(1)},140` : '';
-  const xl = labels.map((t, i) => ({ t, i })).filter(({ i }) => n <= 8 || i % 2 === 1 || i === n - 1)
-    .map(({ t, i }) => `<text x="${X(i).toFixed(1)}" y="160" text-anchor="middle">${esc(t)}</text>`).join('');
-  const pts = s1.map((v, i) => (v == null ? '' : `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${st.ptHover === i ? 5.5 : 3.5}" class="dash-pop__pt${st.ptHover === i ? ' is-on' : ''}" data-dash-pt="${i}"></circle>`)).join('');
-  const c2 = dashed ? 'var(--faint)' : 'var(--warn-ink)';
-  const fallback = h.isNew ? 'Nuevo en el set: solo aparece en la última foto' : 'Pasa el cursor por los puntos';
-  return `<div class="dash-pop__readout" aria-live="polite">${esc(readout || fallback)}</div>
-    <svg viewBox="0 0 400 170" role="img" aria-label="${esc(leg1)}"><line x1="34" x2="396" y1="12" y2="12" stroke="var(--line)"></line><line x1="34" x2="396" y1="76" y2="76" stroke="var(--line)"></line><line x1="34" x2="396" y1="140" y2="140" stroke="var(--line)"></line>
+  const leg1 = `Última extracción · ${series.currentLabel}`;
+  const leg2 = series.previousLabel ? `Anterior con tarifas · ${series.previousLabel}` : '';
+  const pointReadout = (p) => `${p.date} · última ${p.value == null ? 'sin tarifa' : eur(p.value)}${series.previousLabel ? ` · anterior ${p.prev == null ? 'sin tarifa' : eur(p.prev)}` : ''}`;
+  // Un hueco observado corta la línea; las fechas que solo pertenecen a la otra
+  // extracción no interrumpen su curva. No se interpolan tarifas ausentes.
+  const lines = (valueKey, expectedKey, color, dashed) => {
+    const segments = [];
+    let segment = [];
+    const flush = () => { if (segment.length) segments.push(segment); segment = []; };
+    points.forEach((p, i) => {
+      if (p[valueKey] != null) segment.push(`${X(i).toFixed(1)},${Y(p[valueKey]).toFixed(1)}`);
+      else if (p[expectedKey]) flush();
+    });
+    flush();
+    return segments.filter((part) => part.length > 1).map((part) => `<polyline points="${part.join(' ')}" fill="none" stroke="${color}" stroke-width="2"${dashed ? ' stroke-dasharray="4 3"' : ''} stroke-linejoin="round" stroke-linecap="round"></polyline>`).join('');
+  };
+  const dots = (valueKey, label, previous) => points.map((p, i) => p[valueKey] == null ? '' : `<circle cx="${X(i).toFixed(1)}" cy="${Y(p[valueKey]).toFixed(1)}" r="${st.ptHover === i ? 5 : 3.5}" class="dash-pop__pt${previous ? ' dash-pop__pt--previous' : ''}${st.ptHover === i ? ' is-on' : ''}" data-dash-pt="${i}" data-dash-readout="${esc(pointReadout(p))}"><title>${esc(`${p.date} · ${label} · ${eur(p[valueKey])}`)}</title></circle>`).join('');
+  const angled = points.length > 8;
+  // Fechas muy próximas usan dos niveles para conservar todas las etiquetas.
+  let previousX = -Infinity, previousLevel = 1;
+  const xl = points.map((p, i) => {
+    const x = X(i), close = x - previousX < (angled ? 15 : 32);
+    const level = close ? 1 - previousLevel : 0;
+    previousX = x; previousLevel = level;
+    const y = 160 + level * (angled ? 27 : 15);
+    return `<text x="${x.toFixed(1)}" y="${y}" text-anchor="${angled ? 'end' : 'middle'}"${angled ? ` transform="rotate(-55 ${x.toFixed(1)} ${y})"` : ''}>${esc(p.label)}</text>`;
+  }).join('');
+  const hovered = points[st.ptHover];
+  const readout = hovered ? pointReadout(hovered) : 'Fecha de entrada · €/habitación/noche';
+  return `<div class="dash-pop__readout" aria-live="polite">${esc(readout)}</div>
+    <svg viewBox="0 0 420 ${angled ? 216 : 190}" role="img" aria-label="ADR del hotel por fecha de estancia: última extracción y anterior"><title>${esc(`${leg1}${leg2 ? ` · ${leg2}` : ''}`)}</title>
+      <line x1="34" x2="396" y1="12" y2="12" stroke="var(--line)"></line><line x1="34" x2="396" y1="76" y2="76" stroke="var(--line)"></line><line x1="34" x2="396" y1="140" y2="140" stroke="var(--line)"></line>
       <g class="dash-svg-text dash-svg-text--sm"><text x="28" y="15" text-anchor="end">${eur(hi)}</text><text x="28" y="143" text-anchor="end">${eur(lo)}</text>${xl}</g>
-      ${s2 ? `<polyline points="${line(s2)}" fill="none" stroke="${c2}" stroke-width="1.6" stroke-dasharray="${dashed ? '4 4' : '0'}" stroke-linejoin="round"></polyline>` : ''}
-      ${area ? `<polyline points="${area}" fill="var(--accent-soft)" stroke="none" opacity=".7"></polyline>` : ''}
-      <polyline points="${l1}" fill="none" stroke="var(--ac)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"></polyline>${pts}</svg>
-    <div class="dash-pop__legend"><span><i class="bg-ac"></i>${esc(leg1)}</span>${s2 ? `<span><i style="background:${c2}"></i>${esc(leg2)}</span>` : ''}</div>`;
+      ${lines('prev', 'previousExpected', 'var(--muted)', true)}${lines('value', 'currentExpected', 'var(--ac)', false)}
+      ${dots('prev', leg2, true)}${dots('value', leg1, false)}</svg>
+    <div class="dash-pop__legend"><span><i class="bg-ac"></i>${esc(leg1)}</span>${leg2 ? `<span><i style="border-top:2px dashed var(--muted)"></i>${esc(leg2)}</span>` : '<span>Sin extracción anterior con tarifas para este hotel.</span>'}</div>`;
 }
 
 function dashboardPopoverFacts(h) {
@@ -1488,13 +1526,13 @@ function dashboardPopoverHTML(h) {
   const sub = [h.chain, h.zone, h.adultsOnly ? 'Adults only' : ''].filter(Boolean).join(' · ');
   const prevId = st.previousSnapshotId;
   const delta = h.isNew ? ['Nuevo en el set', 'ac']
-    : h.delta == null ? [prevId == null ? 'Sin foto anterior — captura para comparar' : 'Sin foto comparable con mismo producto — revisa filtros', 'dim']
+    : h.delta == null ? ['Sin tarifa anterior comparable para esta estancia', 'dim']
     : h.delta === 0 ? [`Sin cambio vs foto #${prevId}`, 'dim']
     : [`${h.delta > 0 ? '▲' : '▼'} ${nEs(Math.abs(h.delta), 1)} % vs foto #${prevId} (${eur(h.prevAdr)})`, h.delta > 0 ? 'pos' : 'neg'];
-  const modes = [['hist', 'Por foto'], ['dates', 'Por extracción']].map(([id, label]) => `<button type="button" class="${st.chart === id ? 'is-active' : ''}" data-dash-chart="${id}" aria-pressed="${st.chart === id}">${label}</button>`).join('');
+
   return `<div class="dash-pop__head"><div class="dash-pop__title"><span class="dash-pop__kicker">Inspector de tarifa · puesto ${h.rank} de ${priced}</span><h3 id="dashPopTitle">${esc(h.name)}</h3>${sub ? `<span class="dash-pop__sub">${esc(sub)}</span>` : ''}</div><button type="button" class="icon-x" data-dash-close aria-label="Cerrar inspector">${ICON_CLOSE}</button></div>
     <div class="dash-pop__body">
-      <div class="dash-pop__chart"><div class="dash-pop__modes"><div class="seg seg--sm" role="group" aria-label="Modo de la gráfica">${modes}</div>${st.chart === 'hist' ? `<button type="button" class="dash-pop__cmp" data-dash-cmp aria-pressed="${st.cmp}"><i aria-hidden="true"></i>Media del set</button>` : ''}</div><div id="dashPopChart">${dashboardPopoverChartHTML(h)}</div></div>
+      <div class="dash-pop__chart"><span class="dash-pop__kicker">ADR por fecha de estancia</span><div id="dashPopChart">${dashboardPopoverChartHTML(h)}</div></div>
       <div class="dash-pop__side"><div class="dash-pop__adr"><span class="dash-pop__kicker">ADR hab/noche</span><div class="dash-pop__adrrow"><strong>${eur(h.adr)}</strong>${h.vsMedian == null ? '' : `<span class="dash-pop__vs${h.vsMedian >= 0 ? ' is-up' : ''}" title="Distancia a la mediana (azul = distancia, no juicio)">${pctTxt(h.vsMedian, 0)} vs mediana</span>`}</div><span class="dash-pop__delta ${delta[1]}" title="${esc(h.delta == null && !h.isNew ? 'Sin foto comparable con mismo hotel, estancia y producto' : delta[0])}">${esc(delta[0])}</span></div>
         <dl class="dash-pop__facts" id="dashPopFacts">${dashboardPopoverFacts(h).map(([k, v, tone]) => `<div><dt>${esc(k)}</dt><dd class="${tone}" title="${esc(v)}">${esc(v)}</dd></div>`).join('')}</dl></div>
     </div>
@@ -1528,7 +1566,7 @@ function openDashboardPopover(key) {
   positionDashboardPopover(true);
   $('#dashPop [data-dash-close]')?.focus({ preventScroll: true });
   const targetId = State.targetId;
-  getHotelPriceHistory(targetId, key).then(() => { if (State.dashboard.sel === key && State.targetId === targetId) paintDashboardPopover('chart'); })
+  Promise.all([getHotelPriceHistory(targetId, key), getCaptureHistory(targetId)]).then(() => { if (State.dashboard.sel === key && State.targetId === targetId) paintDashboardPopover('chart'); })
     .catch((error) => { const chart = $('#dashPopChart'); if (chart && State.dashboard.sel === key) chart.innerHTML = `<div class="dash-pop__empty">No se pudo cargar la evolución: ${esc(error.message)}</div>`; });
   void ensureHotelRateDetails(key).then(() => { if (State.dashboard.sel === key && State.targetId === targetId) paintDashboardPopover('facts'); });
 }
@@ -1615,9 +1653,6 @@ function handleDashboardClick(e) {
   const pin = target.closest('[data-dash-pin]');
   if (pin) { e.stopPropagation(); openDashboardPopover(pin.dataset.dashPin); return true; }
   if (target.closest('[data-dash-close]')) { closeDashboardPopover(); return true; }
-  const mode = target.closest('[data-dash-chart]');
-  if (mode) { State.dashboard.chart = mode.dataset.dashChart === 'dates' ? 'dates' : 'hist'; State.dashboard.ptHover = null; paintDashboardPopover(); positionDashboardPopover(); $(`#dashPop [data-dash-chart="${State.dashboard.chart}"]`)?.focus(); return true; }
-  if (target.closest('[data-dash-cmp]')) { State.dashboard.cmp = !State.dashboard.cmp; paintDashboardPopover(); $('#dashPop [data-dash-cmp]')?.focus(); return true; }
   const hotel = target.closest('[data-dash-hotel]');
   if (hotel) { openHotelInHotels(hotel.dataset.dashHotel); return true; }
   const ask = target.closest('[data-dash-ask]');
@@ -1643,7 +1678,16 @@ function handleDashboardOver(e) {
     else tip.hidden = true;
   }
   const pt = target.closest('[data-dash-pt]');
-  if (pt && Number(pt.dataset.dashPt) !== State.dashboard.ptHover) { State.dashboard.ptHover = Number(pt.dataset.dashPt); paintDashboardPopover('chart'); }
+  if (pt && Number(pt.dataset.dashPt) !== State.dashboard.ptHover) {
+    State.dashboard.ptHover = Number(pt.dataset.dashPt);
+    const readout = $('#dashPopChart .dash-pop__readout');
+    if (readout) readout.textContent = pt.dataset.dashReadout;
+    $$('#dashPopChart [data-dash-pt]').forEach((point) => {
+      const selected = Number(point.dataset.dashPt) === State.dashboard.ptHover;
+      point.classList.toggle('is-on', selected);
+      point.setAttribute('r', selected ? '5' : '3.5');
+    });
+  }
 }
 
 function rateNights(checkIn, checkOut) {
@@ -2483,7 +2527,7 @@ function biCalendarHTML(m) {
         return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell${s === 'low' ? ' is-low' : ''}${isNeutral ? ' is-neutral' : ''}${heat && Math.abs(heat.r) > 0.45 ? ' is-strong' : ''}" style="background:${heat ? heat.bg : 'var(--line-soft)'}" title="${esc(cellTitle)}">${showText ? nEs(p) : ''}</span>`;
       }
       if (s === 'closed') return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-closed" title="${esc(`${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · ${isoYear(iso)} · cerrado`)}"></span>`;
-      return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-empty" title="${esc(`${String(h.name).split(' - ')[0]} · ${biDayLong(iso)} · ${isoYear(iso)} · sin foto`)}"></span>`;
+      return `<span data-h="${esc(h.key)}" data-d="${i}" class="bi-cell is-empty"></span>`;
     }).join('');
     const isOwn = h.key === st.own;
     return `<div class="bi-cal__row${isOwn ? ' is-own' : ''}" style="grid-template-columns:${cols}"><button type="button" class="bi-cal__name" data-bi-open="${esc(h.key)}"><span class="bi-cal__pos">${ri + 1}</span><span>${esc(h.name)}</span></button>${cells}</div>`;
@@ -3495,7 +3539,7 @@ function atlasPollUnregister(key) {
 }
 function atlasPollCanWrite({ view = null, targetId = null, el = null } = {}) {
   try {
-    if (view && State.view !== view) return false;
+    if (view && State.view !== view) { State.viewDirty[view] = true; return false; }
     if (targetId != null && State.targetId !== targetId) return false;
     if (el && !el.isConnected) return false;
     return true;
@@ -3626,7 +3670,7 @@ async function renderFlightMap(model) {
   const routes = model.routes.filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
   if (!routes.length) { mapFrameStatus(frame, 'No hay aeropuertos con coordenadas en la foto aérea.'); done(); return; }
   try { await loadMapLibre(); } catch (_) { if (frame.isConnected) mapFrameStatus(frame, MAP_FAILED_TEXT); done(); return; }
-  if (!frame.isConnected || State.view !== 'flights') { done(); return; }
+  if (!frame.isConnected || State.view !== 'flights') { if (State.view !== 'flights') State.viewDirty.flights = true; done(); return; }
   destroyFlightMap();
   let map;
   try { map = createAtlasMap(container, { center: [-1.5, 43], zoom: 3.05 }); } catch (_) { mapFrameStatus(frame, MAP_FAILED_TEXT); done(); return; }
@@ -6101,6 +6145,7 @@ async function openCaptureDialog() {
 }
 
 function invalidateTargetData(targetId) {
+  State.dataRev += 1;
   delete State.snapshots[targetId]; delete State.metrics[targetId]; delete State.demandCurves[targetId]; delete State.hotelStability[targetId]; delete State.photoHistories[targetId]; delete State.captureHistories[targetId];
   delete State.hotelPriceHistories[targetId]; delete State.hotelRateDetails[targetId];
   if (State.bi && State.bi.targetId === targetId) State.bi.data = null;
@@ -6195,7 +6240,7 @@ function paletteGroups(rawQuery) {
   const hotels = q && metrics ? (metrics.competitiveSet || []).filter((h) => match(h.hotelName)).slice(0, 6)
     .map((h) => ({ tag: 'HTL', label: h.hotelName, hint: eur(h.pricePerNight), run: () => openHotelInHotels(h.hotelName) })) : [];
   const views = VIEWS.filter((view) => match(LABELS[view]))
-    .map((view) => ({ tag: 'IR', label: LABELS[view], hint: PALETTE_VIEW_GROUPS[view], run: () => setView(view) }));
+    .map((view) => ({ tag: 'IR', label: LABELS[view], hint: PALETTE_VIEW_GROUPS[view], run: () => setView(view, { reuse: true }) }));
   const actions = [
     { tag: 'CAP', label: 'Capturar mercado activo', hint: 'Booking', run: () => { void openCaptureDialog(); } },
     { tag: 'AI', label: query ? `Preguntar al Copilot →: «${query}»` : 'Preguntar al Copilot →', hint: '⌘O', ask: true, run: () => askCopilot(query) },
@@ -6326,9 +6371,9 @@ function wireEvents() {
     if (e.target.closest('#captureCancel')) { closeOverlay('captureDialog'); State.captureDialogParams = null; return; }
     if (e.target.closest('#captureConfirm')) { void confirmCapture(); return; }
     const nav = e.target.closest('.nav__item[data-view]');
-    if (nav) { setView(nav.dataset.view); return; }
+    if (nav) { setView(nav.dataset.view, { reuse: true }); return; }
     const navBtn = e.target.closest('[data-nav]');
-    if (navBtn) { setView(navBtn.dataset.nav); return; }
+    if (navBtn) { setView(navBtn.dataset.nav, { reuse: true }); return; }
     const workspaceAdd = e.target.closest('[data-workspace-add]');
     if (workspaceAdd) { addWorkspaceLayer(workspaceAdd.dataset.workspaceAdd); return; }
     const workspaceRemove = e.target.closest('[data-workspace-remove]');
@@ -6603,6 +6648,7 @@ const ICON_CHEV_LEFT = '<svg viewBox="0 0 24 24" width="14" height="14" fill="no
 function atlasSyncRoving(root) {
   const scope = root || document;
   $$('[role="tablist"]', scope).forEach((list) => {
+    if (atlasListHidden(list)) return;
     const tabs = [...list.querySelectorAll('[role="tab"]')];
     if (!tabs.length) return;
     const active = tabs.find((t) => t.getAttribute('aria-selected') === 'true') || tabs.find((t) => t.classList.contains('is-active')) || tabs[0];
@@ -6615,9 +6661,10 @@ function atlasSyncRoving(root) {
     calBtns.forEach((b) => { b.tabIndex = (b === fallback ? 0 : -1); });
   }
 }
-function atlasSyncTabIndicator(list) {
-  if (!list || !list.isConnected) return;
-  const active = list.querySelector('[role="tab"].is-active, [role="tab"][aria-selected="true"]');
+function atlasListHidden(el) { return Boolean(el.closest('.view:not(.is-visible)')); }
+/* Dos fases (leer todo y escribir todo) para no intercalar layouts; las listas de vistas ocultas se saltan
+   y se sincronizan al mostrarse (onViewShown). */
+function atlasApplyTabIndicator(list, active, x, w) {
   let ind = list.querySelector(':scope > .tab-indicator');
   if (!active) { if (ind) ind.style.opacity = '0'; return; }
   if (!ind) {
@@ -6627,18 +6674,18 @@ function atlasSyncTabIndicator(list) {
     list.appendChild(ind);
     list.classList.add('has-indicator');
   }
-  const x = active.offsetLeft || 0;
-  const w = active.offsetWidth || 0;
   ind.style.opacity = '1';
   ind.style.transform = `translateX(${x}px)`;
   ind.style.width = `${w}px`;
 }
 function atlasSyncAllTabIndicators(root) {
-  $$('[role="tablist"]', root || document).forEach(atlasSyncTabIndicator);
+  const reads = $$('[role="tablist"]', root || document).filter((l) => l.isConnected && !atlasListHidden(l)).map((list) => {
+    const active = list.querySelector('[role="tab"].is-active, [role="tab"][aria-selected="true"]');
+    return { list, active, x: active ? active.offsetLeft || 0 : 0, w: active ? active.offsetWidth || 0 : 0 };
+  });
+  reads.forEach(({ list, active, x, w }) => atlasApplyTabIndicator(list, active, x, w));
 }
-function atlasSyncSegBg(seg) {
-  if (!seg || !seg.isConnected) return;
-  const active = seg.querySelector('button.is-active');
+function atlasApplySegBg(seg, active, r) {
   let bg = seg.querySelector(':scope > .seg__bg');
   if (!active) { if (bg) bg.style.opacity = '0'; return; }
   if (!bg) {
@@ -6649,13 +6696,17 @@ function atlasSyncSegBg(seg) {
     seg.classList.add('has-sliding');
   }
   bg.style.opacity = '1';
-  bg.style.transform = `translateX(${active.offsetLeft || 0}px)`;
-  bg.style.width = `${active.offsetWidth || 0}px`;
-  bg.style.height = `${active.offsetHeight || 0}px`;
-  bg.style.top = `${active.offsetTop || 0}px`;
+  bg.style.transform = `translateX(${r.x}px)`;
+  bg.style.width = `${r.w}px`;
+  bg.style.height = `${r.h}px`;
+  bg.style.top = `${r.y}px`;
 }
 function atlasSyncAllSeg(root) {
-  $$('.seg', root || document).forEach(atlasSyncSegBg);
+  const reads = $$('.seg', root || document).filter((seg) => seg.isConnected && !atlasListHidden(seg)).map((seg) => {
+    const active = seg.querySelector('button.is-active');
+    return { seg, active, r: active ? { x: active.offsetLeft || 0, w: active.offsetWidth || 0, h: active.offsetHeight || 0, y: active.offsetTop || 0 } : null };
+  });
+  reads.forEach(({ seg, active, r }) => atlasApplySegBg(seg, active, r));
 }
 let __atlasSyncQueued = false;
 function atlasScheduleSync() {
@@ -6685,7 +6736,9 @@ function atlasActivateRepTab(next) {
   atlasScheduleSync();
 }
 if (typeof MutationObserver !== 'undefined' && !window.__atlasD1Observer) {
-  window.__atlasD1Observer = new MutationObserver(() => atlasScheduleSync());
+  const __ATLAS_SYNC_SEL = '[role="tablist"], .seg, #biCalGrid';
+  const __atlasAdds = (mut, sel) => mut.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches(sel) || n.querySelector(sel))));
+  window.__atlasD1Observer = new MutationObserver((mut) => { if (__atlasAdds(mut, __ATLAS_SYNC_SEL)) atlasScheduleSync(); });
   if (document.documentElement) window.__atlasD1Observer.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('resize', atlasScheduleSync, { passive: true });
   window.addEventListener('load', atlasScheduleSync);
@@ -6816,10 +6869,7 @@ function atlasU2ChartAlts(root) {
 }
 if (typeof MutationObserver !== 'undefined' && !window.__atlasU2Observer) {
   window.__atlasU2Observer = new MutationObserver((mut) => {
-    let need = false;
-    for (const m of mut) {
-      if (m.addedNodes && m.addedNodes.length) { need = true; break; }
-    }
+    const need = mut.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches('svg[role="img"], #biCalGrid') || n.querySelector('svg[role="img"], #biCalGrid'))));
     if (need) {
       try { atlasU2ChartAlts(document); } catch (_) { /* progresivo */ }
     }

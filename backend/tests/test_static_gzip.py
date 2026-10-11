@@ -28,7 +28,7 @@ def test_static_js_gzip_encoding_vary_immutable() -> None:
     raw_len = (STATIC_ROOT / "atlas.js").stat().st_size
     assert raw_len >= 400_000, raw_len
     wire_len = len(response.get_data())
-    assert 100_000 <= wire_len <= 135_000, wire_len
+    assert 100_000 <= wire_len <= 140_000, wire_len
 
     plain = _get("/static/atlas.js", gzip_ok=False)
     assert plain.headers.get("Content-Encoding") is None
@@ -87,3 +87,27 @@ def test_api_gzip_without_regression() -> None:
     assert response.status_code == 200
     assert response.headers.get("Content-Encoding") == "gzip"
     assert "Accept-Encoding" in response.headers.get("Vary", "")
+
+
+def test_index_version_is_content_hash_and_no_cache() -> None:
+    import hashlib
+    import re
+
+    resp = app.test_client().get("/")
+    assert resp.headers["Cache-Control"] == "no-cache"
+    html = resp.get_data(as_text=True)
+    for name in ("fonts.css", "atlas.css", "atlas.js"):
+        found = re.search(rf"{re.escape(name)}\?v=([0-9a-f]{{12}})", html)
+        assert found, name
+        assert found.group(1) == hashlib.sha1((STATIC_ROOT / name).read_bytes()).hexdigest()[:12]
+
+
+def test_asset_version_changes_with_content(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(flask_app.app, "static_folder", str(tmp_path))
+    (tmp_path / "x.js").write_text("a" * 10)
+    first = flask_app.asset_version("x.js")
+    (tmp_path / "x.js").write_text("b" * 10)
+    import os
+    os.utime(tmp_path / "x.js", ns=(1, 2_000_000_000))
+    assert flask_app.asset_version("x.js") != first
+    assert flask_app.asset_version("nope.js") == "0"

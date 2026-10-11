@@ -8,9 +8,9 @@
     <meta name="description" content="Inteligencia de tarifas hoteleras y conectividad aérea para equipos de Revenue." />
     <link rel="preload" href="{{ url_for('static', filename='fonts/archivo-latin.woff2') }}" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="{{ url_for('static', filename='fonts/spacemono-400-latin.woff2') }}" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="{{ url_for('static', filename='fonts.css', v='atlas-167') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='atlas.css', v='atlas-167') }}" />
-    <script defer src="{{ url_for('static', filename='atlas.js', v='atlas-167') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='fonts.css', v=asset_version('fonts.css')) }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='atlas.css', v=asset_version('atlas.css')) }}" />
+    <script defer src="{{ url_for('static', filename='atlas.js', v=asset_version('atlas.js')) }}"></script>
   </head>
   <body data-density="equilibrada" data-view="dashboard">
     <a class="skip-link" href="#main">Saltar al contenido</a>

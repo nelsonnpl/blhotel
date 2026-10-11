@@ -372,7 +372,9 @@ body.is-sidebar-collapsed .tool-btn__collapse svg { transform: scaleX(-1); }
 /* ------------------------------------------------------------------- views */
 .view { display: none; }
 .view.is-visible { display: block; }
-.page { padding: 28px 32px 48px; animation: atIn var(--dur-enter) var(--ease) both; }
+.page { padding: 28px 32px 48px; animation: atIn var(--dur-enter) var(--ease) backwards; }
+/* al volver a una vista ya pintada: fundido corto, sin transform sobre la página entera */
+.view.is-reentry .page, .view.is-reentry .bi { animation: atFade var(--dur-xs) var(--ease) backwards; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
 .page-head h1 { margin: 0 0 6px; font-size: 28px; font-weight: 700; letter-spacing: -.025em; }
 .page-head p { margin: 0; font-size: 13.5px; color: var(--muted); }
@@ -661,6 +663,8 @@ body.air-operations-fullscreen .page { animation: none; transform: none; }
 .dash-pop__readout { height: 14px; overflow: hidden; font-family: 'Space Mono', monospace; font-size: 10.5px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; margin-bottom: 10px; }
 .dash-pop__pt { fill: var(--card); stroke: var(--ac); stroke-width: 2; cursor: pointer; }
 .dash-pop__pt.is-on { fill: var(--ac); }
+.dash-pop__pt--previous { stroke: var(--muted); }
+.dash-pop__pt--previous.is-on { fill: var(--muted); }
 .dash-pop__legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-family: 'Space Mono', monospace; font-size: 9.5px; color: var(--faint); }
 .dash-pop__legend span { display: flex; align-items: center; gap: 5px; }
 .dash-pop__legend i { width: 14px; height: 2px; }
@@ -1654,7 +1658,7 @@ button.ws-table__hotel:hover { color: var(--ac); }
 }
 
 /* ===================================================== Hoteles · panel de análisis (BI) */
-.bi { display: flex; flex-direction: column; gap: 14px; animation: atIn var(--dur-card) var(--ease) both; }
+.bi { display: flex; flex-direction: column; gap: 14px; animation: atIn var(--dur-card) var(--ease) backwards; }
 .bi[aria-busy="true"] .bi-flow { opacity: .6; transition: opacity var(--dur-xs) var(--ease); }
 .bi-filters { position: sticky; top: 60px; z-index: 12; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: 0 6px 18px rgba(20, 22, 28, .05); }
 .bi-field { display: flex; flex-direction: column; gap: 5px; }
@@ -1833,8 +1837,7 @@ button.bi-fact:hover { color: var(--ac); }
 .bi-cell.is-low.is-neutral { box-shadow: inset 0 -3px 0 #c98a1e, inset 0 0 0 1px var(--lo); }
 .bi-cell.is-closed, .bi-mini.is-closed { background: repeating-linear-gradient(135deg, rgba(20, 22, 28, .45) 0 1.5px, transparent 1.5px 4px); }
 html[data-theme="oscuro"] .bi-cell.is-closed, html[data-theme="oscuro"] .bi-mini.is-closed { background: repeating-linear-gradient(135deg, rgba(236, 238, 243, .4) 0 1.5px, transparent 1.5px 4px); }
-.bi-cell.is-empty { cursor: default; background: transparent; box-shadow: inset 0 0 0 1px var(--line-soft); }
-.bi-cell.is-empty::after { content: '·'; color: var(--fainter); font-size: 12px; line-height: 1; }
+.bi-cell.is-empty { display: block; box-sizing: border-box; overflow: visible; cursor: default; border: 1px solid var(--line-soft); background: radial-gradient(circle, var(--fainter) 0 1px, transparent 1.5px); }
 .bi-cal__days .is-focus { text-decoration: underline; text-underline-offset: 2px; }
 .bi-cal__sparse { margin: 10px 18px 0; padding: 8px 10px; border: 1px dashed var(--border); border-radius: var(--r-ctl); background: var(--input); font-size: 11.5px; color: var(--muted); }
 .bi-cal__nohotels { padding: 48px; font-size: 13px; color: var(--muted); text-align: center; }
@@ -2605,7 +2608,7 @@ svg circle[tabindex="0"]:focus-visible { outline: 2px solid var(--ac); outline-o
   .card, .kpi, .dash-card, .bi-card, .table-card { border-width: 2px; }
   .btn, .tool-btn, .icon-btn, .seg button { border-width: 2px; }
   .bi-cal__focus { border-width: 2px; }
-  .bi-cell.is-empty { box-shadow: inset 0 0 0 2px var(--line); }
+  .bi-cell.is-empty { border-width: 2px; border-color: var(--line); }
 }
 /* forced-colors (D2-08/G1-08): sin pérdida, todo a colores de sistema */
 @media (forced-colors: active) {
@@ -2617,8 +2620,7 @@ svg circle[tabindex="0"]:focus-visible { outline: 2px solid var(--ac); outline-o
   svg text { fill: CanvasText; }
   svg polyline, svg path, svg line, svg circle { forced-color-adjust: auto; }
   .bi-cell, .bi-cal__med i, .bi-mini, .dash-meter i, .meter > i, .bar__fill, .dash-curve__track i { forced-color-adjust: auto; border: 1px solid CanvasText; }
-  .bi-cell.is-empty { box-shadow: inset 0 0 0 1px CanvasText; }
-  .bi-cell.is-empty::after { color: CanvasText; }
+  .bi-cell.is-empty { background: radial-gradient(circle, CanvasText 0 1px, transparent 1.5px); }
   .bi-cal__focus { border: 2px solid Highlight; box-shadow: none; }
   .map-pin__dot, .dash-swarm__dot, .bi-dot, .bi-pin, .fl-dot { border: 2px solid CanvasText; forced-color-adjust: auto; }
   .toast, .dash-pop__tip, .dash-swarm__tip { background: Canvas; color: CanvasText; border: 1px solid CanvasText; }

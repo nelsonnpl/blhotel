@@ -136,8 +136,8 @@ def _assistant_market_error(owner_key: str, target_id: int) -> tuple[str, int] |
     return None
 
 
-# B1-01: gzip en memoria para estáticos versionados (PKG-00: a partir de
-# aquí ningún cambio FE necesita subir `v=` a mano). La compresión genérica
+# B1-01: gzip en memoria para estáticos versionados (el `v=` del HTML sale de
+# `asset_version`, por contenido). La compresión genérica
 # de `apply_security_headers` excluye `send_file` (streamed), así que se sirve
 # antes el cuerpo ya comprimido con caché {(path, mtime_ns): bytes}.
 _STATIC_GZIP_CACHE: dict[tuple[str, int], bytes] = {}
@@ -387,9 +387,37 @@ def parse_date_arg(name: str) -> str | None:
         raise ValueError(f"{name} debe ser una fecha ISO YYYY-MM-DD") from exc
 
 
+_ASSET_VERSION_CACHE: dict[tuple[str, int], str] = {}
+
+
+def asset_version(name: str) -> str:
+    """Versión de un estático por contenido (sha1[:12]), cacheada por (ruta, mtime).
+
+    Sustituye al `v=` manual: el HTML siempre apunta a la versión vigente y los
+    estáticos pueden seguir siendo `immutable` sin servir código antiguo."""
+    path = (Path(app.static_folder) / name).resolve()
+    try:
+        key = (str(path), path.stat().st_mtime_ns)
+    except OSError:
+        return "0"
+    with _static_gzip_lock:
+        version = _ASSET_VERSION_CACHE.get(key)
+        if version is None:
+            version = hashlib.sha1(path.read_bytes()).hexdigest()[:12]
+            for stale in [k for k in _ASSET_VERSION_CACHE if k[0] == key[0]]:
+                del _ASSET_VERSION_CACHE[stale]
+            _ASSET_VERSION_CACHE[key] = version
+    return version
+
+
+app.jinja_env.globals["asset_version"] = asset_version
+
+
 @app.get("/")
 def index():
-    return render_template("index.html")
+    response = app.make_response(render_template("index.html"))
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.get("/api/health")
