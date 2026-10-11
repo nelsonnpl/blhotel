@@ -76,21 +76,11 @@ function percentileVal(arr, p) {
   return s[lo] + (s[hi] - s[lo]) * (idx - lo);
 }
 
-/* count-up on [data-count] integers */
+/* Numbers are complete on first paint, including reduced-motion mode. */
 function runCounters(root) {
-  const nodes = $$('[data-count]', root).map((n) => ({ n, target: Number(n.getAttribute('data-count')) }));
-  if (!nodes.length) return;
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduce) { nodes.forEach(({ n, target }) => (n.textContent = nEs(target))); return; }
-  nodes.forEach(({ n }) => (n.textContent = '0'));
-  const t0 = performance.now(), dur = 900;
-  const step = (t) => {
-    const k = Math.min(1, (t - t0) / dur);
-    const e = 1 - Math.pow(1 - k, 3);
-    nodes.forEach(({ n, target }) => (n.textContent = nEs(Math.round(target * e))));
-    if (k < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
+  $$('[data-count]', root).forEach((node) => {
+    node.textContent = nEs(Number(node.getAttribute('data-count')));
+  });
 }
 
 /* >>> api-robustez (PKG-07 W2 · B1-04/B2-13/W2-04): timeout + AbortController + reintento solo GET + red global.
